@@ -39,7 +39,10 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioImportPreviewDTO,
     PortfolioImportSummaryDTO,
     PortfolioReconciliationChangeDTO,
+    PortfolioSnapshotChangesDTO,
     PortfolioSnapshotDTO,
+    PortfolioSnapshotFieldChangeDTO,
+    PortfolioSnapshotRowChangeDTO,
     PortfolioSnapshotRowDTO,
     PortfolioSnapshotSummaryDTO,
     PortfolioStructuralReviewDTO,
@@ -69,6 +72,10 @@ from athena.portfolio.my_portfolio_contracts import (
     SymbolMappingState,
     SyncRunStatus,
     reconcile_current_holdings,
+)
+from athena.portfolio.snapshot_diff import (
+    SnapshotCompareRow,
+    diff_snapshot_rows,
 )
 from athena.portfolio.sync import PortfolioSyncOrchestrator, utc_now
 
@@ -562,6 +569,98 @@ class MyPortfolioService:
             current_holdings_digest=currentness["current_holdings_digest"],
             summary=summary,
             rows=row_dtos,
+        )
+
+    def snapshot_changes_since_previous(self) -> PortfolioSnapshotChangesDTO:
+        """Compare the latest snapshot with the previous completed snapshot.
+
+        Display-only. Never recalculates Portfolio Intelligence.
+        """
+
+        current = self.latest_snapshot()
+        previous_run = self._repo.previous_portfolio_snapshot_sync_run(current.snapshot_id)
+        if previous_run is None:
+            return PortfolioSnapshotChangesDTO(
+                current_snapshot_id=current.snapshot_id,
+                previous_snapshot_id=None,
+                previous_generated_at=None,
+                comparison_available=False,
+                portfolio_changed_since_sync=current.portfolio_changed_since_sync,
+                currentness=current.currentness,
+                note="No previous completed snapshot to compare.",
+                rows=[],
+            )
+        previous_rows = [
+            self._snapshot_row_to_dto(row)
+            for row in self._repo.list_portfolio_analysis_snapshots(
+                str(previous_run["sync_run_id"])
+            )
+        ]
+        changes = diff_snapshot_rows(
+            tuple(self._snapshot_compare_row(row) for row in previous_rows),
+            tuple(self._snapshot_compare_row(row) for row in current.rows),
+        )
+        note = None
+        if current.portfolio_changed_since_sync:
+            note = (
+                "Compared with the previous analysis snapshot. "
+                "Holdings changed after the latest sync."
+            )
+        return PortfolioSnapshotChangesDTO(
+            current_snapshot_id=current.snapshot_id,
+            previous_snapshot_id=str(previous_run["sync_run_id"]),
+            previous_generated_at=previous_run["finished_at"] or previous_run["started_at"],
+            comparison_available=True,
+            portfolio_changed_since_sync=current.portfolio_changed_since_sync,
+            currentness=current.currentness,
+            note=note,
+            rows=[
+                PortfolioSnapshotRowChangeDTO(
+                    instrument_id=change.instrument_id,
+                    symbol=change.symbol,
+                    presence=change.presence,
+                    badges=list(change.badges),
+                    fields=[
+                        PortfolioSnapshotFieldChangeDTO(
+                            field_id=field.field_id,
+                            label=field.label,
+                            previous=field.previous,
+                            current=field.current,
+                        )
+                        for field in change.fields
+                    ],
+                )
+                for change in changes
+            ],
+        )
+
+    def _snapshot_compare_row(self, row: PortfolioSnapshotRowDTO) -> SnapshotCompareRow:
+        structural = row.structural_review
+        support = None
+        structural_target = None
+        if structural is not None and structural.support_1 is not None:
+            support = self._zone_text(structural.support_1)
+        if structural is not None and structural.target_1 is not None:
+            structural_target = structural.target_1.lower
+        return SnapshotCompareRow(
+            instrument_id=row.provenance.instrument_id,
+            symbol=row.symbol,
+            status=row.status,
+            daily_review_status=(
+                row.daily_review.review_status if row.daily_review is not None else None
+            ),
+            next_action=row.next_action,
+            trend_setup=row.trend_setup,
+            pnl_pct=row.pnl_pct,
+            current_value=row.current_value,
+            last_price=row.last_price,
+            plan_t1=row.target_1,
+            support_1=support,
+            structural_target_1=structural_target,
+            daily_guidance=row.daily_review.guidance if row.daily_review is not None else None,
+            structural_guidance=(
+                structural.guidance if structural is not None else None
+            ),
         )
 
     def export_portfolio(

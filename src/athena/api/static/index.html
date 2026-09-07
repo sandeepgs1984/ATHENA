@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.184.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.186.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -698,6 +698,18 @@
                             <div class="my-portfolio-triage-footer">
                                 <p id="my-portfolio-triage-summary">Showing all holdings.</p>
                                 <button id="my-portfolio-triage-clear" class="btn btn-sm" type="button" hidden>Clear filters</button>
+                            </div>
+                        </section>
+
+                        <section class="my-portfolio-risk-panel" aria-labelledby="my-portfolio-risk-heading">
+                            <div class="my-portfolio-risk-header">
+                                <div>
+                                    <h3 id="my-portfolio-risk-heading">Risk concentration</h3>
+                                    <p id="my-portfolio-risk-lead" class="metric-desc">Factual counts and ranks from the latest snapshot. No new risk score.</p>
+                                </div>
+                            </div>
+                            <div id="my-portfolio-risk-body" class="my-portfolio-risk-body">
+                                <p class="metric-desc">Unavailable until Portfolio Sync.</p>
                             </div>
                         </section>
 
@@ -2328,7 +2340,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.184.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.186.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

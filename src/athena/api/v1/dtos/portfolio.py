@@ -416,6 +416,44 @@ class PortfolioSnapshotDTO(BaseModel):
     rows: list[PortfolioSnapshotRowDTO]
 
 
+class PortfolioSnapshotFieldChangeDTO(BaseModel):
+    """One factual field change between two snapshot rows."""
+
+    model_config = ConfigDict(frozen=True)
+
+    field_id: str
+    label: str
+    previous: str | None = None
+    current: str | None = None
+
+
+class PortfolioSnapshotRowChangeDTO(BaseModel):
+    """Display-only change record for one holding since the previous snapshot."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: str
+    symbol: str
+    presence: str
+    badges: list[str] = Field(default_factory=list)
+    fields: list[PortfolioSnapshotFieldChangeDTO] = Field(default_factory=list)
+
+
+class PortfolioSnapshotChangesDTO(BaseModel):
+    """Latest-vs-previous snapshot comparison for My Portfolio display."""
+
+    model_config = ConfigDict(frozen=True)
+
+    current_snapshot_id: str
+    previous_snapshot_id: str | None = None
+    previous_generated_at: datetime | None = None
+    comparison_available: bool
+    portfolio_changed_since_sync: bool = False
+    currentness: PortfolioSnapshotCurrentness = PortfolioSnapshotCurrentness.UNKNOWN
+    note: str | None = None
+    rows: list[PortfolioSnapshotRowChangeDTO] = Field(default_factory=list)
+
+
 class PortfolioSyncStartRequest(BaseModel):
     """Start a background Portfolio Sync run."""
 

@@ -68,18 +68,18 @@ Existing dashboard patterns to preserve:
 
 The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 
-- Portfolio Command Dashboard: MP-NX1 — implemented 2026-09-07, pending owner review.
-- Action Queue View: MP-NX1 — implemented 2026-09-07, pending owner review.
+- Portfolio Command Dashboard: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
+- Action Queue View: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Column Profiles: MP-NX3.
 - Portfolio Heatmap: MP-NX4.
 - Symbol Detail Review Timeline: MP-NX5.
-- Change Since Last Sync: MP-NX2.
-- Risk Concentration Panel: MP-NX2.
+- Change Since Last Sync: MP-NX2 — implemented 2026-09-07, pending owner review.
+- Risk Concentration Panel: MP-NX2 — implemented 2026-09-07, pending owner review.
 - Watchlist / Opportunity Bridge: MP-NX5.
 - Notes / Owner Override Layer: MP-NX6.
 - Review Session Mode: MP-NX6.
 - Pinned Rows: MP-NX3.
-- Smart Filters: MP-NX1 — implemented 2026-09-07, pending owner review.
+- Smart Filters: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Inline Mini Sparklines: MP-NX4.
 - Export Profiles: MP-NX3.
 
@@ -87,7 +87,7 @@ The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 
 ### 1. MP-NX1 Action Queue and Smart Filters
 
-Implemented 2026-09-07. Ready for Owner / Chief Architect review.
+Owner/Chief Architect approved and closed 2026-09-07.
 
 What shipped:
 
@@ -106,10 +106,23 @@ What shipped:
   badge and Clear filters now honor `[hidden]` so they do not stay visible
   on All Holdings.
 
-Do not reopen MP-NX1 unless the owner asks for a correction. Continue with
-MP-NX2 only after owner approval.
+Do not reopen MP-NX1 unless the owner asks for a correction.
 
 ### 2. MP-NX2 Change Since Last Sync
+
+Implemented 2026-09-07. Ready for Owner / Chief Architect review.
+
+What shipped:
+
+- Pure `src/athena/portfolio/snapshot_diff.py` over already-computed fields.
+- `SqliteRepository.previous_portfolio_snapshot_sync_run()` using the same
+  SUCCESS/PARTIAL + snapshot-exists rule as latest. No schema change.
+- `GET /api/v1/my-portfolio/snapshot/changes`.
+- Row badges, detail-overlay Since last sync, and a client-side Risk
+  Concentration Panel. Privacy masks P&L-moved amounts and money ranks.
+- Dashboard asset version `9.186.0`. Screenshot polish: High conviction
+  preview (count + 5 names), table-matched labels, signed winner/loser
+  tones, quieter no-previous-snapshot note.
 
 Implementation approach:
 
@@ -246,8 +259,7 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-Review and approve MP-NX1 first.
+Review and approve MP-NX2.
 
-If accepted, authorize MP-NX2 only: Change Since Last Sync plus the Risk
-Concentration Panel as factual display aggregation over existing values, with
-no new risk scoring and no interpretation-version bump.
+If accepted, authorize MP-NX3 only: Column Profiles, Pinned Rows, and Export
+Profiles. Do not start MP-NX3 until MP-NX2 is approved.

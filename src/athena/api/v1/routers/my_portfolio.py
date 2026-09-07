@@ -18,6 +18,7 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioImportHistoryDTO,
     PortfolioImportPreviewDTO,
     PortfolioReconciliationChangeDTO,
+    PortfolioSnapshotChangesDTO,
     PortfolioSnapshotDTO,
     PortfolioSyncRunDTO,
     PortfolioSyncStartRequest,
@@ -323,5 +324,24 @@ def latest_snapshot(
     return AthenaResponse(
         status="success",
         data=service.latest_snapshot(),
+        meta=_meta(request),
+    )
+
+
+@router.get(
+    "/snapshot/changes",
+    response_model=AthenaResponse[PortfolioSnapshotChangesDTO],
+    summary="Read factual changes since the previous My Portfolio Snapshot",
+    status_code=status.HTTP_200_OK,
+    operation_id="getMyPortfolioSnapshotChanges",
+)
+def snapshot_changes(
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[PortfolioSnapshotChangesDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.snapshot_changes_since_previous(),
         meta=_meta(request),
     )

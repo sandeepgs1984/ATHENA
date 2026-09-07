@@ -2174,6 +2174,53 @@ class SqliteRepository:
         )
         return self._portfolio_sync_run_from_row(row) if row else None
 
+    def previous_portfolio_snapshot_sync_run(
+        self,
+        current_sync_run_id: str,
+    ) -> dict[str, object] | None:
+        """Return the completed snapshot run immediately before the current one.
+
+        Uses the same SUCCESS/PARTIAL + snapshot-exists rule as
+        ``latest_portfolio_snapshot_sync_run``. No schema change.
+        """
+
+        current = self.get_portfolio_sync_run(current_sync_run_id)
+        if current is None:
+            return None
+        finished_at = current.get("finished_at") or current.get("started_at")
+        started_at = current.get("started_at")
+        row = self._query_one(
+            "SELECT r.sync_run_id, r.started_at, r.finished_at, r.status, r.total_holdings, "
+            "r.succeeded_holdings, r.failed_holdings, r.market_data_through, "
+            "r.validation_run_id, r.analysis_version, r.progress_json, r.per_symbol_json, "
+            "r.error_json, r.provenance_json "
+            "FROM portfolio_sync_runs r "
+            "WHERE r.status IN (?,?) "
+            "AND r.sync_run_id != ? "
+            "AND EXISTS (SELECT 1 FROM portfolio_analysis_snapshots s "
+            "WHERE s.sync_run_id=r.sync_run_id) "
+            "AND ("
+            "COALESCE(r.finished_at, r.started_at) < ? "
+            "OR ("
+            "COALESCE(r.finished_at, r.started_at) = ? "
+            "AND (r.started_at < ? OR (r.started_at = ? AND r.sync_run_id < ?))"
+            ")"
+            ") "
+            "ORDER BY COALESCE(r.finished_at, r.started_at) DESC, r.started_at DESC, "
+            "r.sync_run_id DESC LIMIT 1",
+            (
+                SyncRunStatus.SUCCESS.value,
+                SyncRunStatus.PARTIAL.value,
+                current_sync_run_id,
+                finished_at.isoformat() if hasattr(finished_at, "isoformat") else finished_at,
+                finished_at.isoformat() if hasattr(finished_at, "isoformat") else finished_at,
+                started_at.isoformat() if hasattr(started_at, "isoformat") else started_at,
+                started_at.isoformat() if hasattr(started_at, "isoformat") else started_at,
+                current_sync_run_id,
+            ),
+        )
+        return self._portfolio_sync_run_from_row(row) if row else None
+
     def confirm_portfolio_import(
         self,
         *,

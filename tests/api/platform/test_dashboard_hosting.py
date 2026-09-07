@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.184.0" in html
-    assert "dashboard.js?v=9.184.0" in html
+    assert "dashboard.css?v=9.186.0" in html
+    assert "dashboard.js?v=9.186.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -419,6 +419,15 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert html.find('class="my-portfolio-freshness-strip"') < html.find(
         'class="my-portfolio-command-dashboard"'
     )
+    assert html.find('class="my-portfolio-command-dashboard"') < html.find(
+        'class="my-portfolio-risk-panel"'
+    )
+    assert html.find('class="my-portfolio-risk-panel"') < html.find(
+        'class="card my-portfolio-holdings-card"'
+    )
+    assert 'id="my-portfolio-risk-heading"' in html
+    assert "Risk concentration" in html
+    assert "Unavailable until Portfolio Sync." in html
     assert html.find('class="my-portfolio-command-dashboard"') < html.find(
         'class="card my-portfolio-holdings-card"'
     )
@@ -551,6 +560,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-command-dashboard.queue-active" in my_portfolio_css
     assert "#my-portfolio-triage-clear[hidden]" in my_portfolio_css
     assert ".my-portfolio-scope-badge[hidden]" in my_portfolio_css
+    assert ".my-portfolio-risk-panel" in my_portfolio_css
+    assert ".my-portfolio-change-badge" in my_portfolio_css
+    assert ".my-portfolio-detail-section[data-detail-section=\"since-last-sync\"]" in my_portfolio_css
     command_dashboard_css = my_portfolio_css.split(".my-portfolio-command-dashboard")[1]
     command_dashboard_block = command_dashboard_css.split(".my-portfolio-triage-header")[0]
     assert "position: sticky" not in command_dashboard_block
@@ -799,6 +811,22 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Showing all ${formatMyPortfolioNumber(visibleCount)} holdings." in js
     assert "Showing ${formatMyPortfolioNumber(visibleCount)} holdings in Action Queue." in js
     assert "myPortfolioQueueReasonChips" in js
+    assert "myPortfolioChangeBadgeChips" in js
+    assert "function myPortfolioSinceLastSyncSection" in js
+    assert "function renderMyPortfolioRiskPanel" in js
+    assert "/api/v1/my-portfolio/snapshot/changes" in js
+    assert "Since last sync" in js
+    assert "P&L moved" in js
+    assert "No previous completed snapshot to compare." in js
+    assert "Unavailable until Portfolio Sync." in js
+    assert "myPortfolioState.valuesHidden && /^P&L moved /i.test(text)" in js
+    assert 'HEALTHY: "Healthy"' in js
+    assert 'WATCH: "Watch"' in js
+    assert "highConviction.slice(0, 5)" in js
+    assert 'myPortfolioRankedHoldings(rows.filter(row => myPortfolioPnlValue(row) > 0), myPortfolioPnlValue, "desc", 3, "positive")' in js
+    assert 'myPortfolioRankedHoldings(rows.filter(row => myPortfolioPnlValue(row) < 0), myPortfolioPnlValue, "asc", 3, "negative")' in js
+    assert ".my-portfolio-risk-rank li.tone-positive strong" in my_portfolio_css
+    assert ".my-portfolio-risk-rank li.tone-negative strong" in my_portfolio_css
     assert "myPortfolioDensityCompact?.addEventListener" in js
     assert "myPortfolioHistoryToggle?.addEventListener" in js
     # Owner Correction 2: TradePlan-derived levels must never be labeled

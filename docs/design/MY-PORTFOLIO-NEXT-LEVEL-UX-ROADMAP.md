@@ -49,8 +49,8 @@ This roadmap covers the full 14-item next-level UX inventory:
 | Portfolio Command Dashboard | MP-NX1 | Implemented 2026-09-07: non-sticky triage strip and attention counts above Current Holdings. |
 | Action Queue View | MP-NX1 | Implemented 2026-09-07: dedicated actionable-holdings list scope over existing snapshot fields. |
 | Smart Filters | MP-NX1 | Implemented 2026-09-07: filter chips for review, trend, status, P&L state, evidence availability, and currentness. |
-| Change Since Last Sync | MP-NX2 | Snapshot-to-snapshot factual diff badges and detail-panel deltas. |
-| Risk Concentration Panel | MP-NX2 | Exposure/status/trend/action concentration summaries over existing values. |
+| Change Since Last Sync | MP-NX2 | Implemented 2026-09-07: latest-vs-previous snapshot diffs, row badges, and detail-overlay Since last sync panel. |
+| Risk Concentration Panel | MP-NX2 | Implemented 2026-09-07: factual Status / Trend / Next Action / conviction / value / P&L concentration over loaded snapshot rows. |
 | Column Profiles | MP-NX3 | Purposeful table layouts for scan, P&L, technical, risk, and audit workflows. |
 | Pinned Rows | MP-NX3 | Owner-controlled table priority separate from ATHENA ranking. |
 | Export Profiles | MP-NX3 | Named export presets built on the approved selected-column export contract. |
@@ -130,6 +130,8 @@ Primary UX outcome:
 - Owner can open My Portfolio and immediately know what deserves attention.
 
 ### MP-NX2 — Change Since Last Sync
+
+Implemented 2026-09-07. Ready for Owner / Chief Architect review.
 
 Objective: make daily syncs meaningful by showing what changed versus the
 previous snapshot.

@@ -6,6 +6,63 @@ status updated on approval.
 
 ---
 
+## MP-NX2 — Change Since Last Sync and Risk Concentration
+
+**Summary.** Added a display-only latest-vs-previous snapshot comparison and a
+factual Risk Concentration Panel so the owner can see why today's sync matters
+without a new risk score or interpretation-version bump. MP-NX1 was
+Owner/Chief Architect approved and closed the same day before this work
+started.
+
+**What changed.** Previous completed/partial snapshots are looked up with the
+same SUCCESS/PARTIAL + snapshot-exists rule as latest; no schema change.
+`snapshot_diff.py` emits presence (`ADDED`/`REMOVED`/`CHANGED`/`UNCHANGED`)
+and factual badges only when backed by existing fields (`Status changed`,
+`Trend flipped` only for UPTREND↔DOWNTREND, `P&L moved +X.X%`, `New support`,
+`Target reached` from Plan T1 or structural T1 lower). The dashboard fetches
+`GET /api/v1/my-portfolio/snapshot/changes` after the latest snapshot, paints
+row badges beside the symbol, and adds a Since last sync panel after the
+detail hero. The Risk Concentration Panel sits between Morning triage and
+Current Holdings and aggregates already loaded Status / Trend / Next Action /
+high conviction / top holdings / winners / losers. Privacy masks P&L-moved
+amounts and money ranks. If holdings changed after the latest sync, the
+comparison remains snapshot-vs-snapshot and says so. Screenshot polish:
+High conviction shows the count plus at most 5 symbols, Status/Action
+labels match the table, winners/losers use signed color, and the
+no-previous-snapshot note is quieter. Dashboard assets advanced to
+`9.186.0`. MP-NX1 predicates, Compact/Full, sort, export, and sync are
+unchanged.
+
+**Tests.** Pure diff tests cover badge predicates, added/removed/unchanged
+rows, and trend-flip vs trend-change. Service/API tests cover no snapshot
+(404), one snapshot (`comparison_available=false`), and two seeded SUCCESS
+runs (`Status changed` / `Action changed`). Dashboard hosting / release-gate
+contracts lock the risk panel placement, change badges, Since last sync
+section, privacy P&L masking, High conviction preview, signed winner/loser
+tones, owner-facing risk labels, and cache-busted `9.186.0` assets.
+
+**Files created:** `src/athena/portfolio/snapshot_diff.py`,
+`tests/runtime/test_portfolio_snapshot_diff.py`,
+`tests/api/v1/test_my_portfolio_snapshot_changes.py`.
+
+**Files modified:** `src/athena/data/store/repository.py`,
+`src/athena/api/v1/dtos/portfolio.py`, `src/athena/api/v1/dtos/__init__.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/api/v1/routers/my_portfolio.py`,
+`src/athena/api/static/index.html`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
+
+**Status:** Implementation complete 2026-09-07; ready for Owner / Chief
+Architect review. Not marked approved. Do not start MP-NX3 until authorized.
+
+---
+
 ## ID-9 V0 Capital Policy Activation — Ready for Owner Values / Final Closure
 
 **Summary.** The Owner froze the ID-9 V0 core methodology/implementation
@@ -1326,8 +1383,8 @@ contract tests.
 `docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
 `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
 
-**Status:** Implementation complete 2026-09-07; ready for Owner / Chief
-Architect review. Not marked approved. Do not start MP-NX2 until authorized.
+**Status:** Owner/Chief Architect approved and closed 2026-09-07. MP-NX2
+authorized and implemented the same day.
 
 ---
 

@@ -31,6 +31,8 @@
     const myPortfolioTriageLead = document.getElementById("my-portfolio-triage-lead");
     const myPortfolioHoldingsScopeBadge = document.getElementById("my-portfolio-holdings-scope-badge");
     const myPortfolioCommandDashboard = document.querySelector(".my-portfolio-command-dashboard");
+    const myPortfolioRiskBody = document.getElementById("my-portfolio-risk-body");
+    const myPortfolioRiskLead = document.getElementById("my-portfolio-risk-lead");
     const myPortfolioExportToggle = document.getElementById("my-portfolio-export-toggle");
     const myPortfolioExportPanel = document.getElementById("my-portfolio-export-panel");
     const myPortfolioExportScope = document.getElementById("my-portfolio-export-scope");
@@ -105,6 +107,7 @@
         // overlay never flickers off between "saved" and "sync started".
         holdingActionPending: false,
         snapshot: null,
+        changes: null,
         holdings: [],
         imports: [],
         snapshotRowsByKey: {},
@@ -922,6 +925,229 @@
         ).join("")}</span>`;
     }
 
+    function myPortfolioChangeForRow(row) {
+        const key = myPortfolioRowKey(row);
+        return (myPortfolioState.changes?.rows || []).find(item => item.instrument_id === key) || null;
+    }
+
+    function myPortfolioDisplayChangeBadge(badge) {
+        const text = String(badge || "");
+        if (myPortfolioState.valuesHidden && /^P&L moved /i.test(text)) return "P&L moved";
+        return text;
+    }
+
+    function myPortfolioChangeBadgeChips(row) {
+        const change = myPortfolioChangeForRow(row);
+        const badges = (change?.badges || []).filter(badge => badge !== "Removed holding");
+        if (!badges.length) return "";
+        return `<span class="my-portfolio-change-badges">${badges.map(badge =>
+            `<span class="my-portfolio-change-badge">${escapeMyPortfolioHtml(myPortfolioDisplayChangeBadge(badge))}</span>`
+        ).join("")}</span>`;
+    }
+
+    function myPortfolioChangeFieldValueHtml(field, side) {
+        const raw = field?.[side];
+        if (raw == null || raw === "") return "—";
+        const privateIds = new Set(["current_value", "pnl_pct", "target_reached"]);
+        if (myPortfolioState.valuesHidden && privateIds.has(field.field_id)) {
+            return myPortfolioMaskedValue(`${field.label} masked`);
+        }
+        return escapeMyPortfolioHtml(String(raw));
+    }
+
+    function myPortfolioSinceLastSyncSection(row) {
+        const changes = myPortfolioState.changes;
+        if (!changes) {
+            return `<div class="my-portfolio-detail-section" data-detail-section="since-last-sync">
+                <h4>Since last sync</h4>
+                <p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Unavailable until Portfolio Sync.</span></p>
+            </div>`;
+        }
+        const note = changes.note
+            ? `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>${escapeMyPortfolioHtml(changes.note)}</span></p>`
+            : "";
+        const compared = changes.previous_generated_at
+            ? `<p class="metric-desc">Compared with the previous snapshot from ${escapeMyPortfolioHtml(formatMyPortfolioTime(changes.previous_generated_at))}.</p>`
+            : "";
+        if (!changes.comparison_available) {
+            return `<div class="my-portfolio-detail-section" data-detail-section="since-last-sync">
+                <h4>Since last sync</h4>
+                ${note || `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>No previous completed snapshot to compare.</span></p>`}
+            </div>`;
+        }
+        const change = myPortfolioChangeForRow(row);
+        if (!change) {
+            return `<div class="my-portfolio-detail-section" data-detail-section="since-last-sync">
+                <h4>Since last sync</h4>
+                ${note}${compared}
+                <p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>This holding has no previous-snapshot comparison.</span></p>
+            </div>`;
+        }
+        const badgeHtml = (change.badges || []).length
+            ? `<div class="my-portfolio-change-badges">${change.badges.map(badge =>
+                `<span class="my-portfolio-change-badge">${escapeMyPortfolioHtml(myPortfolioDisplayChangeBadge(badge))}</span>`
+            ).join("")}</div>`
+            : "";
+        let body = "";
+        if (change.presence === "ADDED") {
+            body = `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-plus" aria-hidden="true"></i><span>This holding was not in the previous snapshot.</span></p>`;
+        } else if (!(change.fields || []).length) {
+            body = `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>No tracked fields changed since the previous snapshot.</span></p>`;
+        } else {
+            body = `<div class="my-portfolio-detail-grid">${change.fields.map(field =>
+                myPortfolioDetailRowHtml(
+                    field.label,
+                    `<span class="my-portfolio-change-delta">${myPortfolioChangeFieldValueHtml(field, "previous")} → ${myPortfolioChangeFieldValueHtml(field, "current")}</span>`,
+                    { icon: "fa-code-compare" }
+                )
+            ).join("")}</div>`;
+        }
+        return `<div class="my-portfolio-detail-section" data-detail-section="since-last-sync">
+            <h4>Since last sync</h4>
+            ${note}${compared}${badgeHtml}${body}
+        </div>`;
+    }
+
+    function myPortfolioRiskLabel(value) {
+        const map = {
+            STRONG: "Strong",
+            HEALTHY: "Healthy",
+            CAUTION: "Caution",
+            AT_RISK: "At risk",
+            HOLD_STRONG: "Hold Strong",
+            REVIEW_HOLD_TIGHT: "Review / Hold Tight",
+            ADD: "Add",
+            EXIT: "Exit",
+            WATCH: "Watch",
+            HOLD: "Hold",
+            UPTREND: "Uptrend",
+            DOWNTREND: "Downtrend",
+            MIXED: "Mixed",
+            BREAKOUT: "Breakout",
+            BREAKDOWN: "Breakdown",
+            HIGH: "High",
+            MEDIUM: "Medium",
+            LOW: "Low",
+            UNAVAILABLE: "Unavailable",
+        };
+        const key = String(value || "Unavailable").toUpperCase();
+        return map[key] || String(value || "Unavailable").replaceAll("_", " ");
+    }
+
+    function myPortfolioCountEntries(rows, getter) {
+        const counts = new Map();
+        (rows || []).forEach(row => {
+            const key = getter(row) || "Unavailable";
+            counts.set(key, (counts.get(key) || 0) + 1);
+        });
+        return [...counts.entries()].sort((left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0])));
+    }
+
+    function myPortfolioRiskCountList(entries) {
+        if (!entries.length) return `<p class="metric-desc">None.</p>`;
+        return `<ul class="my-portfolio-risk-list">${entries.map(([key, count]) =>
+            `<li><span>${escapeMyPortfolioHtml(myPortfolioRiskLabel(key))}</span><strong>${formatMyPortfolioNumber(count)}</strong></li>`
+        ).join("")}</ul>`;
+    }
+
+    function myPortfolioRankedHoldings(rows, valueGetter, direction, limit, tone) {
+        const ranked = (rows || [])
+            .map(row => ({ row, value: valueGetter(row) }))
+            .filter(item => Number.isFinite(item.value))
+            .sort((left, right) => (direction === "asc" ? left.value - right.value : right.value - left.value))
+            .slice(0, limit);
+        if (!ranked.length) return `<p class="metric-desc">None.</p>`;
+        const toneClass = tone ? ` class="tone-${escapeMyPortfolioHtml(tone)}"` : "";
+        return `<ol class="my-portfolio-risk-rank">${ranked.map(item =>
+            `<li${toneClass}><span>${escapeMyPortfolioHtml(item.row.symbol || "—")}</span><strong>${myPortfolioPrivateHtml(item.value, formatMyPortfolioMoney, "Private portfolio value masked")}</strong></li>`
+        ).join("")}</ol>`;
+    }
+
+    function myPortfolioExposureValue(row) {
+        const current = Number(row?.current_value);
+        if (Number.isFinite(current)) return current;
+        const investment = Number(row?.investment);
+        return Number.isFinite(investment) ? investment : NaN;
+    }
+
+    function myPortfolioPnlValue(row) {
+        const pnl = Number(row?.pnl);
+        return Number.isFinite(pnl) ? pnl : NaN;
+    }
+
+    function renderMyPortfolioRiskPanel() {
+        if (!myPortfolioRiskBody) return;
+        const rows = myPortfolioState.snapshot?.rows || [];
+        const changes = myPortfolioState.changes;
+        if (myPortfolioRiskLead) {
+            myPortfolioRiskLead.textContent = rows.length
+                ? "Factual counts and ranks from the latest snapshot. No new risk score."
+                : "Unavailable until Portfolio Sync.";
+        }
+        if (!rows.length) {
+            myPortfolioRiskBody.innerHTML = `<p class="metric-desc">Unavailable until Portfolio Sync.</p>`;
+            return;
+        }
+        const note = changes?.note
+            ? `<p class="my-portfolio-risk-note">${escapeMyPortfolioHtml(changes.note)}</p>`
+            : (!changes?.comparison_available
+                ? `<p class="my-portfolio-risk-note">No previous completed snapshot to compare.</p>`
+                : "");
+        const removed = (changes?.rows || []).filter(item => item.presence === "REMOVED");
+        const removedHtml = removed.length
+            ? `<div class="my-portfolio-risk-group">
+                    <h4>Removed since previous snapshot</h4>
+                    <ul class="my-portfolio-risk-list">${removed.map(item =>
+                        `<li><span>${escapeMyPortfolioHtml(item.symbol)}</span><strong>Removed</strong></li>`
+                    ).join("")}</ul>
+                </div>`
+            : "";
+        const highConviction = rows.filter(row => String(row.conviction || "").toUpperCase() === "HIGH");
+        const highConvictionPreview = highConviction.slice(0, 5);
+        const highConvictionRemaining = highConviction.length - highConvictionPreview.length;
+        myPortfolioRiskBody.innerHTML = `
+            ${note}
+            <div class="my-portfolio-risk-grid">
+                <div class="my-portfolio-risk-group">
+                    <h4>Status</h4>
+                    ${myPortfolioRiskCountList(myPortfolioCountEntries(rows, row => row.status))}
+                </div>
+                <div class="my-portfolio-risk-group">
+                    <h4>Trend</h4>
+                    ${myPortfolioRiskCountList(myPortfolioCountEntries(rows, row => myPortfolioTrendLabelOnly(row.trend_or_setup)))}
+                </div>
+                <div class="my-portfolio-risk-group">
+                    <h4>Next Action</h4>
+                    ${myPortfolioRiskCountList(myPortfolioCountEntries(rows, row => row.next_action))}
+                </div>
+                <div class="my-portfolio-risk-group">
+                    <h4>High conviction</h4>
+                    <p class="metric-desc">${formatMyPortfolioNumber(highConviction.length)} of ${formatMyPortfolioNumber(rows.length)}</p>
+                    ${highConvictionPreview.length
+                        ? `<ul class="my-portfolio-risk-list">${highConvictionPreview.map(row =>
+                            `<li><span>${escapeMyPortfolioHtml(row.symbol)}</span></li>`
+                        ).join("")}</ul>${highConvictionRemaining
+                            ? `<p class="metric-desc">+${formatMyPortfolioNumber(highConvictionRemaining)} more</p>`
+                            : ""}`
+                        : `<p class="metric-desc">None.</p>`}
+                </div>
+                <div class="my-portfolio-risk-group">
+                    <h4>Top holdings</h4>
+                    ${myPortfolioRankedHoldings(rows, myPortfolioExposureValue, "desc", 5)}
+                </div>
+                <div class="my-portfolio-risk-group">
+                    <h4>Largest winners</h4>
+                    ${myPortfolioRankedHoldings(rows.filter(row => myPortfolioPnlValue(row) > 0), myPortfolioPnlValue, "desc", 3, "positive")}
+                </div>
+                <div class="my-portfolio-risk-group">
+                    <h4>Largest losers</h4>
+                    ${myPortfolioRankedHoldings(rows.filter(row => myPortfolioPnlValue(row) < 0), myPortfolioPnlValue, "asc", 3, "negative")}
+                </div>
+                ${removedHtml}
+            </div>
+        `;
+    }
+
     function myPortfolioTriageCounts(rows = myPortfolioSourceRows()) {
         const ctx = myPortfolioTriageContext();
         const counts = {
@@ -1484,6 +1710,16 @@
             } catch (snapshotErr) {
                 myPortfolioState.snapshot = null;
             }
+            if (myPortfolioState.snapshot) {
+                try {
+                    const changesRes = await apiRequest("/api/v1/my-portfolio/snapshot/changes", { skipToast: true });
+                    myPortfolioState.changes = changesRes?.data || null;
+                } catch (changesErr) {
+                    myPortfolioState.changes = null;
+                }
+            } else {
+                myPortfolioState.changes = null;
+            }
             renderMyPortfolioHoldings(myPortfolioState.holdings);
             renderMyPortfolioHistory(myPortfolioState.imports);
             renderMyPortfolioSummary();
@@ -1491,6 +1727,7 @@
             console.error("Failed to load My Portfolio workspace", err);
             showMyPortfolioAlert("Could not load My Portfolio holdings or import history.", "danger");
             myPortfolioState.snapshot = null;
+            myPortfolioState.changes = null;
             renderMyPortfolioHoldings([]);
             renderMyPortfolioHistory([]);
             renderMyPortfolioSummary();
@@ -1610,6 +1847,7 @@
     }
 
     function renderMyPortfolioHoldings(holdings) {
+        renderMyPortfolioRiskPanel();
         if (myPortfolioState.snapshot?.rows?.length) {
             renderMyPortfolioSnapshotRows(myPortfolioState.snapshot.rows);
             return;
@@ -1669,7 +1907,7 @@
         myPortfolioHoldingsRows.innerHTML = sortedRows.map((row, index) => `
             <tr class="my-portfolio-row-state ${myPortfolioRowStateClass(row)}" data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
-                <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong>${myPortfolioQueueReasonChips(row)}</td>
+                <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong>${myPortfolioQueueReasonChips(row)}${myPortfolioChangeBadgeChips(row)}</td>
                 <td>${myPortfolioPrivateNumberCell(row.qty ?? row.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(row.avg_price)}</td>
                 <td class="font-mono">${myPortfolioPriceToneCell(row.last_price, row.avg_price)}</td>
@@ -1910,6 +2148,7 @@
 
         myPortfolioDetailBody.innerHTML = `
             ${myPortfolioDetailHero(row, review, trendLabel)}
+            ${myPortfolioSinceLastSyncSection(row)}
             <div class="my-portfolio-detail-section" data-detail-section="position">
                 <h4>Position</h4>
                 <div class="my-portfolio-detail-grid">
