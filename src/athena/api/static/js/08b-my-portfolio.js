@@ -19,6 +19,10 @@
     const myPortfolioLatestImportDetail = document.getElementById("my-portfolio-latest-import-detail");
     const myPortfolioLastSynced = document.getElementById("my-portfolio-last-synced");
     const myPortfolioMarketDataThrough = document.getElementById("my-portfolio-market-data-through");
+    const myPortfolioMiniValue = document.getElementById("my-portfolio-mini-value");
+    const myPortfolioMiniPnl = document.getElementById("my-portfolio-mini-pnl");
+    const myPortfolioMiniSynced = document.getElementById("my-portfolio-mini-synced");
+    const myPortfolioMiniSort = document.getElementById("my-portfolio-mini-sort");
     const myPortfolioPreviewTotal = document.getElementById("my-portfolio-preview-total");
     const myPortfolioPreviewValid = document.getElementById("my-portfolio-preview-valid");
     const myPortfolioPreviewInvalid = document.getElementById("my-portfolio-preview-invalid");
@@ -42,6 +46,12 @@
     const myPortfolioSortDirection = document.getElementById("my-portfolio-sort-direction");
     const myPortfolioSortReset = document.getElementById("my-portfolio-sort-reset");
     const myPortfolioSortSummary = document.getElementById("my-portfolio-sort-summary");
+    const myPortfolioDensityCompact = document.getElementById("my-portfolio-density-compact");
+    const myPortfolioDensityComfortable = document.getElementById("my-portfolio-density-comfortable");
+    const myPortfolioHoldingsTable = document.querySelector(".my-portfolio-wide-table");
+    const myPortfolioHistoryPanel = document.querySelector(".my-portfolio-history-panel");
+    const myPortfolioHistoryBody = document.getElementById("my-portfolio-history-body");
+    const myPortfolioHistoryToggle = document.getElementById("my-portfolio-history-toggle");
     const myPortfolioResetOpen = document.getElementById("my-portfolio-reset-open");
     const myPortfolioResetModal = document.getElementById("my-portfolio-reset-modal");
     const myPortfolioResetClose = document.getElementById("my-portfolio-reset-close");
@@ -76,6 +86,8 @@
             key: "pnl_pct",
             direction: "desc",
         },
+        density: "compact",
+        historyExpanded: false,
         syncCompletion: null,
     };
 
@@ -218,6 +230,53 @@
             th.classList.toggle("active", sortKey === key);
             th.setAttribute("aria-sort", sortKey === key ? (direction === "asc" ? "ascending" : "descending") : "none");
         });
+        if (myPortfolioMiniSort) {
+            const label = MY_PORTFOLIO_SORT_LABELS[key] || key;
+            myPortfolioMiniSort.textContent = `${label} ${direction === "asc" ? "low to high" : "high to low"}`;
+        }
+    }
+
+    function renderMyPortfolioDensityControls() {
+        const comfortable = myPortfolioState.density === "comfortable";
+        myPortfolioHoldingsTable?.classList.toggle("comfortable-density", comfortable);
+        myPortfolioDensityCompact?.classList.toggle("active", !comfortable);
+        myPortfolioDensityComfortable?.classList.toggle("active", comfortable);
+        myPortfolioDensityCompact?.setAttribute("aria-pressed", String(!comfortable));
+        myPortfolioDensityComfortable?.setAttribute("aria-pressed", String(comfortable));
+    }
+
+    function setMyPortfolioDensity(density) {
+        myPortfolioState.density = density === "comfortable" ? "comfortable" : "compact";
+        renderMyPortfolioDensityControls();
+    }
+
+    function renderMyPortfolioHistoryDisclosure() {
+        if (!myPortfolioHistoryPanel || !myPortfolioHistoryBody || !myPortfolioHistoryToggle) return;
+        const expanded = Boolean(myPortfolioState.historyExpanded);
+        myPortfolioHistoryPanel.classList.toggle("collapsed", !expanded);
+        myPortfolioHistoryBody.hidden = !expanded;
+        myPortfolioHistoryToggle.setAttribute("aria-expanded", String(expanded));
+        const label = myPortfolioHistoryToggle.querySelector("span");
+        const icon = myPortfolioHistoryToggle.querySelector("i");
+        if (label) label.textContent = expanded ? "Hide" : "Show";
+        if (icon) icon.className = expanded ? "fa-solid fa-chevron-up" : "fa-solid fa-chevron-down";
+    }
+
+    function myPortfolioRowStateClass(row) {
+        const status = String(row?.status || "").toUpperCase();
+        const action = String(row?.next_action || "").toUpperCase();
+        const dailyStatus = String(row?.daily_review?.review_status || "").toUpperCase();
+        const pnl = Number(row?.pnl);
+        if (status === "AT_RISK" || action === "EXIT" || dailyStatus === "REVIEW_HOLD_TIGHT") return "state-danger";
+        if (status === "CAUTION" || action === "WATCH") return "state-warning";
+        if (status === "UNAVAILABLE" || !status) return "state-muted";
+        if (Number.isFinite(pnl) && pnl < 0) return "state-negative";
+        if (status === "STRONG" || status === "HEALTHY" || Number.isFinite(pnl) && pnl >= 0) return "state-positive";
+        return "state-muted";
+    }
+
+    function myPortfolioUnavailableChip(label = "Unavailable") {
+        return `<span class="my-portfolio-unavailable-chip"><i class="fa-solid fa-minus" aria-hidden="true"></i>${escapeMyPortfolioHtml(label)}</span>`;
     }
 
     function myPortfolioHeader(label, key) {
@@ -759,9 +818,20 @@
         myPortfolioCurrentValue.textContent = summary && summary.total_current_value != null
             ? formatMyPortfolioMoney(summary.total_current_value)
             : "—";
+        if (myPortfolioMiniValue) {
+            myPortfolioMiniValue.textContent = summary && summary.total_current_value != null
+                ? formatMyPortfolioMoney(summary.total_current_value)
+                : "₹ —";
+        }
         myPortfolioTotalPnl.textContent = summary && summary.total_pnl != null
             ? formatMyPortfolioMoney(summary.total_pnl)
             : "—";
+        if (myPortfolioMiniPnl) {
+            myPortfolioMiniPnl.textContent = summary && summary.total_pnl != null
+                ? formatMyPortfolioMoney(summary.total_pnl)
+                : "₹ —";
+            setMyPortfolioToneClass(myPortfolioMiniPnl, summary?.total_pnl, "my-portfolio-mini-tone");
+        }
         setMyPortfolioToneClass(myPortfolioTotalPnl, summary?.total_pnl, "my-portfolio-kpi-tone");
         myPortfolioTotalPnlDetail.textContent = summary && summary.total_pnl_pct != null
             ? `${formatMyPortfolioPct(summary.total_pnl_pct)} total return`
@@ -780,6 +850,11 @@
         myPortfolioLastSynced.textContent = summary?.last_synced_at
             ? formatMyPortfolioTime(summary.last_synced_at)
             : "—";
+        if (myPortfolioMiniSynced) {
+            myPortfolioMiniSynced.textContent = summary?.last_synced_at
+                ? formatMyPortfolioTime(summary.last_synced_at)
+                : "—";
+        }
         myPortfolioMarketDataThrough.textContent = summary?.market_data_through
             ? `Latest accepted market session through ${formatMyPortfolioTime(summary.market_data_through)}`
             : "Latest accepted market session unavailable";
@@ -839,13 +914,14 @@
         if (!holdings.length) {
             myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="15" class="text-center text-muted">No holdings imported yet. Upload Portfolio to begin.</td></tr>';
             renderMyPortfolioSortControls();
+            renderMyPortfolioDensityControls();
             return;
         }
         const rows = sortedMyPortfolioRows(holdings);
         myPortfolioHoldingsRows.innerHTML = rows.map((holding, index) => {
             const symbol = holding.symbol || bareMyPortfolioSymbol(holding.instrument_id);
             return `
-            <tr data-instrument-id="${escapeMyPortfolioHtml(holding.instrument_id)}">
+            <tr class="my-portfolio-row-state state-muted" data-instrument-id="${escapeMyPortfolioHtml(holding.instrument_id)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(symbol)}</strong></td>
                 <td>${formatMyPortfolioNumber(holding.quantity)}</td>
@@ -853,11 +929,11 @@
                 <td>${myPortfolioDash()}</td>
                 <td>${myPortfolioDash()}</td>
                 <td>${myPortfolioDash()}</td>
-                <td class="text-muted">Not available</td>
+                <td>${myPortfolioUnavailableChip()}</td>
                 <td>${myPortfolioDash()}</td>
-                <td class="text-muted">Not available</td>
+                <td>${myPortfolioUnavailableChip()}</td>
                 <td class="text-muted">Not synced</td>
-                <td class="text-muted">Not available</td>
+                <td>${myPortfolioUnavailableChip()}</td>
                 <td>${myPortfolioDash()}</td>
                 <td class="text-muted">Not synced</td>
                 ${myPortfolioRowActionsCell(symbol)}
@@ -865,6 +941,7 @@
         `;
         }).join("");
         renderMyPortfolioSortControls();
+        renderMyPortfolioDensityControls();
     }
 
     function renderMyPortfolioSnapshotRows(rows) {
@@ -874,7 +951,7 @@
         });
         const sortedRows = sortedMyPortfolioRows(rows);
         myPortfolioHoldingsRows.innerHTML = sortedRows.map((row, index) => `
-            <tr data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
+            <tr class="my-portfolio-row-state ${myPortfolioRowStateClass(row)}" data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
                 <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong></td>
                 <td>${formatMyPortfolioNumber(row.qty ?? row.quantity)}</td>
@@ -893,6 +970,7 @@
             </tr>
         `).join("");
         renderMyPortfolioSortControls();
+        renderMyPortfolioDensityControls();
     }
 
     // MY-PORTFOLIO-V1-FINAL-UX-CLOSURE holding-detail drawer. Every value
@@ -964,6 +1042,35 @@
         if (price > st) return "positive";
         if (price < st) return "negative";
         return "neutral";
+    }
+
+    function myPortfolioDetailHero(row, review, trendLabel) {
+        const pnlTone = myPortfolioToneFromNumber(row?.pnl_pct);
+        const priceTone = row?.last_price == null
+            ? "neutral"
+            : myPortfolioToneFromNumber(Number(row.last_price) - Number(row.avg_price));
+        return `<div class="my-portfolio-detail-hero" aria-label="Holding quick summary">
+            <div class="my-portfolio-detail-hero-primary">
+                <span class="my-portfolio-detail-symbol">${escapeMyPortfolioHtml(row?.symbol || "Holding")}</span>
+                <span class="my-portfolio-detail-subline">Qty ${escapeMyPortfolioHtml(formatMyPortfolioNumber(row?.qty ?? row?.quantity))} @ ${escapeMyPortfolioHtml(formatMyPortfolioMoney(row?.avg_price))} avg</span>
+            </div>
+            <div class="my-portfolio-detail-hero-grid">
+                <span class="my-portfolio-detail-hero-metric tone-${escapeMyPortfolioHtml(priceTone)}">
+                    <i class="fa-solid fa-indian-rupee-sign" aria-hidden="true"></i>
+                    <span>Last</span>
+                    <strong>${escapeMyPortfolioHtml(row?.last_price == null ? "Not available" : formatMyPortfolioMoney(row.last_price))}</strong>
+                </span>
+                <span class="my-portfolio-detail-hero-metric tone-${escapeMyPortfolioHtml(pnlTone)}">
+                    <i class="fa-solid fa-percent" aria-hidden="true"></i>
+                    <span>P&L %</span>
+                    <strong>${escapeMyPortfolioHtml(row?.pnl_pct == null ? "Not available" : formatMyPortfolioPct(row.pnl_pct))}</strong>
+                </span>
+                <span class="my-portfolio-detail-hero-chip">${myPortfolioStatusPill(row?.status, row)}</span>
+                <span class="my-portfolio-detail-hero-chip">${myPortfolioActionPill(row?.next_action, row)}</span>
+                <span class="my-portfolio-detail-hero-chip">${myPortfolioDetailTrendChip(trendLabel)}</span>
+                <span class="my-portfolio-detail-hero-chip">${myPortfolioDetailDirectionChip(review?.supertrend_direction)}</span>
+            </div>
+        </div>`;
     }
 
     function myPortfolioPriceVsSupertrend(row, review) {
@@ -1082,6 +1189,7 @@
             : `<p class="my-portfolio-detail-guidance text-muted">Structural Review is unavailable for this holding (insufficient or incoherent D1 history).</p>`;
 
         myPortfolioDetailBody.innerHTML = `
+            ${myPortfolioDetailHero(row, review, trendLabel)}
             <div class="my-portfolio-detail-section" data-detail-section="position">
                 <h4>Position</h4>
                 <div class="my-portfolio-detail-grid">
@@ -1276,6 +1384,7 @@
     function renderMyPortfolioHistory(imports) {
         if (!imports.length) {
             myPortfolioHistoryRows.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No import history yet.</td></tr>';
+            renderMyPortfolioHistoryDisclosure();
             return;
         }
         myPortfolioHistoryRows.innerHTML = imports.map(item => {
@@ -1297,6 +1406,7 @@
                 </tr>
             `;
         }).join("");
+        renderMyPortfolioHistoryDisclosure();
     }
 
     function mappingStatus(row) {
@@ -1749,15 +1859,21 @@
     myPortfolioSync?.addEventListener("click", () => startMyPortfolioSync());
     myPortfolioSortField?.addEventListener("change", event => {
         myPortfolioState.sort.key = event.target.value || "pnl_pct";
-        renderMyPortfolioHoldings(myPortfolioState.holdings);
+        renderMyPortfolioHoldings(myPortfolioState.snapshot?.rows?.length ? myPortfolioState.snapshot.rows : myPortfolioState.holdings);
     });
     myPortfolioSortDirection?.addEventListener("click", () => {
         myPortfolioState.sort.direction = myPortfolioState.sort.direction === "asc" ? "desc" : "asc";
-        renderMyPortfolioHoldings(myPortfolioState.holdings);
+        renderMyPortfolioHoldings(myPortfolioState.snapshot?.rows?.length ? myPortfolioState.snapshot.rows : myPortfolioState.holdings);
     });
     myPortfolioSortReset?.addEventListener("click", () => {
         myPortfolioState.sort = { key: "pnl_pct", direction: "desc" };
-        renderMyPortfolioHoldings(myPortfolioState.holdings);
+        renderMyPortfolioHoldings(myPortfolioState.snapshot?.rows?.length ? myPortfolioState.snapshot.rows : myPortfolioState.holdings);
+    });
+    myPortfolioDensityCompact?.addEventListener("click", () => setMyPortfolioDensity("compact"));
+    myPortfolioDensityComfortable?.addEventListener("click", () => setMyPortfolioDensity("comfortable"));
+    myPortfolioHistoryToggle?.addEventListener("click", () => {
+        myPortfolioState.historyExpanded = !myPortfolioState.historyExpanded;
+        renderMyPortfolioHistoryDisclosure();
     });
     document.querySelector(".my-portfolio-wide-table thead")?.addEventListener("click", event => {
         const th = event.target.closest("th[data-sort-key]");
@@ -1770,7 +1886,7 @@
             myPortfolioState.sort.key = key;
             myPortfolioState.sort.direction = key === "symbol" ? "asc" : "desc";
         }
-        renderMyPortfolioHoldings(myPortfolioState.holdings);
+        renderMyPortfolioHoldings(myPortfolioState.snapshot?.rows?.length ? myPortfolioState.snapshot.rows : myPortfolioState.holdings);
     });
     myPortfolioResetOpen?.addEventListener("click", openMyPortfolioResetModal);
     myPortfolioResetClose?.addEventListener("click", closeMyPortfolioResetModal);

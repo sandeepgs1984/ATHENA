@@ -70,7 +70,11 @@ Current Holdings to the primary daily workbench directly under KPIs; and
     and Structural Review / Levels; purpose-specific label icons; signed
     green/red value tones; directional chips for D1 Trend, OR Setup, and
     SuperTrend direction; and visually distinct Daily Guidance, Structural
-    Guidance, and raw-context caveat callouts. No feature behavior changed.
+    Guidance, and raw-context caveat callouts. Follow-up workstation polish adds
+    a sticky quick-context bar, Compact/Comfortable holdings density control,
+    thin row-state rails, muted unavailable chips, a collapsed-by-default Recent
+    Imports audit panel, and a stronger detail-overlay summary band. No feature
+    behavior changed.
 
 **Tests.** Added API coverage for full reset success, reset-token rejection,
 and active-sync reset rejection without mutation. Focused validation: My
@@ -89,7 +93,10 @@ with the repository's pre-existing SIM117 baseline ignored. Latest
     modal-first preview / full-page sync blocker / trading-indicator polish is
     covered by dashboard-contract assertions. Detail-overlay visual hierarchy
     is covered by dashboard-contract assertions for the new chip, tone, and
-    callout primitives and ready for the same focused validation slice.
+    callout primitives. The follow-up workstation polish is covered by
+    dashboard-contract assertions for sticky context, density controls,
+    row-state rails, collapsed audit history, unavailable chips, and the detail
+    hero summary, and is ready for the same focused validation slice.
 
 **Files changed:** `src/athena/api/v1/dtos/portfolio.py`,
 `src/athena/api/v1/routers/my_portfolio.py`,

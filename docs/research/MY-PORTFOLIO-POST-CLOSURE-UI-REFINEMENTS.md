@@ -18,6 +18,7 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Correct the Sync Existing Holdings blocker so it is viewport-owned and visible even when Current Holdings is below the fold.
 - Redesign the My Portfolio page into a trading-workstation hierarchy without changing any feature behavior: command center, status banner, KPI strip, holdings workbench, then secondary update/audit panels.
 - Redesign the holding detail overlay with professional trading visual hierarchy: section accents, row icons, signed value tones, directional chips, and differentiated guidance callouts.
+- Add the next professional workstation polish slice: sticky quick-context bar, Current Holdings density controls, row-state rails, softer unavailable chips, collapsed Recent Imports audit panel, and an at-a-glance detail overlay summary band.
 
 ## Decisions
 
@@ -38,6 +39,7 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - Table colors and icons are presentation-only affordances over existing values. They do not change Status, Conviction, D1 Trend, Opening Range Setup, Daily Review, Next Action, TradePlan, Structural Review, or any Portfolio snapshot semantics.
 - The page hierarchy is presentation-only. The Current Holdings table is the primary daily-work surface; upload/import history are operational/audit surfaces and therefore sit below the trading workbench.
 - Detail-overlay colors, icons, and chips are presentation-only. They describe the already-computed position, technical, daily-review, TradePlan, and structural-review values; they do not introduce new classifications or trading rules.
+- Density mode, sticky context, row-state rails, and collapsed Recent Imports are browser presentation state only. They do not persist, reorder stored holdings, or change sync/import/audit semantics.
 
 ## Implementation Notes
 
@@ -63,6 +65,12 @@ Owner request: improve My Portfolio usability after the Portfolio track closure 
 - The detail overlay now uses section-level visual hierarchy: Position, Technical State, ATHENA Review, Plan / Levels, and Structural Review / Levels each get a subtle section accent; field labels get purpose-specific icons; positive P&L and favorable price context render green, negative values render red, warning/trigger fields render amber, and neutral unavailable fields stay muted.
 - D1 Trend, Opening Range Setup, and SuperTrend direction now render as compact directional chips inside the detail overlay, matching the main table's trading scan language while remaining separate from methodology semantics.
 - Daily Guidance, Structural Guidance, and raw-context notes are differentiated by callout tone so the user can scan recommendation, structural context, and caveat text without reading the whole modal linearly.
+- The My Portfolio workstation now keeps a sticky quick-context bar above Current Holdings showing current value, total P&L, last synced time, and active sort while the user scrolls deeper into holdings.
+- Current Holdings now supports Compact and Comfortable density modes. The toggle only changes table padding and is never persisted into portfolio state.
+- Holding rows now carry a thin left state rail derived from existing row values: positive/healthy rows, warning/watch rows, danger/exit/review rows, and muted unavailable rows.
+- Unavailable table placeholders use muted chips instead of large repeated text, reducing noise while preserving truthfulness.
+- Recent Imports is collapsed by default as a secondary audit surface and can be expanded on demand.
+- The holding detail overlay now opens with an at-a-glance summary band containing the symbol, quantity/average, last price tone, P&L %, Status, Next Action, D1 Trend, and SuperTrend direction.
 - Full reset is gated by a modal requiring the exact `RESET` token.
 
 ## Methodology Boundary
@@ -82,4 +90,5 @@ Focused validation:
 - Ruff: passed on touched API/test Python files; `repository.py` passed with the repository's pre-existing SIM117 baseline ignored.
 - Second-pass upload-first / confirm-and-sync validation: combined focused pytest 81 passed; JS syntax check passed; ruff passed.
 - Detail-overlay visual hierarchy pass: dashboard asset version advanced to `9.170.0`; dashboard contract tests assert the detail chip/tone/callout primitives.
+- Workstation polish pass: dashboard asset version advanced to `9.171.0`; dashboard contract tests assert sticky context, density controls, row rails, collapsed audit panel, unavailable chips, and detail hero primitives.
 - Targeted mypy: not a clean gate because `my_portfolio_service.py` has pre-existing broad typing debt unrelated to this change.

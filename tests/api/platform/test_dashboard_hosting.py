@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.170.0" in html
-    assert "dashboard.js?v=9.170.0" in html
+    assert "dashboard.css?v=9.171.0" in html
+    assert "dashboard.js?v=9.171.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -370,11 +370,21 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'class="my-portfolio-summary my-portfolio-kpi-strip"' in html
     assert 'class="card val-card my-portfolio-kpi-card my-portfolio-kpi-primary"' in html
     assert 'class="my-portfolio-freshness-strip" aria-label="Portfolio freshness"' in html
+    assert 'class="my-portfolio-mini-bar" aria-label="Portfolio quick context"' in html
+    assert 'id="my-portfolio-mini-value"' in html
+    assert 'id="my-portfolio-mini-pnl"' in html
+    assert 'id="my-portfolio-mini-synced"' in html
+    assert 'id="my-portfolio-mini-sort"' in html
     assert "my-portfolio-kpi-freshness" not in html
     assert 'class="card my-portfolio-holdings-card"' in html
+    assert 'class="my-portfolio-density-toggle" role="group"' in html
+    assert 'id="my-portfolio-density-compact"' in html
+    assert 'id="my-portfolio-density-comfortable"' in html
     assert 'class="my-portfolio-secondary-grid"' in html
     assert 'class="card my-portfolio-upload-panel"' in html
     assert 'class="card my-portfolio-history-panel"' in html
+    assert 'id="my-portfolio-history-toggle"' in html
+    assert 'id="my-portfolio-history-body" class="card-body" hidden' in html
     assert html.find('id="my-portfolio-alert"') < html.find('class="my-portfolio-summary my-portfolio-kpi-strip"')
     assert html.find('class="my-portfolio-summary my-portfolio-kpi-strip"') < html.find(
         'class="card my-portfolio-holdings-card"'
@@ -561,6 +571,13 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-sort-toolbar" in my_portfolio_css
     assert "min-width: 190px" in my_portfolio_css
     assert ".my-portfolio-sort-indicator" in my_portfolio_css
+    assert ".my-portfolio-mini-bar" in my_portfolio_css
+    assert "position: sticky" in my_portfolio_css
+    assert ".my-portfolio-density-toggle" in my_portfolio_css
+    assert ".my-portfolio-wide-table.comfortable-density th" in my_portfolio_css
+    assert "#my-portfolio-holdings-rows tr.my-portfolio-row-state td:first-child::before" in my_portfolio_css
+    assert "#my-portfolio-holdings-rows tr.state-positive td:first-child::before" in my_portfolio_css
+    assert ".my-portfolio-unavailable-chip" in my_portfolio_css
 
     # MY-PORTFOLIO-POST-V1-UI-POLISH: tighter cell padding scoped to this
     # table only (never the shared .data-table default), and mandatory
@@ -590,7 +607,15 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function myPortfolioTrendLabelOnly(value)" in js
     assert "function myPortfolioDailyReviewReasonSummary(row)" in js
     assert "function renderMyPortfolioDetail(row)" in js
+    assert "function myPortfolioDetailHero(row, review, trendLabel)" in js
     assert "function openMyPortfolioDetail(key)" in js
+    assert "function renderMyPortfolioDensityControls()" in js
+    assert "function renderMyPortfolioHistoryDisclosure()" in js
+    assert "function myPortfolioRowStateClass(row)" in js
+    assert "function myPortfolioUnavailableChip" in js
+    assert "myPortfolioMiniSort.textContent" in js
+    assert "myPortfolioDensityCompact?.addEventListener" in js
+    assert "myPortfolioHistoryToggle?.addEventListener" in js
     # Owner Correction 2: TradePlan-derived levels must never be labeled
     # "Support"/"Major Support" — that implies rejected structural
     # methodology (PS-P10C.1 NO-GO).
@@ -706,6 +731,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-detail-row.tone-negative .my-portfolio-detail-value" in my_portfolio_css
     assert ".my-portfolio-detail-chip.good" in my_portfolio_css
     assert ".my-portfolio-detail-chip.danger" in my_portfolio_css
+    assert ".my-portfolio-detail-hero" in my_portfolio_css
+    assert ".my-portfolio-detail-hero-grid" in my_portfolio_css
+    assert ".my-portfolio-detail-hero-metric.tone-positive" in my_portfolio_css
     assert ".my-portfolio-detail-guidance.review" in my_portfolio_css
     assert ".my-portfolio-detail-guidance.structural" in my_portfolio_css
     assert "Previous completed snapshot remains unchanged" in js
