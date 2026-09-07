@@ -905,6 +905,16 @@
     text-transform: uppercase;
 }
 
+.trade-plan-title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+}
+
+.trade-plan-title-group h4 {
+    margin-bottom: 0;
+}
+
 .analysis-section-intro {
     color: var(--text-muted);
     font-size: var(--text-0-67);

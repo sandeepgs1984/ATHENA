@@ -84,6 +84,12 @@
         const freshnessStatus = String(freshness && freshness.status || statusLabel).toUpperCase();
         const historicalPlan = ["EXPIRED", "STALE", "UNKNOWN"].includes(freshnessStatus);
         const title = historicalPlan ? "Historical TradePlan" : "ATHENA TradePlan";
+        // Owner-reported confusion (2026-09-07): a SHORT plan's target sits
+        // below entry and its stop sits above — correct short-selling
+        // mechanics, but with no LONG/SHORT cue anywhere on this card it
+        // reads as a data bug at a glance. Reuses the exact same stance
+        // computed for the Quick Summary badge so the two never disagree.
+        const stance = decisionStance(decisionType, direction);
         const advisoryLabel = historicalPlan
             ? `${friendlyAnalysisName(freshnessStatus)} · re-validate before use`
             : "Advisory · not an order";
@@ -111,7 +117,10 @@
         return `
             <div class="decision-brief-section">
                 <div class="decision-brief-section-header">
-                    <h4>${escapeDecisionHtml(title)}</h4>
+                    <div class="trade-plan-title-group">
+                        <h4>${escapeDecisionHtml(title)}</h4>
+                        <span class="stance-chip ${stance.cls}">${escapeDecisionHtml(stance.label)}</span>
+                    </div>
                     <span class="trade-plan-label">${escapeDecisionHtml(advisoryLabel)}</span>
                 </div>
                 ${historicalPlan ? `

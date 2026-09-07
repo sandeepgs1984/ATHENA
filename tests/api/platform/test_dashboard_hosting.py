@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.176.0" in html
-    assert "dashboard.js?v=9.176.0" in html
+    assert "dashboard.css?v=9.177.0" in html
+    assert "dashboard.js?v=9.177.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -1222,6 +1222,17 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".trade-plan-hero-value" in css
     assert ".trade-plan-validity-window" in css
     assert ".trade-plan-level-delta.stop" in css
+
+    # Owner-reported confusion (2026-09-07): a SHORT TradePlan's target sits
+    # below entry and its stop sits above (correct short-selling mechanics),
+    # but with no LONG/SHORT cue on the card it reads as a data bug. The
+    # card header now carries the same BUY/SELL stance chip already shown
+    # in the Quick Summary panel, computed via the one shared helper so the
+    # two can never disagree.
+    assert "const stance = decisionStance(decisionType, direction);" in js
+    assert 'class="trade-plan-title-group"' in js
+    assert '<span class="stance-chip ${stance.cls}">${escapeDecisionHtml(stance.label)}</span>' in js
+    assert ".trade-plan-title-group" in css
     assert ".decision-brief-scroll-region" in css
     assert "order: 1" in css[
         css.find(".decision-brief-tabstrip {") : css.find("\n}", css.find(".decision-brief-tabstrip {"))
