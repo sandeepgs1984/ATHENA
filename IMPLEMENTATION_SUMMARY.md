@@ -6,6 +6,117 @@ status updated on approval.
 
 ---
 
+## ID-8 Entry/Risk Methodology Validation — Discovery + Empirical Contract, Ready for Owner Review
+
+**Summary.** With ID-7 closed, the Owner authorized ID-8: given an
+actionable/eligible intraday opportunity, what entry/risk structure is
+empirically defensible? This first ID-8 milestone is discovery +
+contract only — no full historical outcome study, no threshold freeze,
+no methodology mutation, no ID-9/10/11 work. All work is read-only
+against `db/athena.db`.
+
+**Key discovery findings.**
+1. `docs/research/ID-7B1-RETROSPECTIVE-TRADE-EQ-RECONSTRUCTION.md` §16-20
+   already computed MFE/MAE, T1(+1%)/T2(+1.5%) hit rates and timing,
+   three invalidation candidates head-to-head (VWAP-loss/OR15-boundary/
+   D1-ATR), and RR distributions on a real 783-episode LONG-only cohort
+   — never packaged as its own milestone, and its harness/scripts were
+   never committed (lived in a session scratchpad, per that report's own
+   §25), so the methodology and numeric findings are directly reusable
+   evidence but the code must be re-derived, not re-run.
+2. A fresh, natively-persisted TRADE+QUALIFIED population exists with
+   zero replay needed: **60 real `entry_qualifications` rows**
+   (`state='QUALIFIED'`, `decision_type='TRADE'`), all from today
+   (2026-09-07) — the first real SHORT TRADE decisions in ATHENA's
+   history (417 real SHORT TRADE decisions today vs. 96,985 LONG across
+   20 earlier sessions, 2026-07-31→2026-08-27; zero SHORT decisions of
+   any kind existed before today).
+3. **A newly-discovered, real mechanism for the continuing zero-`ACTIONABLE`
+   finding: all 60 of today's real SHORT TRADE+QUALIFIED rows resolved
+   to `UNKNOWN`/`INVALIDATION_UNAVAILABLE` — 60/60 (100%).** This
+   sharpens the known `LONG_VALIDATED_SHORT_UNVALIDATED` limitation into
+   a concrete mechanism: EQ v0's "QUALIFIED" criterion is bullish-shaped
+   (VWAP-positive AND BULLISH trend), so a SHORT Decision that happens
+   to receive a QUALIFIED EQ verdict inherits an entry-side VWAP
+   relation that is structurally the wrong side for a SHORT's own risk
+   geometry. Reported honestly as an ID-6/EQ methodology observation —
+   **not fixed here**, explicitly out of ID-8's authorized boundary.
+
+**The empirical contract defined.** Observation unit = episode-first-
+checkpoint (reusing ID-7B.1's own zero-invented-parameter episode-
+boundary rule: consecutive same-`decision_type` runs per instrument+
+session, break on any type change or date change). Entry proxy = frozen
+ID-7 checkpoint-close, explicitly labeled `CHECKPOINT_CLOSE_THEORETICAL`
+— no execution-cost data exists anywhere in the schema (confirmed via a
+full 30-table scan; `quotes` has no bid/ask/spread; a `trade_outcomes`
+table exists but holds exactly 1 row). Forward window: same-session,
+leak-safe direct SQL date/timestamp filter (never `LIMIT`, mirroring
+ID-7B.1's own §17 safeguard). MFE/MAE: direction-aware running-max over
+candle high/low. Target-hit: intrabar-touch and close-confirmed both
+reported. **New mandatory `AMBIGUOUS_SAME_BAR` same-candle target/stop-
+ordering policy** — confirmed, by direct text search, absent from
+ID-7B.1's own report; a genuine gap this milestone closes. 6-label
+outcome taxonomy separating reachability from first-terminal-outcome.
+Session-grouped chronological statistical design (never random-split;
+leave-some-sessions-out recommended for a future full-scale pass,
+reusing ID-7B.1's own §10 recommendation). LONG/SHORT reported strictly
+separately, never pooled.
+
+**Feasibility sample (read-only, real data).** All 60 real native
+TRADE+QUALIFIED rows: entry-price extraction, forward-window read,
+MFE/MAE, intrabar target-touch, and same-bar-ambiguity detection all
+proven end-to-end on real data — **60/60 reconstructed, 0 skipped**. T1
+(+1%) hit rate 21/60 (35.0%, median 34.0 min to hit); T2 (+1.5%) hit
+rate 8/60 (13.3%); median MFE 0.61%/MAE 0.63%; 0 `AMBIGUOUS_SAME_BAR`
+occurrences. **Explicitly reported as a mechanical proof only, never
+methodology-validating evidence** — every one of these 60 checkpoints
+already carries invalid VWAP-based risk geometry (finding #3 above), so
+the invalidation leg of the contract could not be exercised end-to-end
+on this batch; that requires a future continuation against ID-7B.1's
+valid-geometry LONG cohort.
+
+**Files created:**
+`docs/research/ID-8-ENTRY-RISK-METHODOLOGY-VALIDATION-DISCOVERY.md`.
+**Files modified:** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. **Zero production source,
+schema, or methodology changes.** `db/athena.db` confirmed unchanged
+throughout (`schema_version` 18, `integrity_check: ok`, before and
+after); zero writes; zero provider/network calls; PID 2453 untouched;
+EMR/DarvaX not referenced.
+
+**Status: ID-8 DISCOVERY + EMPIRICAL METHODOLOGY CONTRACT READY FOR
+OWNER / CHIEF ARCHITECT REVIEW.** Not marked closed; methodology not
+frozen. Does not start ID-9/10/11; does not touch EMR or DarvaX.
+
+**Suggested commit message** (for the owner to run themselves, per
+CLAUDE.md — no git action taken by the AI):
+
+```
+docs(intraday): ID-8 entry/risk methodology discovery + empirical contract
+
+- Surveyed real historical/current data availability for ID-8: cited
+  ID-7B1's own uncommitted 783-episode LONG-cohort outcome findings
+  (MFE/MAE, T1/T2 hit rates, invalidation candidates, RR) as reusable
+  prior art, and found a fresh native 60-row real TRADE+QUALIFIED
+  population from today (2026-09-07) needing zero replay.
+- Discovered all 60 of today's real SHORT TRADE+QUALIFIED rows resolve
+  to UNKNOWN/INVALIDATION_UNAVAILABLE (100%), sharpening the known
+  LONG_VALIDATED_SHORT_UNVALIDATED limitation into a concrete EQ v0
+  mechanism (bullish-shaped QUALIFIED criterion puts SHORT's entry-side
+  VWAP on the wrong side for its own risk geometry) - reported, not
+  fixed, since it's outside ID-8's boundary.
+- Defined the full ID-8 empirical research contract: observation unit,
+  entry proxy, leak-safe forward window, MFE/MAE formulas, target-hit
+  semantics, a new AMBIGUOUS_SAME_BAR ordering policy (a gap ID-7B1
+  left unresolved), outcome taxonomy, and session-grouped statistical
+  design.
+- Ran a small read-only feasibility sample (60/60 reconstructed, zero
+  writes/provider calls) proving the contract's mechanics work on real
+  data - explicitly not methodology-validating evidence given this
+  batch's invalid entry risk-geometry.
+```
+
+---
 
 ## My Portfolio Export Options — Owner Approved / Closed
 
