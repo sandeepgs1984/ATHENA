@@ -4279,3 +4279,291 @@ class TestOwnerValidationPipeline:
         assert "instrument.lot_size\n" in stage_body or "lot_size = instrument.lot_size" in stage_body
         assert "raise ValueError" in stage_body
         assert "if instrument is None:" in stage_body
+
+    # ---- ID-9 V0 Capital Policy Activation (2026-09-07) -----------------
+    #
+    # The methodology/engine/domain-model tests above are all unchanged by
+    # this milestone -- it resolves one remaining operational gap only:
+    # `cli.py`'s single canonical `_owner_validation_pipeline` construction
+    # helper (shared by `_cmd_cycle` and `_cmd_serve`) now loads an
+    # optional, explicit `config/position_sizing_policy.json` and injects
+    # the resulting (possibly-`None`) `CapitalPolicy` into
+    # `OwnerValidationPipeline` -- `OwnerValidationPipeline.__init__`
+    # itself is completely unchanged (it already accepted an optional
+    # `capital_policy` parameter since the V0 core-implementation
+    # milestone).
+
+    def test_id9_cli_seam_defaults_to_none_when_policy_config_absent(
+        self, repo: SqliteRepository, tmp_path: Path
+    ) -> None:
+        """`cli._owner_validation_pipeline` is the one canonical
+        production construction seam for `OwnerValidationPipeline`
+        (shared by `_cmd_cycle` and `_cmd_serve`). With no
+        `position_sizing_policy.json` present, it must construct the
+        pipeline with `capital_policy=None` -- preserving today's honest
+        `CAPITAL_POLICY_UNAVAILABLE` production default unchanged."""
+        import athena.cli as cli_module
+
+        pipe = cli_module._owner_validation_pipeline(repo, tmp_path)
+        assert pipe._capital_policy is None
+
+    def test_id9_cli_seam_wires_configured_capital_policy(
+        self, repo: SqliteRepository, tmp_path: Path
+    ) -> None:
+        """With a valid `position_sizing_policy.json` present in
+        `config_dir`, the same canonical seam constructs exactly one
+        `CapitalPolicy` from it and injects that instance into
+        `OwnerValidationPipeline` -- never a value invented in
+        `cli.py`/`owner_validation.py` itself, never a dormant
+        `capital.json`/`risk.json` value."""
+        import json
+
+        import athena.cli as cli_module
+        from athena.intraday import CapitalPolicy
+        from athena.intraday.position_sizing_config import position_sizing_policy_config_path
+
+        position_sizing_policy_config_path(tmp_path).write_text(
+            json.dumps({
+                "total_deployable_capital": "250000.00",
+                "risk_budget_per_trade_pct": "0.75",
+                "max_position_value_pct": "12.00",
+                "policy_version": "owner-approved-v1",
+            }),
+            encoding="utf-8",
+        )
+
+        pipe = cli_module._owner_validation_pipeline(repo, tmp_path)
+        assert isinstance(pipe._capital_policy, CapitalPolicy)
+        assert pipe._capital_policy.total_deployable_capital == Decimal("250000.00")
+        assert pipe._capital_policy.risk_budget_per_trade_pct == Decimal("0.75")
+        assert pipe._capital_policy.max_position_value_pct == Decimal("12.00")
+        assert pipe._capital_policy.policy_version == "owner-approved-v1"
+
+    def test_id9_cli_seam_invalid_policy_config_fails_loudly(
+        self, repo: SqliteRepository, tmp_path: Path
+    ) -> None:
+        """A present-but-invalid `position_sizing_policy.json` must fail
+        the whole construction loudly (`ConfigError`) -- never silently
+        fall back to `capital_policy=None`, which would misreport a
+        genuine operator typo as the ordinary not-yet-configured state."""
+        import json
+
+        import athena.cli as cli_module
+        from athena.errors import ConfigError
+        from athena.intraday.position_sizing_config import position_sizing_policy_config_path
+
+        position_sizing_policy_config_path(tmp_path).write_text(
+            json.dumps({
+                "total_deployable_capital": "250000.00",
+                "risk_budget_per_trade_pct": "150.0",  # > 100, invalid
+                "max_position_value_pct": "12.00",
+                "policy_version": "owner-approved-v1",
+            }),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ConfigError):
+            cli_module._owner_validation_pipeline(repo, tmp_path)
+
+    def test_id9_one_capital_policy_instance_reused_across_multiple_instruments(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """§4: 'do not construct different effective policies per
+        symbol.' A single `CapitalPolicy` instance injected at
+        `OwnerValidationPipeline` construction must be the exact same
+        object passed to `PositionSizingV0Engine.evaluate` for every
+        instrument in one scan -- proven here with two real,
+        independently-forced TRADE+QUALIFIED+ACTIONABLE instruments
+        reaching SIZED in the same run."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.decision import TradePlan
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.intraday import (
+            CapitalPolicy,
+            EntryQualificationEngine,
+            EntryQualificationState,
+            PositionSizingState,
+        )
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.TRADE, direction=Dir.LONG, gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"), risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_qualified(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            return dataclasses.replace(eq, state=EntryQualificationState.QUALIFIED, reason_codes=())
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_qualified)
+
+        captured_policy_kwargs: list[object] = []
+        real_evaluate = PositionSizingV0Engine.evaluate
+
+        def spy_evaluate(self, *, capital_policy, **kwargs):
+            captured_policy_kwargs.append(capital_policy)
+            return real_evaluate(self, capital_policy=capital_policy, **kwargs)
+
+        monkeypatch.setattr(PositionSizingV0Engine, "evaluate", spy_evaluate)
+
+        store = SqliteCandidateStore(repo)
+        for sym, seed in (("AAA", 100), ("BBB", 200)):
+            store.upsert_candidate(symbol=sym)
+            iid = f"NSE:{sym}"
+            repo.upsert_instrument(
+                Instrument(instrument_id=iid, symbol=sym, exchange="NSE", series="EQ", status="ACTIVE")
+            )
+            repo.add_candles(_candles(iid, seed=seed))
+            repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=seed))
+
+        policy = CapitalPolicy(
+            total_deployable_capital=Decimal("100000"), risk_budget_per_trade_pct=Decimal("1.0"),
+            max_position_value_pct=Decimal("10.0"), policy_version="shared-policy-v1",
+        )
+        clock_instant = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(seconds=3)
+        pipe = OwnerValidationPipeline(
+            repo, config_dir, capital_policy=policy, persistence_clock=lambda: clock_instant,
+        )
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=2, candles_fetched=172, candles_written=172,
+            quotes_fetched=0, quotes_written=0, datasets_validated=2, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ps-shared-policy")
+
+        assert len(captured_policy_kwargs) == 2
+        assert all(p is policy for p in captured_policy_kwargs)
+
+        for sym in ("AAA", "BBB"):
+            iid = f"NSE:{sym}"
+            persisted = repo.list_entry_actionabilities_for_instrument_session(iid, AS_OF.date())
+            assert len(persisted) == 1
+
+    def test_id9_changing_policy_does_not_change_sizing_methodology_version(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """§6/§12: a `policy_version` change is an Owner/operator policy
+        decision, deliberately independent of
+        `sizing_methodology_version` (the frozen mathematics identity) --
+        two runs of the same scan under two different `CapitalPolicy`
+        versions must report the identical `sizing_methodology_version`."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.decision import TradePlan
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.intraday import (
+            CapitalPolicy,
+            EntryQualificationEngine,
+            EntryQualificationState,
+        )
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.TRADE, direction=Dir.LONG, gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"), risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_qualified(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            return dataclasses.replace(eq, state=EntryQualificationState.QUALIFIED, reason_codes=())
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_qualified)
+
+        captured: list[object] = []
+        real_evaluate = PositionSizingV0Engine.evaluate
+
+        def spy_evaluate(self, *, entry_actionability, **kwargs):
+            result = real_evaluate(self, entry_actionability=entry_actionability, **kwargs)
+            captured.append(result)
+            return result
+
+        monkeypatch.setattr(PositionSizingV0Engine, "evaluate", spy_evaluate)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        clock_instant = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(seconds=3)
+        versions_seen = []
+        methodology_versions_seen = []
+        for policy_version in ("policy-v1", "policy-v2"):
+            captured.clear()
+            policy = CapitalPolicy(
+                total_deployable_capital=Decimal("100000"), risk_budget_per_trade_pct=Decimal("1.0"),
+                max_position_value_pct=Decimal("10.0"), policy_version=policy_version,
+            )
+            pipe = OwnerValidationPipeline(
+                repo, config_dir, capital_policy=policy, persistence_clock=lambda: clock_instant,
+            )
+            ingestion = IngestionResult(
+                as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+                quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+            )
+            pipe.run(
+                RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion,
+                run_id=f"run-test-ps-methodology-{policy_version}",
+            )
+            assert len(captured) == 1
+            versions_seen.append(captured[0].policy_version)
+            methodology_versions_seen.append(captured[0].sizing_methodology_version)
+
+        assert versions_seen == ["policy-v1", "policy-v2"]
+        assert methodology_versions_seen[0] == methodology_versions_seen[1]
+
+    def test_id9_no_order_broker_execution_activation_from_policy_wiring(self) -> None:
+        """Source-scan proof that neither the new config seam nor its
+        cli.py call site pulls in order/broker/execution activation."""
+        import ast
+        import inspect
+
+        import athena.cli as cli_module
+        from athena.intraday import position_sizing_config as config_module
+
+        for module in (cli_module, config_module):
+            tree = ast.parse(inspect.getsource(module))
+            imported: list[str] = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    imported.append(node.module)
+                elif isinstance(node, ast.Import):
+                    imported.extend(alias.name for alias in node.names)
+            forbidden = ("athena.orders", "athena.brokers", "athena.execution")
+            for mod in imported:
+                assert not mod.startswith(forbidden), f"{module.__name__} unexpectedly imports {mod}"

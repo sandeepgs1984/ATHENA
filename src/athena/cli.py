@@ -239,9 +239,19 @@ def _build_ingest_engine(
 
 
 def _owner_validation_pipeline(repo: SqliteRepository, config_dir: Path):
+    from athena.intraday.position_sizing_config import load_position_sizing_policy_config
     from athena.ops.owner_validation import OwnerValidationPipeline
 
-    return OwnerValidationPipeline(repo, config_dir)
+    # ID-9 V0 Capital Policy Activation (2026-09-07): the one canonical
+    # construction seam both `_cmd_cycle` and `_cmd_serve` share. Absent
+    # `config/position_sizing_policy.json` -> `None`, preserving today's
+    # honest `CAPITAL_POLICY_UNAVAILABLE` production behavior unchanged;
+    # present-and-valid -> one immutable CapitalPolicy shared by the
+    # whole scan, never a value invented here or read from dormant
+    # capital.json/risk.json.
+    return OwnerValidationPipeline(
+        repo, config_dir, capital_policy=load_position_sizing_policy_config(config_dir)
+    )
 
 def _cmd_ingest(args: argparse.Namespace) -> int:
     """One live ingest cycle (M10.1 / R4): configured provider → validate → SQLite."""

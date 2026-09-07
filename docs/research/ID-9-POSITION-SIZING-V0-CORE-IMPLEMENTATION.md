@@ -1,8 +1,15 @@
 # ID-9 — Position Sizing V0 Core Implementation
 
-Status: **ID-9 POSITION SIZING V0 CORE IMPLEMENTATION CORRECTED — READY
-FOR OWNER / CHIEF ARCHITECT FREEZE DECISION.** See §0/§35 for this
-round's own correction record.
+Status: **ID-9 V0 CAPITAL POLICY ACTIVATION READY FOR OWNER VALUES /
+FINAL CLOSURE.** The Owner froze the ID-9 V0 core methodology/
+implementation itself (classification
+`ID9_V0_CORE_IMPLEMENTATION_METHODOLOGY_CORRECT_NO_PRODUCTION_ACTIVATION`,
+§0/§34/§35 below — **nothing in §0-§35 changed by this round**). This
+round (§36-§49) closes the one remaining operational gap: a canonical
+production configuration seam for `CapitalPolicy` now exists, wired
+into the same `OwnerValidationPipeline` construction path production
+already uses; production capital policy remains intentionally absent
+until the Owner supplies four numeric values (§49).
 
 ## 0. Correction round (2026-09-07) — summary
 
@@ -746,5 +753,366 @@ EMR/DarvaX/ID-6/ID-7/ID-8-methodology touch; `git diff --check` clean.
 
 ---
 
-**ID-9 POSITION SIZING V0 CORE IMPLEMENTATION CORRECTED — READY FOR
-OWNER / CHIEF ARCHITECT FREEZE DECISION**
+## 36. Capital Policy Activation round (2026-09-07) — summary
+
+The Owner froze §0-§35 in full (`ID9_V0_CORE_IMPLEMENTATION_METHODOLOGY_CORRECT_NO_PRODUCTION_ACTIVATION`)
+and authorized exactly one remaining task: resolve *why* production
+still supplies `capital_policy=None` to every cycle, and prepare (never
+choose) the Owner's own numeric activation decision. Nothing in §0-§35
+— `PositionSizing` domain semantics, `PositionSizingV0Engine`
+mathematics, currentness enforcement, composite identity, policy-
+participation/provenance rules, LONG-only scope, the three quantity
+formulas, binding-constraint semantics, Decimal/floor rules, lot-size
+semantics, zero-quantity behavior, the dormant P5.2-P5.6 disposition,
+or the persistence decision — changed in this round. This section
+onward (§36-§49) documents the new, additive configuration-activation
+mechanism only.
+
+## 37. Canonical configuration seam
+
+Inspected every real construction site of `OwnerValidationPipeline`:
+
+- `src/athena/cli.py:241` — `_owner_validation_pipeline(repo, config_dir)`,
+  a small private helper. This is the **one** place both real
+  production entry points share: `_cmd_cycle` (`athena cycle`, line
+  449) and `_cmd_serve`'s `HostDueRunner`-driven scheduled worker (line
+  634 — the actual `--with-cycles` PID 2453 production path). No other
+  code constructs the pipeline for scheduled/live use.
+- Five other call sites construct `OwnerValidationPipeline` directly,
+  each for a narrower, non-scheduled purpose:
+  `ops/canary.py` (canary probe), `ops/config_preview.py` (dry-run
+  config preview against a *candidate*, not live, config dir),
+  `ops/fast_revalidation.py` (symbol-scoped fast re-validate),
+  `ops/full_validation.py` (owner-triggered full-universe validation
+  job), `ops/symbol_validate.py` (on-demand single-symbol validate).
+  These remain **out of scope** for this round — deliberately: they are
+  on-demand diagnostic/ops tools, not the scheduled cycles the Owner's
+  own §11 concern ("every otherwise-valid current LONG opportunity...")
+  is about, and `PositionSizing` is not persisted (§21) so an
+  inconsistency between these paths' policy availability has zero
+  durable effect today. If the Owner later wants sizing evidence from
+  these tools too, they can each be pointed at the same
+  `load_position_sizing_policy_config` loader with a one-line change —
+  no new seam would be needed.
+
+`_owner_validation_pipeline` was chosen as the seam (rather than, say,
+loading policy inside `OwnerValidationPipeline.__init__` itself)
+because `__init__` already accepts an optional `capital_policy`
+parameter (added in the V0 core-implementation round) and is exercised
+directly, with an explicit `capital_policy=None`/a test-constructed
+policy, by 17 existing ID-9 tests plus dozens of pre-ID-9 tests — making
+`__init__` auto-load from disk would silently change what "pass
+`capital_policy=None`" means for every one of those call sites.
+Extending the one already-existing construction helper instead touches
+zero test fixtures and leaves `OwnerValidationPipeline.__init__`
+byte-for-byte unchanged.
+
+```python
+# src/athena/cli.py
+def _owner_validation_pipeline(repo: SqliteRepository, config_dir: Path):
+    from athena.intraday.position_sizing_config import load_position_sizing_policy_config
+    from athena.ops.owner_validation import OwnerValidationPipeline
+
+    return OwnerValidationPipeline(
+        repo, config_dir, capital_policy=load_position_sizing_policy_config(config_dir)
+    )
+```
+
+## 38. Exact config shape / template
+
+New file, `config/position_sizing_policy.json` (does **not** exist in
+production today — §39/§44). New module,
+`src/athena/intraday/position_sizing_config.py` (own `_Strict` pydantic
+base, own loader — deliberately not joined to
+`athena.config.loader.load_config`'s all-files-mandatory aggregate
+tree, since this file must be able to be absent without breaking every
+other `athena` command). Exactly four fields, matching `CapitalPolicy`
+1:1 — no sector/liquidity/daily-loss/portfolio-exposure/broker-cash/
+margin/leverage/score/confidence/RR field was added:
+
+```json
+{
+  "_meta": {
+    "description": "ID-9 V0 CapitalPolicy — explicit Owner-approved capital/risk policy for live position sizing. Percentages are percent-numbers (0.5 means 0.5%, never 50%). All three numeric fields MUST be JSON strings (exact Decimal parsing — never a bare JSON number)."
+  },
+  "total_deployable_capital": "<INR amount, e.g. \"500000.00\">",
+  "risk_budget_per_trade_pct": "<percent-number in (0, 100], e.g. \"0.50\">",
+  "max_position_value_pct": "<percent-number in (0, 100], e.g. \"15.00\">",
+  "policy_version": "<non-empty Owner-chosen identifier, e.g. \"policy-2026-09-07-v1\">"
+}
+```
+
+Units (§5 of the authorization): `total_deployable_capital` is a plain
+INR amount. `risk_budget_per_trade_pct`/`max_position_value_pct` reuse
+`CapitalPolicy`'s own already-frozen percent-*number* convention
+exactly (`Decimal("0.5")` means 0.5%, never a 0-1 fraction, never 50%).
+All three numeric fields must be JSON strings, not bare JSON numbers —
+`PositionSizingPolicyConfig` rejects a bare number outright (§41) so
+that Decimal parsing is always exact, never routed through a `float`
+intermediate.
+
+No duplicate alias was created: the file is intentionally named
+`position_sizing_policy.json`, never `sizing.json` (the existing,
+confirmed-dormant P5.3 legacy config) or `capital.json`/`risk.json`
+(confirmed dormant by the ID-9 discovery report) — a future reader must
+never be able to mistake this for, or a replacement of, one of those.
+
+## 39. Absent-policy production behavior
+
+`load_position_sizing_policy_config(config_dir)`:
+
+- File absent → returns `None`. This is not an error — it is the exact
+  same production-safe default `OwnerValidationPipeline.__init__`
+  already treats `capital_policy=None` as: every ID-9 sizing
+  observation continues to honestly report `CAPITAL_POLICY_UNAVAILABLE`,
+  completely unchanged from before this round.
+- File present and valid → constructs exactly **one** immutable
+  `CapitalPolicy` instance, injected once at `OwnerValidationPipeline`
+  construction and reused for every instrument in the scan (proven by
+  `test_id9_one_capital_policy_instance_reused_across_multiple_instruments`,
+  §45 — the exact same policy object, checked by identity, reaches
+  `PositionSizingV0Engine.evaluate` for two independent instruments in
+  one run).
+- File present and invalid (bad JSON, wrong type, unknown key, an
+  out-of-range value, a bare-number percentage) → raises `ConfigError`
+  loudly. A malformed policy file must never silently fall back to
+  `None` (which would misreport a genuine operator typo as "not yet
+  configured") and must never clamp/default/reinterpret a bad value.
+
+## 40. Policy-version semantics (operational rule)
+
+`policy_version` is Owner-controlled **policy** identity — already
+frozen (§0 item 2, §5, §18, §19 above) as independent of
+`sizing_methodology_version` (`DEFAULT_METHODOLOGY_VERSION =
+"position-sizing-v0"`, the sizing **mathematics** identity). This round
+adds no new field or persistence for this — the operational discipline
+is documented, not (and per the authorization's own §6, deliberately
+not) enforced by a policy registry:
+
+> **Whenever any effective policy value changes, the Owner/operator
+> must also supply a new `policy_version`.**
+
+A stateless, single-file loader has no prior value to diff against, so
+building a fingerprint/version-relationship check would require
+persistent state — explicitly out of scope for this milestone (§6:
+"must NOT build a policy registry or persistence subsystem merely for
+this"). `test_id9_changing_policy_does_not_change_sizing_methodology_version`
+(§45) proves the two identities stay independent: two runs of the same
+scan under `policy-v1`/`policy-v2` report the identical
+`sizing_methodology_version` and different `policy_version`s, exactly
+as `PositionSizing.identity_tuple()` (§5/§19, unchanged) already
+requires.
+
+## 41. Configuration validation
+
+`PositionSizingPolicyConfig` (pydantic, `extra="forbid"`) rejects, with
+a clear `ConfigError` message naming the file and field:
+
+- `total_deployable_capital <= 0`
+- `risk_budget_per_trade_pct <= 0` or `> 100`
+- `max_position_value_pct <= 0` or `> 100`
+- empty/whitespace-only/missing `policy_version`
+- any unknown key (a typo must fail loudly, never silently ignored)
+- a bare JSON number for any of the three numeric fields (must be a
+  JSON string — exact `Decimal` parsing, never a float intermediate)
+- non-JSON / non-object top-level content
+
+No clamping, no fallback value, no percentage reinterpretation, no
+float conversion path exists anywhere in the loader. On success, the
+loader additionally constructs a real `CapitalPolicy(...)` from the
+validated fields — `CapitalPolicy.__post_init__`'s own frozen
+invariants (§the V0 core round) run a second time, for real, rather
+than being duplicated as a parallel range check only.
+
+## 42. Normalized Owner Policy Impact Table
+
+Non-prescriptive — for understanding policy *behavior* only, never a
+recommendation, never calibrated against ID-8 outcomes. Generated by
+calling the real, frozen `PositionSizingV0Engine.evaluate` (never
+hand-derived arithmetic) against a synthetic normalized LONG
+`EntryActionability` fixture: `entry_reference = ₹100`,
+`total_deployable_capital = ₹10,00,000`, `instrument_lot_size = 1`
+(illustrative — real production lot sizes are per-instrument, §14).
+Three per-share-risk geometries (LOW = ₹1/share = 1% of entry, MEDIUM =
+₹2/share = 2%, WIDE = ₹4/share = 4%) × the specified 3×3
+`risk_budget_per_trade_pct` × `max_position_value_pct` matrix:
+
+| Risk-per-share | risk_budget_per_trade_pct | max_position_value_pct | Risk budget (₹) | Risk qty | Max-value qty | Theoretical-capital qty | Recommended qty | Recommended value (₹) | Capital at risk (₹) | Binding constraint(s) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| LOW (₹1/share) | 0.25% | 10% | 2500.00 | 2500 | 1000 | 10000 | 1000 | 100000.00 | 1000.00 | MAX_POSITION_VALUE |
+| LOW (₹1/share) | 0.25% | 15% | 2500.00 | 2500 | 1500 | 10000 | 1500 | 150000.00 | 1500.00 | MAX_POSITION_VALUE |
+| LOW (₹1/share) | 0.25% | 20% | 2500.00 | 2500 | 2000 | 10000 | 2000 | 200000.00 | 2000.00 | MAX_POSITION_VALUE |
+| LOW (₹1/share) | 0.50% | 10% | 5000.00 | 5000 | 1000 | 10000 | 1000 | 100000.00 | 1000.00 | MAX_POSITION_VALUE |
+| LOW (₹1/share) | 0.50% | 15% | 5000.00 | 5000 | 1500 | 10000 | 1500 | 150000.00 | 1500.00 | MAX_POSITION_VALUE |
+| LOW (₹1/share) | 0.50% | 20% | 5000.00 | 5000 | 2000 | 10000 | 2000 | 200000.00 | 2000.00 | MAX_POSITION_VALUE |
+| LOW (₹1/share) | 1.00% | 10% | 10000.00 | 10000 | 1000 | 10000 | 1000 | 100000.00 | 1000.00 | MAX_POSITION_VALUE |
+| LOW (₹1/share) | 1.00% | 15% | 10000.00 | 10000 | 1500 | 10000 | 1500 | 150000.00 | 1500.00 | MAX_POSITION_VALUE |
+| LOW (₹1/share) | 1.00% | 20% | 10000.00 | 10000 | 2000 | 10000 | 2000 | 200000.00 | 2000.00 | MAX_POSITION_VALUE |
+| MEDIUM (₹2/share) | 0.25% | 10% | 2500.00 | 1250 | 1000 | 10000 | 1000 | 100000.00 | 2000.00 | MAX_POSITION_VALUE |
+| MEDIUM (₹2/share) | 0.25% | 15% | 2500.00 | 1250 | 1500 | 10000 | 1250 | 125000.00 | 2500.00 | RISK_BUDGET |
+| MEDIUM (₹2/share) | 0.25% | 20% | 2500.00 | 1250 | 2000 | 10000 | 1250 | 125000.00 | 2500.00 | RISK_BUDGET |
+| MEDIUM (₹2/share) | 0.50% | 10% | 5000.00 | 2500 | 1000 | 10000 | 1000 | 100000.00 | 2000.00 | MAX_POSITION_VALUE |
+| MEDIUM (₹2/share) | 0.50% | 15% | 5000.00 | 2500 | 1500 | 10000 | 1500 | 150000.00 | 3000.00 | MAX_POSITION_VALUE |
+| MEDIUM (₹2/share) | 0.50% | 20% | 5000.00 | 2500 | 2000 | 10000 | 2000 | 200000.00 | 4000.00 | MAX_POSITION_VALUE |
+| MEDIUM (₹2/share) | 1.00% | 10% | 10000.00 | 5000 | 1000 | 10000 | 1000 | 100000.00 | 2000.00 | MAX_POSITION_VALUE |
+| MEDIUM (₹2/share) | 1.00% | 15% | 10000.00 | 5000 | 1500 | 10000 | 1500 | 150000.00 | 3000.00 | MAX_POSITION_VALUE |
+| MEDIUM (₹2/share) | 1.00% | 20% | 10000.00 | 5000 | 2000 | 10000 | 2000 | 200000.00 | 4000.00 | MAX_POSITION_VALUE |
+| WIDE (₹4/share) | 0.25% | 10% | 2500.00 | 625 | 1000 | 10000 | 625 | 62500.00 | 2500.00 | RISK_BUDGET |
+| WIDE (₹4/share) | 0.25% | 15% | 2500.00 | 625 | 1500 | 10000 | 625 | 62500.00 | 2500.00 | RISK_BUDGET |
+| WIDE (₹4/share) | 0.25% | 20% | 2500.00 | 625 | 2000 | 10000 | 625 | 62500.00 | 2500.00 | RISK_BUDGET |
+| WIDE (₹4/share) | 0.50% | 10% | 5000.00 | 1250 | 1000 | 10000 | 1000 | 100000.00 | 4000.00 | MAX_POSITION_VALUE |
+| WIDE (₹4/share) | 0.50% | 15% | 5000.00 | 1250 | 1500 | 10000 | 1250 | 125000.00 | 5000.00 | RISK_BUDGET |
+| WIDE (₹4/share) | 0.50% | 20% | 5000.00 | 1250 | 2000 | 10000 | 1250 | 125000.00 | 5000.00 | RISK_BUDGET |
+| WIDE (₹4/share) | 1.00% | 10% | 10000.00 | 2500 | 1000 | 10000 | 1000 | 100000.00 | 4000.00 | MAX_POSITION_VALUE |
+| WIDE (₹4/share) | 1.00% | 15% | 10000.00 | 2500 | 1500 | 10000 | 1500 | 150000.00 | 6000.00 | MAX_POSITION_VALUE |
+| WIDE (₹4/share) | 1.00% | 20% | 10000.00 | 2500 | 2000 | 10000 | 2000 | 200000.00 | 8000.00 | MAX_POSITION_VALUE |
+
+This table describes how the three V0 constraints interact under
+different policy choices — it does not say any row is safe, aggressive,
+conservative, or optimal, and it was not fit or checked against any
+ID-8 hit-rate/MFE/MAE/bootstrap evidence.
+
+## 43. Mathematical theoretical-capital-binding note
+
+Confirmed, exactly as already discovered and frozen in the V0 core
+round (§13): `theoretical_capital_quantity` is **10000 in every single
+row above** — it never becomes the unique tightest constraint anywhere
+in this matrix, because `max_position_value_pct <= 20%` in every tested
+combination keeps `max_value_quantity <= theoretical_capital_quantity`
+by construction. This is not a limitation of the sample matrix; it is
+the already-proven general property (`max_position_value_pct <= 100%`
+is enforced by `CapitalPolicy.__post_init__`) that
+`THEORETICAL_CAPITAL` can only ever **co-bind** with
+`MAX_POSITION_VALUE`, and only at the 100%-deployment boundary — see
+`test_theoretical_capital_co_binds_with_max_value_at_full_deployment`
+in `tests/market_intel/test_position_sizing_engine.py`, unchanged by
+this round. No synthetic unique-theoretical-capital-binding example was
+manufactured for this table, per the authorization's own instruction.
+
+## 44. Proof dormant configs remain unused
+
+`config/capital.json` (`CapitalConfig`) and `config/risk.json`
+(`RiskConfig`) are not read, imported, or referenced anywhere in
+`position_sizing_config.py` — proven by a dedicated source-scan test,
+`test_source_never_reads_capital_or_risk_json_filenames`, and further
+proven behaviorally by `test_dormant_capital_and_risk_json_never_imported`
+(real `capital.json`/`risk.json`-shaped files present in the same
+`config_dir`, with no `position_sizing_policy.json`, still yields
+`None`). Zero values from either file were used anywhere in this
+round's implementation, tests, or the impact table above (§42 uses only
+the Owner-message-specified normalized figures). `config/sizing.json`
+(the dormant P5.3 legacy sizing config, a different dormant file from
+the two named above) is likewise never read — no test or code in this
+round references it at all.
+
+## 45. Tests
+
+**31 new tests**, `tests/market_intel/test_position_sizing_config.py`
+(pure config-loader unit tests): missing-file → `None` (2), valid
+config constructs `CapitalPolicy` (1), exact `policy_version`
+propagation (1), Decimal-exact parsing with no float drift (1), bare
+JSON number rejected for each of the three numeric fields (3,
+parametrized), repeated loads produce an equal policy (1), invalid
+JSON / non-object JSON (2), unknown key rejected (1), invalid
+capital/risk-pct/max-value-pct rejected (3 groups, parametrized, 11
+total cases), empty/missing `policy_version` rejected (3), dormant
+`capital.json`/`risk.json` present-but-unread (1), source-scan proof
+neither dormant config nor `CapitalConfig`/`RiskConfig` is referenced
+(1), source-scan proof of zero `orders`/`brokers`/`execution`/
+`allocation`/`sizing`/network imports (1), a real-socket-`connect`
+monkeypatch proof the loader makes no network call (1), and a
+`PositionSizingPolicyConfig`-level `_meta`-key-drop proof (1).
+
+**6 new tests**, `tests/ops/test_owner_validation.py` (workflow-seam
+integration): `cli._owner_validation_pipeline` defaults to
+`capital_policy=None` when the config file is absent; the same seam
+constructs and injects a real `CapitalPolicy` when the file is present
+and valid; the same seam raises `ConfigError` (never falls back to
+`None`) when the file is present but invalid; one real `CapitalPolicy`
+instance is reused (checked by object identity through a spy on
+`PositionSizingV0Engine.evaluate`) across two real, independently
+forced TRADE+QUALIFIED+ACTIONABLE instruments in one scan; two full
+scans under `policy-v1`/`policy-v2` report identical
+`sizing_methodology_version` and differing `policy_version`; a
+source-scan proof that neither `cli.py` nor `position_sizing_config.py`
+imports `athena.orders`/`athena.brokers`/`athena.execution`.
+
+None of the 61 pre-existing ID-9 tests (34 pure-engine/domain + 8
+workflow from the V0 core round, plus 19 pure-engine/domain-model
+currentness/policy-identity tests from the correction round) were
+weakened, removed, or re-scoped — all still pass unchanged.
+
+## 46. Full suite
+
+**3868 passed, 1 pre-existing unrelated skip, 0 failures** (up from
+3831 before this round — exactly +37: 31 config-loader tests + 6
+workflow-seam tests).
+
+## 47. `git diff --check`
+
+Clean. Diff scoped to exactly: `src/athena/cli.py` (the seam, ~10 lines),
+`tests/ops/test_owner_validation.py` (6 new tests), plus two new files
+— `src/athena/intraday/position_sizing_config.py` and
+`tests/market_intel/test_position_sizing_config.py`. No file outside
+this set is touched; no unrelated pre-existing test was edited.
+
+## 48. Schema/PID/production safety
+
+- `db/athena.db`: zero writes performed by this round (config loading
+  is pure file I/O). `PRAGMA integrity_check` → `ok`; `entry_actionabilities`
+  row count unchanged from before this round; `SCHEMA_VERSION` constant
+  in `schema.py` untouched at `18` — no migration, no `schema.py` diff.
+- Production PID `2453` (`athena.cli serve --with-cycles`) left running
+  untouched throughout — no restart, no `Validate All`, no manual cycle
+  triggered.
+- No order/broker/execution call — proven by source-scan test (§45) —
+  and no network/provider call for policy loading (proven by a real
+  `socket.connect` monkeypatch failing the test if ever invoked, §45).
+- `config/position_sizing_policy.json` was **not** created in this
+  round — production `capital_policy` remains `None`,
+  `CAPITAL_POLICY_UNAVAILABLE` remains the honest live result, exactly
+  as before.
+- EMR (`db/emr.db`, the EM-7 worker) and DarvaX (`db/darvax.db`)
+  untouched — this round never imports either package.
+
+## 49. Exact remaining Owner values / activation procedure
+
+**Four values are still required from the Owner before ID-9 can
+produce a real recommended quantity in production:**
+
+- **(A) `total_deployable_capital`** — an INR amount, e.g. `"500000.00"`.
+- **(B) `risk_budget_per_trade_pct`** — a percent-number in `(0, 100]`,
+  e.g. `"0.50"` (meaning 0.5%).
+- **(C) `max_position_value_pct`** — a percent-number in `(0, 100]`,
+  e.g. `"15.00"` (meaning 15%).
+- **(D) `policy_version`** — a non-empty identifier, e.g.
+  `"policy-2026-09-07-v1"`. Per §40, any future change to (A)/(B)/(C)
+  must be paired with a new value here.
+
+**Activation procedure, once the Owner supplies all four:**
+
+1. Create `config/position_sizing_policy.json` with those four values,
+   using the exact template in §38 (all three numeric fields as JSON
+   strings).
+2. No code change, no restart of PID 2453 is required for the next
+   scheduled cycle to pick it up — `_owner_validation_pipeline` loads
+   the file fresh on every `OwnerValidationPipeline` construction
+   (once per `_cmd_cycle` invocation / once per `HostDueRunner`-driven
+   cycle), so the very next PREMARKET/REFRESH/CLOSING cycle after the
+   file is written will use it. (A live-serving process reconstructs
+   its `OwnerValidationPipeline` per cycle via this same helper — no
+   in-memory caching to invalidate.)
+3. This activation step is a tiny, reversible configuration change —
+   not a methodology milestone. Deleting or emptying the file at any
+   time instantly reverts to `CAPITAL_POLICY_UNAVAILABLE`, with zero
+   code change.
+4. `PositionSizing` remains non-persisted (§21, unchanged) — activation
+   makes the pure per-cycle sizing result available in
+   `WorkflowContext` for that cycle's own consumers; it does not, by
+   itself, add any new persisted row, API endpoint, or dashboard
+   surface.
+
+---
+
+**ID-9 V0 CAPITAL POLICY ACTIVATION READY FOR OWNER VALUES / FINAL
+CLOSURE**
