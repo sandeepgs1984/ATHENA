@@ -6,6 +6,121 @@ status updated on approval.
 
 ---
 
+## ID-7F3 Production-vs-Replay Mode B Shadow Equivalence — Ready for Owner Review
+
+**Summary.** Owner approved and closed ID-7F2 (2026-09-07), then
+authorized ID-7F3 — the already-planned next validation step from
+ID-7F0: independently reconstruct real persisted production
+`EntryActionability` observations and prove the frozen offline
+evaluator reproduces the exact production result, given the exact same
+Decision/EQ identity and point-in-time evidence. Deterministic
+behavioral-equivalence validation only, strictly read-only against
+canonical production data — no methodology change, no backfill, no
+second live evaluator, no production writes.
+
+**What changed.** Added `run_shadow_equivalence` directly to the
+existing `src/athena/data/id7f1_entry_actionability_replay.py` (reusing
+Mode A's `ReadOnlyStore`/`_get_decision`/`_reconstruct_market_evidence`/
+`_validate_binding` verbatim, per the authorization's own "reuse, don't
+duplicate" instruction). For every persisted production
+`entry_actionabilities` row as of a frozen `validation_cutoff`
+(captured before the population query runs, so a live natural cycle
+cannot create a moving denominator): resolves the exact Decision and
+exact upstream `EntryQualification` the row itself names (never
+"latest"), reconstructs the same bounded M5/VWAP/OR15 evidence ID-7E's
+production stage supplies, runs the real unmodified
+`EntryActionabilityEngine` with a fixed diagnostic `evaluated_at`,
+evaluates twice for determinism, and compares the result against the
+persisted artifact on the frozen 19-field comparison mask (mirrors
+`repository._entry_actionability_payload`'s own frozen field list,
+excluding only `run_id`/`cycle_id`/`evaluated_at`/`persisted_at`).
+Mismatches are classified most-specific-first
+(`PROVENANCE_MISMATCH`/`STATE_MISMATCH`/`REASON_MISMATCH`/
+`VALUE_OBJECT_MISMATCH`) rather than a single generic bucket; a
+denormalized-upstream-context mismatch (`decision_type`/`direction`/
+`entry_qualification_state`) is checked before the derived `state`
+field so it is never misreported as a mere state disagreement.
+Scheduled-cycle vs. `symbol_validate`-path equivalence is reported
+separately (descriptive provenance only — one frozen evaluator
+contract governs both).
+
+**Tests.** 23 new tests in
+`tests/data_layer/test_id7f1_entry_actionability_replay.py`:
+comparison-mask exclusion proofs, all four mismatch-classification
+categories (including a genuine mutation/negative proof — a directly
+`UPDATE`d persisted row is caught as a real `REASON_MISMATCH`, never a
+false `EXACT_MATCH`), path classification, validation-cutoff freeze
+semantics, naive-cutoff/naive-`evaluated_at` rejection,
+never-mutates-source-DB, schema-unchanged, a
+zero-`save_entry_actionability`-call-site source scan, and
+infrastructure-failure propagation. Focused file: 58 passed (35
+pre-existing + 23 new). Full repository suite: **3736 passed, 1
+pre-existing unrelated skip, 0 failures** (was 3644 at ID-7F1.1's own
+close; the remaining delta is unrelated Portfolio/EMR work committed
+between milestones).
+
+**Real production run.** Executed against the real, live
+`db/athena.db`, strict read-only, zero writes, zero provider/network
+calls, frozen at `validation_cutoff=2026-09-07T04:15:24.789127+00:00`:
+**488/488 rows reconstructed successfully, 0 binding defects, 0
+PIT-evidence defects, 0 unexpected exceptions, 0 determinism
+mismatches, 0 production-equivalence mismatches — 100% EXACT_MATCH
+(488/488)**, both paths exact (486/486 scheduled-cycle, 2/2
+`symbol_validate`), **`mode_b_acceptance: true`**, schema unchanged
+18→18. Because the production system kept running real cycles
+throughout the audit — exactly the "moving denominator" the frozen
+cutoff exists to control for, not avoid — this run is the **first in
+the entire ID-7 track** to observe genuine `TRADE_QUALIFIED` evidence
+(15 real observations) and genuine persisted `UNKNOWN` EA-state
+evidence (9 real observations), all reconstructed to the exact same
+result as production. `ACTIONABLE`/`LONG` remain not yet observed (all
+real TRADE decisions to date are `SHORT`) — this is unrelated to and
+does not resolve the previously-documented EQ long-bias finding;
+`LONG_VALIDATED_SHORT_UNVALIDATED` stands unchanged.
+
+**Files created:**
+`docs/research/ID-7F3-ENTRY-ACTIONABILITY-PRODUCTION-VS-REPLAY-MODE-B-SHADOW-EQUIVALENCE.md`.
+**Files modified:** `src/athena/data/id7f1_entry_actionability_replay.py`,
+`tests/data_layer/test_id7f1_entry_actionability_replay.py`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. Zero changes to
+`schema.py`/`repository.py`/`entry_actionability_engine.py`/
+`entry_actionability_models.py`/`owner_validation.py`/Decision/ID-6
+methodology/EMR/DarvaX. **No production writes, restart, migration, or
+data modification of any kind** — PID 2453, the schema, and every
+persisted row were left untouched throughout.
+
+**Status: ID-7F3 MODE-B PRODUCTION EQUIVALENCE EXACT — READY FOR OWNER
+/ CHIEF ARCHITECT REVIEW.** Not marked Owner-approved. ID-7F3 does not
+start Mode-B-adjacent work beyond this scope; EMR and DarvaX were not
+touched.
+
+**Suggested commit message** (for the owner to run themselves, per
+CLAUDE.md — no git action taken by the AI):
+
+```
+feat(intraday): add Mode B production-vs-replay shadow equivalence (ID-7F3)
+
+- Added run_shadow_equivalence to id7f1_entry_actionability_replay.py,
+  reusing Mode A's ReadOnlyStore/binding/PIT-reconstruction helpers, to
+  independently reconstruct every persisted production
+  EntryActionability row and compare it against the real artifact on
+  the frozen 19-field comparison mask.
+- Added a most-specific-first mismatch classifier (provenance/state/
+  reason/value-object) and path-specific (scheduled-cycle vs.
+  symbol_validate) reporting, with a frozen validation_cutoff so a
+  live natural cycle cannot create a moving denominator.
+- Added 23 focused tests including a mutation/negative proof that a
+  corrupted persisted row is caught, not silently reported as a match;
+  full suite 3736 passed.
+- Ran the harness against the real production database read-only:
+  488/488 rows exact match, 0 defects of any kind, including the
+  track's first-ever real TRADE+QUALIFIED and UNKNOWN observations.
+- Recorded ID-7F2's Owner approval/closure in the same change set.
+```
+
+---
+
 ## ID-7F2 Activation Provenance + Post-Activation Canonical Canary Review — Ready for Owner Review
 
 **Summary.** Resuming ID-7F2 on the authorized next trading day

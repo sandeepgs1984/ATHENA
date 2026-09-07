@@ -14,6 +14,7 @@ import dataclasses
 import inspect
 import json
 import os
+import sqlite3
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -24,8 +25,11 @@ import pytest
 from athena.data import id7f1_entry_actionability_replay as m
 from athena.data.id7f1_entry_actionability_replay import (
     DEFAULT_REPLAY_EVALUATED_AT,
+    _classify_mismatch,
     _empirical_availability,
     _evidence_availability,
+    _identity_tuple,
+    _methodology_payload,
     _population_inventory,
     _validate_binding,
     _watch_invariant_check,
@@ -33,6 +37,7 @@ from athena.data.id7f1_entry_actionability_replay import (
     partition_duplicates,
     pct,
     run_replay,
+    run_shadow_equivalence,
 )
 from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
@@ -708,3 +713,283 @@ def test_replay_acceptance_true_on_the_clean_seeded_watch_population(
     assert summary["replay_acceptance"] is True
     assert summary["observations_with_defects"] == 0
     assert summary["unexpected_replay_exceptions"]["total"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# ID-7F3: Mode B production-vs-replay shadow equivalence
+#
+# `seeded_watch_db`/`_seed_forced_trade_db` already produce real,
+# genuinely persisted `entry_actionabilities` rows (via the same
+# `OwnerValidationPipeline` ID-7E wired `entry_actionability_stage`
+# into), so Mode B can be exercised against them directly -- the
+# comparison population IS the persisted table, never re-derived from
+# `entry_qualifications` the way Mode A's population is.
+# --------------------------------------------------------------------------- #
+
+
+def _minimal_ea(**overrides):
+    from athena.intraday import EntryActionability
+    from athena.intraday.entry_actionability_models import (
+        EntryActionabilityReasonCode,
+        EntryActionabilityState,
+        EntryEvidenceFinality,
+    )
+
+    kwargs = dict(
+        instrument_id="NSE:AAA", session_date=AS_OF.date(),
+        entry_qualification_as_of=AS_OF, decision_id="d1",
+        entry_qualification_methodology_version="entry-qualification-v0",
+        entry_actionability_as_of=AS_OF,
+        entry_actionability_methodology_version="entry-actionability-v0",
+        decision_type=DecisionType.WATCH, direction=Direction.NONE,
+        entry_qualification_state=EntryQualificationState.EXPIRED,
+        run_id="run-1", cycle_id="cyc-1",
+        state=EntryActionabilityState.NOT_ACTIONABLE,
+        reason_codes=(
+            EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,
+            EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,
+        ),
+        evidence_finality=EntryEvidenceFinality.UNKNOWN_PROVENANCE,
+        evidence_as_of=None, entry_reference=None, entry_location_context=None,
+        operative_invalidation=None, reward=None, opening_range_context=None,
+        evaluated_at=DEFAULT_REPLAY_EVALUATED_AT, explanation="not actionable",
+    )
+    kwargs.update(overrides)
+    return EntryActionability(**kwargs)
+
+
+def test_methodology_payload_ignores_run_id_cycle_id_and_evaluated_at() -> None:
+    a = _minimal_ea(run_id="run-1", cycle_id="cyc-1", evaluated_at=DEFAULT_REPLAY_EVALUATED_AT)
+    b = _minimal_ea(
+        run_id="run-DIFFERENT", cycle_id="cyc-DIFFERENT",
+        evaluated_at=datetime(2099, 1, 1, tzinfo=IST),
+    )
+    assert _methodology_payload(a) == _methodology_payload(b)
+    assert _identity_tuple(a) == _identity_tuple(b)
+
+
+def test_identity_tuple_disagrees_on_a_real_identity_difference() -> None:
+    a = _minimal_ea()
+    b = _minimal_ea(instrument_id="NSE:BBB")
+    assert _identity_tuple(a) != _identity_tuple(b)
+
+
+def test_classify_mismatch_denormalized_context_checked_before_state() -> None:
+    """A genuinely different upstream Decision/EQ context (decision_type/
+    entry_qualification_state) is a deeper disagreement than the derived
+    `state` value, so it must classify PROVENANCE_MISMATCH -- checked
+    BEFORE the state comparison, never silently collapsed into
+    STATE_MISMATCH just because `state` also happens to differ."""
+    from athena.intraday.entry_actionability_models import (
+        EntryActionabilityReasonCode,
+        EntryActionabilityState,
+    )
+
+    a = _minimal_ea(
+        decision_type=DecisionType.TRADE,
+        entry_qualification_state=EntryQualificationState.QUALIFIED,
+        state=EntryActionabilityState.UNKNOWN,
+        reason_codes=(EntryActionabilityReasonCode.INSUFFICIENT_EVIDENCE,),
+    )
+    b = _minimal_ea(
+        decision_type=DecisionType.WATCH,
+        entry_qualification_state=EntryQualificationState.EXPIRED,
+        state=EntryActionabilityState.NOT_ACTIONABLE,
+        reason_codes=(EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,),
+    )
+    kind, detail = _classify_mismatch(a, b)
+    assert kind == "PROVENANCE_MISMATCH"
+    assert "decision_type" in detail
+
+
+def test_classify_mismatch_reason_mismatch() -> None:
+    from athena.intraday.entry_actionability_models import EntryActionabilityReasonCode
+
+    a = _minimal_ea(reason_codes=(EntryActionabilityReasonCode.UPSTREAM_DECISION_NOT_TRADE,))
+    b = _minimal_ea(reason_codes=(EntryActionabilityReasonCode.UPSTREAM_EQ_NOT_QUALIFIED,))
+    kind, _ = _classify_mismatch(a, b)
+    assert kind == "REASON_MISMATCH"
+
+
+def test_classify_mismatch_identity_difference_is_provenance_mismatch() -> None:
+    a = _minimal_ea()
+    b = _minimal_ea(instrument_id="NSE:BBB")
+    kind, _ = _classify_mismatch(a, b)
+    assert kind == "PROVENANCE_MISMATCH"
+
+
+def test_run_shadow_equivalence_matches_persisted_watch_row(
+    seeded_watch_db: Path, tmp_path: Path
+) -> None:
+    summary = run_shadow_equivalence(
+        db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out",
+    )
+    assert summary["population_total"] == 1
+    assert summary["rows_reconstructed_successfully"] == 1
+    assert summary["binding_defects"] == 0
+    assert summary["pit_evidence_defects"] == 0
+    assert summary["determinism_mismatches"] == 0
+    assert summary["production_equivalence_mismatches"]["total"] == 0
+    assert summary["exact_match_count"] == 1
+    assert summary["mode_b_acceptance"] is True
+    assert summary["path_specific"]["scheduled_cycle"]["observations"] == 1
+    assert summary["path_specific"]["symbol_validate"]["observations"] == 0
+
+
+def test_run_shadow_equivalence_matches_persisted_trade_qualified_actionable_row(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    db_path = _seed_forced_trade_db(tmp_path, force_qualified=True, monkeypatch=monkeypatch)
+    summary = run_shadow_equivalence(db_path=db_path, config_dir=Path("config"), output_dir=tmp_path / "out")
+    assert summary["mode_b_acceptance"] is True
+    assert summary["production_equivalence_mismatches"]["total"] == 0
+    assert summary["persisted_ea_state_distribution"]["ACTIONABLE"]["count"] == 1
+    assert summary["empirical_availability"]["trade_qualified"] == "TRADE_QUALIFIED_AVAILABLE"
+    assert summary["empirical_availability"]["actionable"] == "ACTIONABLE_AVAILABLE"
+
+
+def test_run_shadow_equivalence_matches_persisted_trade_non_qualified_row(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    db_path = _seed_forced_trade_db(tmp_path, force_qualified=False, monkeypatch=monkeypatch)
+    summary = run_shadow_equivalence(db_path=db_path, config_dir=Path("config"), output_dir=tmp_path / "out")
+    assert summary["mode_b_acceptance"] is True
+    assert summary["persisted_ea_state_distribution"]["NOT_ACTIONABLE"]["count"] == 1
+
+
+def test_run_shadow_equivalence_detects_a_genuine_production_mismatch(
+    seeded_watch_db: Path, tmp_path: Path,
+) -> None:
+    """Mutation/negative proof: if the persisted production row disagreed
+    with what the frozen evaluator would independently produce, Mode B
+    must catch it -- never silently report a false EXACT_MATCH."""
+    conn = sqlite3.connect(seeded_watch_db)
+    conn.execute(
+        "UPDATE entry_actionabilities SET reason_codes_json=? WHERE instrument_id='NSE:AAA'",
+        ('["UPSTREAM_EQ_NOT_QUALIFIED"]',),
+    )
+    conn.commit()
+    conn.close()
+
+    summary = run_shadow_equivalence(
+        db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out",
+    )
+    assert summary["mode_b_acceptance"] is False
+    assert summary["production_equivalence_mismatches"]["total"] == 1
+    assert summary["production_equivalence_mismatches"]["by_kind"]["REASON_MISMATCH"] == 1
+    assert summary["exact_match_count"] == 0
+
+
+def test_run_shadow_equivalence_path_classification_symbol_validate(
+    seeded_watch_db: Path, tmp_path: Path,
+) -> None:
+    """`OwnerValidationPipeline.run(...)` alone (this fixture's own seed
+    path) never writes a `runs` row -- that is a separate caller's
+    responsibility (the real scheduled-cycle orchestrator) -- so a
+    `runs` row is inserted directly here purely to exercise the
+    path-classification join; no domain/pipeline behavior is touched."""
+    conn = sqlite3.connect(seeded_watch_db)
+    conn.execute(
+        "INSERT INTO runs (run_id, cycle_id, trigger, started_ts, status, "
+        "software_version, blueprint_version, strategy_profile, "
+        "strategy_profile_version, indicator_versions_json, config_snapshot_id) "
+        "VALUES ('run-id7f1-seed','cyc-1','PREMARKET',?,'COMPLETED','test','test','test','test','{}',"
+        "'cfg-symbol-validate')",
+        (AS_OF.isoformat(),),
+    )
+    conn.commit()
+    conn.close()
+
+    summary = run_shadow_equivalence(
+        db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out",
+    )
+    assert summary["path_specific"]["symbol_validate"]["observations"] == 1
+    assert summary["path_specific"]["symbol_validate"]["exact_match"] == 1
+    assert summary["path_specific"]["scheduled_cycle"]["observations"] == 0
+
+
+def test_run_shadow_equivalence_validation_cutoff_excludes_later_rows(
+    seeded_watch_db: Path, tmp_path: Path,
+) -> None:
+    """A cutoff strictly before the only persisted row's `persisted_at`
+    must exclude it -- proving the frozen-denominator semantics rather
+    than always reading the live table."""
+    conn = sqlite3.connect(seeded_watch_db)
+    row = conn.execute("SELECT MIN(persisted_at) FROM entry_actionabilities").fetchone()
+    persisted_at = datetime.fromisoformat(row[0])
+    conn.close()
+
+    cutoff_before = persisted_at - timedelta(seconds=1)
+    summary = run_shadow_equivalence(
+        db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out",
+        validation_cutoff=cutoff_before,
+    )
+    assert summary["population_total"] == 0
+    assert summary["rows_reconstructed_successfully"] == 0
+
+
+def test_run_shadow_equivalence_never_mutates_the_source_db(
+    seeded_watch_db: Path, tmp_path: Path,
+) -> None:
+    before = seeded_watch_db.read_bytes()
+    run_shadow_equivalence(db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out")
+    after = seeded_watch_db.read_bytes()
+    assert before == after
+
+
+def test_run_shadow_equivalence_schema_version_unchanged(
+    seeded_watch_db: Path, tmp_path: Path,
+) -> None:
+    summary = run_shadow_equivalence(db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out")
+    assert summary["metadata"]["schema_version_unchanged"] is True
+
+
+def test_run_shadow_equivalence_rejects_naive_validation_cutoff(
+    seeded_watch_db: Path, tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError):
+        run_shadow_equivalence(
+            db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out",
+            validation_cutoff=datetime(2026, 1, 1),
+        )
+
+
+def test_run_shadow_equivalence_rejects_naive_evaluated_at(
+    seeded_watch_db: Path, tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError):
+        run_shadow_equivalence(
+            db_path=seeded_watch_db, config_dir=Path("config"), output_dir=tmp_path / "out",
+            evaluated_at=datetime(2026, 1, 1),
+        )
+
+
+def test_run_shadow_equivalence_excludes_evaluated_at_and_persisted_at_from_comparison_mask() -> None:
+    from athena.data.id7f1_entry_actionability_replay import _summarize_shadow_equivalence
+    summary = _summarize_shadow_equivalence(
+        observations=[], defects=[], mismatches=[], unexpected_exceptions=[],
+        population_total=0, unique_population_total=0, duplicate_population_total=0,
+        rows_attempted=0, db_path=Path("x"), schema_version_start=18, schema_version_end=18,
+        validation_cutoff=DEFAULT_REPLAY_EVALUATED_AT, evaluated_at=DEFAULT_REPLAY_EVALUATED_AT,
+        started=0.0, output_dir=Path(__file__).parent / "_tmp_id7f3_mask_test",
+    )
+    excluded = set(summary["metadata"]["comparison_mask_excluded_fields"])
+    assert excluded == {"run_id", "cycle_id", "evaluated_at", "persisted_at"}
+    import shutil
+    shutil.rmtree(Path(__file__).parent / "_tmp_id7f3_mask_test", ignore_errors=True)
+
+
+def test_no_save_entry_actionability_call_in_shadow_equivalence_source() -> None:
+    """Mode B must never write a production row -- confirmed by direct
+    source scan, mirroring the module's own existing zero-persistence-
+    write proof for Mode A. Checks the call-site pattern, not the bare
+    identifier, since the module docstring mentions the name in prose."""
+    source = inspect.getsource(m)
+    assert "save_entry_actionability(" not in source
+    assert "INSERT INTO entry_actionabilities" not in source
+
+
+def test_infrastructure_failure_to_open_db_still_propagates_shadow_equivalence(tmp_path: Path) -> None:
+    missing_db = tmp_path / "does-not-exist.db"
+    with pytest.raises(Exception):
+        run_shadow_equivalence(db_path=missing_db, config_dir=Path("config"), output_dir=tmp_path / "out")

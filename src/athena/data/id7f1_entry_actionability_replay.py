@@ -21,9 +21,11 @@ using the data representation this replay reads now -- never a claim
 about what ATHENA knew live at that historical instant (no bitemporal
 knowledge-time replay is supported or claimed). Mode B (production
 shadow equivalence against real persisted `EntryActionability` rows) is
-explicitly NOT implemented here -- ID-7F0 §36 found the live database
-has neither the schema-v18 migration nor any real `EntryActionability`
-rows yet.
+implemented below as `run_shadow_equivalence` -- added by ID-7F3, once
+production activation (ID-7F2) established a real `entry_actionabilities`
+population to compare against (ID-7F0's own report found neither the
+schema-v18 migration nor any real row existed yet when Mode A was
+written).
 
 Failure classification (ID-7F0 §35, frozen): a Decision missing or
 disagreeing with its bound EntryQualification on identity fields is
@@ -644,6 +646,565 @@ def _replay_acceptance(
         and m5_vwap_checkpoint_violations == 0
         and watch_invariant_violations == 0
     )
+
+
+# --------------------------------------------------------------------------- #
+# Mode B: production-vs-replay shadow equivalence (ID-7F3)
+# --------------------------------------------------------------------------- #
+
+#: The frozen ID-7F0 20-field shadow-equivalence set, excluding only
+#: `evaluated_at`/`persisted_at` (ID-7F0 §appendix / ATHENA_BRIEFING).
+#: Mirrors `athena.data.store.repository._entry_actionability_payload`'s
+#: own frozen conflict-detection field list exactly (identity fields are
+#: compared separately, in `_identity_tuple`, since a real mismatch there
+#: would mean this harness resolved the WRONG upstream Decision/EQ, not a
+#: methodology difference).
+_ENTRY_ACTIONABILITY_COLUMNS = (
+    "instrument_id, session_date, entry_qualification_as_of, decision_id, "
+    "entry_qualification_methodology_version, entry_actionability_as_of, "
+    "entry_actionability_methodology_version, run_id, cycle_id, decision_type, "
+    "direction, entry_qualification_state, state, reason_codes_json, "
+    "evidence_finality, evidence_as_of, entry_reference_json, "
+    "entry_location_context_json, operative_invalidation_json, reward_json, "
+    "opening_range_context_json, evaluated_at, explanation"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class EquivalenceMismatch:
+    """One persisted production `EntryActionability` observation whose
+    independently reconstructed methodology output disagrees with the
+    persisted artifact -- always specific, never a generic bucket."""
+
+    instrument_id: str
+    session_date: str
+    decision_id: str
+    entry_qualification_as_of: str
+    entry_actionability_as_of: str
+    kind: str
+    detail: str
+    path: str
+
+
+def _identity_tuple(ea) -> tuple:
+    """The 7-field composite identity -- trivially expected to match
+    since the reconstructed observation is built from the SAME identity
+    fields the persisted row itself carries; compared anyway as a
+    defense-in-depth proof that this harness resolved the correct
+    upstream Decision/EQ pair, never a substitute lookup."""
+    return (
+        ea.instrument_id, ea.session_date, ea.entry_qualification_as_of,
+        ea.decision_id, ea.entry_qualification_methodology_version,
+        ea.entry_actionability_as_of, ea.entry_actionability_methodology_version,
+    )
+
+
+def _methodology_payload(ea) -> tuple:
+    """The frozen methodology-bearing field set -- excludes only
+    `run_id`/`cycle_id` (denormalized audit context, not methodology),
+    and `evaluated_at` (diagnostic wall-clock only, per
+    `EntryActionability`'s own docstring and
+    `repository._entry_actionability_payload`'s identical exclusion).
+    `persisted_at` is not a domain-object field at all (write/audit
+    metadata carried only by the repository), so it is excluded by
+    construction, never by an explicit field drop here."""
+    return (
+        ea.decision_type, ea.direction, ea.entry_qualification_state,
+        ea.state, ea.reason_codes, ea.evidence_finality, ea.evidence_as_of,
+        ea.entry_reference, ea.entry_location_context, ea.operative_invalidation,
+        ea.reward, ea.opening_range_context, ea.explanation,
+    )
+
+
+def _classify_mismatch(reconstructed, persisted) -> tuple[str, str]:
+    """Field-by-field, most-specific-first classification of a genuine
+    methodology disagreement -- never a single generic bucket (§11)."""
+    if _identity_tuple(reconstructed) != _identity_tuple(persisted):
+        return "PROVENANCE_MISMATCH", (
+            f"identity mismatch: reconstructed={_identity_tuple(reconstructed)!r} "
+            f"persisted={_identity_tuple(persisted)!r}"
+        )
+    if (
+        reconstructed.decision_type != persisted.decision_type
+        or reconstructed.direction != persisted.direction
+        or reconstructed.entry_qualification_state != persisted.entry_qualification_state
+    ):
+        return "PROVENANCE_MISMATCH", (
+            f"denormalized upstream context: reconstructed decision_type="
+            f"{reconstructed.decision_type!r} direction={reconstructed.direction!r} "
+            f"eq_state={reconstructed.entry_qualification_state!r}; persisted "
+            f"decision_type={persisted.decision_type!r} direction={persisted.direction!r} "
+            f"eq_state={persisted.entry_qualification_state!r}"
+        )
+    if reconstructed.state != persisted.state:
+        return "STATE_MISMATCH", f"state: reconstructed={reconstructed.state!r} persisted={persisted.state!r}"
+    if reconstructed.reason_codes != persisted.reason_codes:
+        return "REASON_MISMATCH", (
+            f"reason_codes: reconstructed={reconstructed.reason_codes!r} "
+            f"persisted={persisted.reason_codes!r}"
+        )
+    if (
+        reconstructed.entry_reference != persisted.entry_reference
+        or reconstructed.entry_location_context != persisted.entry_location_context
+        or reconstructed.operative_invalidation != persisted.operative_invalidation
+        or reconstructed.reward != persisted.reward
+        or reconstructed.opening_range_context != persisted.opening_range_context
+    ):
+        return "VALUE_OBJECT_MISMATCH", (
+            f"value objects differ: reconstructed entry_reference={reconstructed.entry_reference!r} "
+            f"persisted entry_reference={persisted.entry_reference!r}; "
+            f"reconstructed invalidation={reconstructed.operative_invalidation!r} "
+            f"persisted invalidation={persisted.operative_invalidation!r}; "
+            f"reconstructed reward={reconstructed.reward!r} persisted reward={persisted.reward!r}; "
+            f"reconstructed or15={reconstructed.opening_range_context!r} "
+            f"persisted or15={persisted.opening_range_context!r}; "
+            f"reconstructed entry_location={reconstructed.entry_location_context!r} "
+            f"persisted entry_location={persisted.entry_location_context!r}"
+        )
+    if (
+        reconstructed.evidence_finality != persisted.evidence_finality
+        or reconstructed.evidence_as_of != persisted.evidence_as_of
+    ):
+        return "PROVENANCE_MISMATCH", (
+            f"evidence provenance: reconstructed finality={reconstructed.evidence_finality!r} "
+            f"as_of={reconstructed.evidence_as_of!r}; persisted "
+            f"finality={persisted.evidence_finality!r} as_of={persisted.evidence_as_of!r}"
+        )
+    return "VALUE_OBJECT_MISMATCH", (
+        f"explanation text differs: reconstructed={reconstructed.explanation!r} "
+        f"persisted={persisted.explanation!r}"
+    )
+
+
+def _load_production_population(
+    store: ReadOnlyStore, *, validation_cutoff: datetime,
+) -> list[tuple[Any, str, str]]:
+    """Every persisted production `EntryActionability` row with
+    `persisted_at <= validation_cutoff` -- the frozen Mode-B comparison
+    population, snapshotted at one cutoff so rows arriving mid-audit
+    (a live natural cycle ticking while this runs) cannot create a
+    moving denominator. Returns (EntryActionability, persisted_at,
+    config_snapshot_id) tuples; `config_snapshot_id` (joined from
+    `runs`) is the path-provenance signal -- `'cfg-symbol-validate'` is
+    the on-demand single-symbol Validate path, anything else is a
+    scheduled canonical cycle."""
+    rows = store.conn.execute(
+        f"SELECT {_ENTRY_ACTIONABILITY_COLUMNS}, persisted_at "
+        "FROM entry_actionabilities WHERE persisted_at <= ? "
+        "ORDER BY instrument_id, session_date, entry_qualification_as_of, decision_id",
+        (validation_cutoff.isoformat(),),
+    ).fetchall()
+    out: list[tuple[Any, str, str]] = []
+    for row in rows:
+        ea = ser.row_to_entry_actionability(tuple(row)[:-1])
+        persisted_at = row[-1]
+        config_row = store.conn.execute(
+            "SELECT config_snapshot_id FROM runs WHERE run_id=?", (ea.run_id,)
+        ).fetchone()
+        config_snapshot_id = config_row[0] if config_row else None
+        path = "symbol_validate" if config_snapshot_id == "cfg-symbol-validate" else "scheduled_cycle"
+        out.append((ea, persisted_at, path))
+    return out
+
+
+def run_shadow_equivalence(
+    *,
+    db_path: Path,
+    config_dir: Path,
+    output_dir: Path,
+    validation_cutoff: datetime | None = None,
+    evaluated_at: datetime = DEFAULT_REPLAY_EVALUATED_AT,
+) -> dict[str, Any]:
+    """ID-7F3 Mode B: for every persisted production `EntryActionability`
+    row (as of ``validation_cutoff``), independently resolve the exact
+    upstream Decision + EntryQualification identity it names, reconstruct
+    the same bounded point-in-time evidence ID-7E's production stage
+    would have supplied, run the real unmodified `EntryActionabilityEngine`,
+    and compare the reconstructed result against the persisted production
+    artifact on every methodology-bearing field. Never writes to
+    ``db_path``; never calls `save_entry_actionability`; never calls a
+    provider/network; output goes only to disposable JSON/JSONL under
+    ``output_dir``.
+
+    ``validation_cutoff`` defaults to "now" (UTC) captured before the
+    population query runs, freezing the denominator against concurrent
+    natural-cycle writes.
+    """
+    if evaluated_at.tzinfo is None:
+        raise ValueError("run_shadow_equivalence evaluated_at must be timezone-aware")
+    if validation_cutoff is None:
+        validation_cutoff = datetime.now(timezone.utc)
+    if validation_cutoff.tzinfo is None:
+        raise ValueError("run_shadow_equivalence validation_cutoff must be timezone-aware")
+
+    started = time.perf_counter()
+    cfg = load_config(config_dir)
+    calendar = CalendarEngine.from_config_dir(config_dir, cfg.market)
+    tzinfo = ZoneInfo(cfg.market.timezone)
+    indicator_engine = IndicatorEngine(cfg.indicators)
+    session_engine = SessionContextEngine()
+    opening_range_engine = OpeningRangeEngine()
+    engine = EntryActionabilityEngine()
+
+    store = ReadOnlyStore(db_path)
+    schema_version_start = store.conn.execute("SELECT version FROM schema_version").fetchone()
+    schema_version_start = int(schema_version_start[0]) if schema_version_start else None
+
+    observations: list[dict[str, Any]] = []
+    defects: list[ReplayDefect] = []
+    mismatches: list[EquivalenceMismatch] = []
+    unexpected_exceptions: list[UnexpectedReplayException] = []
+
+    try:
+        population = _load_production_population(store, validation_cutoff=validation_cutoff)
+        population_total = len(population)
+        # A duplicate logical identity is structurally prevented by the
+        # table's own composite PRIMARY KEY (schema.py) -- this harness
+        # additionally partitions on the SAME EA identity (not the
+        # upstream EQ identity `partition_duplicates` uses for Mode A)
+        # purely as defense-in-depth, never relied upon for correctness.
+        seen_ea_identity: set[tuple] = set()
+        unique_population: list[tuple[Any, str, str]] = []
+        duplicate_population_total = 0
+        for ea, persisted_at, path in population:
+            identity = _identity_tuple(ea)
+            if identity in seen_ea_identity:
+                duplicate_population_total += 1
+                continue
+            seen_ea_identity.add(identity)
+            unique_population.append((ea, persisted_at, path))
+        unique_population_total = len(unique_population)
+        rows_attempted = unique_population_total
+
+        for persisted, persisted_at, path in unique_population:
+            eq_row = store.conn.execute(
+                f"SELECT {_ENTRY_QUALIFICATION_COLUMNS} FROM entry_qualifications "
+                "WHERE instrument_id=? AND session_date=? AND as_of=? AND decision_id=? "
+                "AND methodology_version=?",
+                (
+                    persisted.instrument_id, persisted.session_date.isoformat(),
+                    persisted.entry_qualification_as_of.isoformat(), persisted.decision_id,
+                    persisted.entry_qualification_methodology_version,
+                ),
+            ).fetchone()
+            decision = _get_decision(store, persisted.decision_id)
+            eq = ser.row_to_entry_qualification(tuple(eq_row)) if eq_row is not None else None
+
+            if eq is None:
+                defects.append(ReplayDefect(
+                    instrument_id=persisted.instrument_id,
+                    session_date=persisted.session_date.isoformat(),
+                    decision_id=persisted.decision_id,
+                    entry_qualification_as_of=persisted.entry_qualification_as_of.isoformat(),
+                    kind="BINDING_MISMATCH",
+                    detail="no exact EntryQualification row found for the identity the "
+                           "persisted EntryActionability itself names",
+                ))
+                continue
+            binding_error = _validate_binding(eq, decision)
+            if binding_error is not None:
+                defects.append(ReplayDefect(
+                    instrument_id=persisted.instrument_id,
+                    session_date=persisted.session_date.isoformat(),
+                    decision_id=persisted.decision_id,
+                    entry_qualification_as_of=persisted.entry_qualification_as_of.isoformat(),
+                    kind="BINDING_MISMATCH", detail=binding_error,
+                ))
+                continue
+            assert decision is not None
+
+            try:
+                try:
+                    market_evidence, descriptive = _reconstruct_market_evidence(
+                        eq, store=store, session_engine=session_engine,
+                        opening_range_engine=opening_range_engine,
+                        indicator_engine=indicator_engine, calendar=calendar, tzinfo=tzinfo,
+                        exchange=cfg.market.exchange, sessions_cfg=cfg.market.sessions,
+                    )
+                    ea_first = engine.evaluate(
+                        decision=decision, entry_qualification=eq,
+                        market_evidence=market_evidence, evaluated_at=evaluated_at, policy=None,
+                    )
+                    # Determinism -- full independent second reconstruction
+                    # + re-evaluation, mirroring Mode A's own proof (never
+                    # merely re-calling evaluate() on cached objects).
+                    market_evidence_2, _ = _reconstruct_market_evidence(
+                        eq, store=store, session_engine=session_engine,
+                        opening_range_engine=opening_range_engine,
+                        indicator_engine=indicator_engine, calendar=calendar, tzinfo=tzinfo,
+                        exchange=cfg.market.exchange, sessions_cfg=cfg.market.sessions,
+                    )
+                    ea_second = engine.evaluate(
+                        decision=decision, entry_qualification=eq,
+                        market_evidence=market_evidence_2, evaluated_at=evaluated_at, policy=None,
+                    )
+                except ValueError as exc:
+                    defects.append(ReplayDefect(
+                        instrument_id=persisted.instrument_id,
+                        session_date=persisted.session_date.isoformat(),
+                        decision_id=persisted.decision_id,
+                        entry_qualification_as_of=persisted.entry_qualification_as_of.isoformat(),
+                        kind="PIT_EVIDENCE_MISMATCH", detail=f"{type(exc).__name__}: {exc}",
+                    ))
+                    continue
+            except Exception as exc:  # noqa: BLE001 -- deliberate, narrow, documented (Mode A precedent)
+                unexpected_exceptions.append(UnexpectedReplayException(
+                    instrument_id=persisted.instrument_id,
+                    session_date=persisted.session_date.isoformat(),
+                    decision_id=persisted.decision_id,
+                    entry_qualification_as_of=persisted.entry_qualification_as_of.isoformat(),
+                    exception_type=type(exc).__name__, detail=str(exc),
+                ))
+                continue
+
+            deterministic_match = _methodology_payload(ea_first) == _methodology_payload(ea_second)
+            if not deterministic_match:
+                defects.append(ReplayDefect(
+                    instrument_id=persisted.instrument_id,
+                    session_date=persisted.session_date.isoformat(),
+                    decision_id=persisted.decision_id,
+                    entry_qualification_as_of=persisted.entry_qualification_as_of.isoformat(),
+                    kind="REPLAY_EQUIVALENCE_DEFECT",
+                    detail="two independent reconstructions of the identical production "
+                           "checkpoint produced different EntryActionability results",
+                ))
+
+            production_match = (
+                _identity_tuple(ea_first) == _identity_tuple(persisted)
+                and _methodology_payload(ea_first) == _methodology_payload(persisted)
+            )
+            if not production_match:
+                kind, detail = _classify_mismatch(ea_first, persisted)
+                mismatches.append(EquivalenceMismatch(
+                    instrument_id=persisted.instrument_id,
+                    session_date=persisted.session_date.isoformat(),
+                    decision_id=persisted.decision_id,
+                    entry_qualification_as_of=persisted.entry_qualification_as_of.isoformat(),
+                    entry_actionability_as_of=persisted.entry_actionability_as_of.isoformat(),
+                    kind=kind, detail=detail, path=path,
+                ))
+
+            observations.append({
+                "instrument_id": persisted.instrument_id,
+                "session_date": persisted.session_date.isoformat(),
+                "decision_id": persisted.decision_id,
+                "decision_type": persisted.decision_type.value,
+                "direction": persisted.direction.value,
+                "run_id": persisted.run_id,
+                "cycle_id": persisted.cycle_id,
+                "path": path,
+                "persisted_at": persisted_at,
+                "eq_as_of": persisted.entry_qualification_as_of.isoformat(),
+                "eq_state": persisted.entry_qualification_state.value,
+                "persisted_ea_state": persisted.state.value,
+                "reconstructed_ea_state": ea_first.state.value,
+                "reconstructed_completed_m5_ts": descriptive["completed_m5_ts"],
+                "reconstructed_session_vwap": descriptive["session_vwap"],
+                "reconstructed_or15_status": descriptive["or15_status"],
+                "deterministic_match": deterministic_match,
+                "production_match": production_match,
+            })
+    finally:
+        schema_version_end = store.conn.execute("SELECT version FROM schema_version").fetchone()
+        schema_version_end = int(schema_version_end[0]) if schema_version_end else None
+        store.close()
+
+    return _summarize_shadow_equivalence(
+        observations=observations, defects=defects, mismatches=mismatches,
+        unexpected_exceptions=unexpected_exceptions,
+        population_total=population_total, unique_population_total=unique_population_total,
+        duplicate_population_total=duplicate_population_total, rows_attempted=rows_attempted,
+        db_path=db_path, schema_version_start=schema_version_start,
+        schema_version_end=schema_version_end, validation_cutoff=validation_cutoff,
+        evaluated_at=evaluated_at, started=started, output_dir=output_dir,
+    )
+
+
+def _path_split(observations: list[dict[str, Any]], path: str) -> dict[str, Any]:
+    subset = [o for o in observations if o["path"] == path]
+    total = len(subset)
+    matched = sum(1 for o in subset if o["production_match"])
+    return {
+        "observations": total,
+        "exact_match": matched,
+        "exact_match_pct": pct(matched, total),
+    }
+
+
+def _summarize_shadow_equivalence(
+    *,
+    observations: list[dict[str, Any]],
+    defects: list[ReplayDefect],
+    mismatches: list[EquivalenceMismatch],
+    unexpected_exceptions: list[UnexpectedReplayException],
+    population_total: int,
+    unique_population_total: int,
+    duplicate_population_total: int,
+    rows_attempted: int,
+    db_path: Path,
+    schema_version_start: int | None,
+    schema_version_end: int | None,
+    validation_cutoff: datetime,
+    evaluated_at: datetime,
+    started: float,
+    output_dir: Path,
+) -> dict[str, Any]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    obs_path = output_dir / "id7f3_observations.jsonl"
+    with obs_path.open("w", encoding="utf-8") as fh:
+        for obs in observations:
+            fh.write(json.dumps(obs, sort_keys=True) + "\n")
+    defects_path = output_dir / "id7f3_defects.jsonl"
+    with defects_path.open("w", encoding="utf-8") as fh:
+        for d in defects:
+            fh.write(json.dumps({
+                "instrument_id": d.instrument_id, "session_date": d.session_date,
+                "decision_id": d.decision_id,
+                "entry_qualification_as_of": d.entry_qualification_as_of,
+                "kind": d.kind, "detail": d.detail,
+            }, sort_keys=True) + "\n")
+    mismatches_path = output_dir / "id7f3_mismatches.jsonl"
+    with mismatches_path.open("w", encoding="utf-8") as fh:
+        for m in mismatches:
+            fh.write(json.dumps({
+                "instrument_id": m.instrument_id, "session_date": m.session_date,
+                "decision_id": m.decision_id,
+                "entry_qualification_as_of": m.entry_qualification_as_of,
+                "entry_actionability_as_of": m.entry_actionability_as_of,
+                "kind": m.kind, "detail": m.detail, "path": m.path,
+            }, sort_keys=True) + "\n")
+    unexpected_path = output_dir / "id7f3_unexpected_exceptions.jsonl"
+    with unexpected_path.open("w", encoding="utf-8") as fh:
+        for e in unexpected_exceptions:
+            fh.write(json.dumps({
+                "instrument_id": e.instrument_id, "session_date": e.session_date,
+                "decision_id": e.decision_id,
+                "entry_qualification_as_of": e.entry_qualification_as_of,
+                "exception_type": e.exception_type, "detail": e.detail,
+            }, sort_keys=True) + "\n")
+
+    defect_kind_counts = Counter(d.kind for d in defects)
+    binding_defects = defect_kind_counts.get("BINDING_MISMATCH", 0)
+    pit_evidence_defects = defect_kind_counts.get("PIT_EVIDENCE_MISMATCH", 0)
+    determinism_mismatches = defect_kind_counts.get("REPLAY_EQUIVALENCE_DEFECT", 0)
+    observations_with_defects = len({
+        (d.instrument_id, d.session_date, d.decision_id, d.entry_qualification_as_of)
+        for d in defects
+    })
+    mismatch_kind_counts = Counter(m.kind for m in mismatches)
+    exact_match_count = sum(1 for o in observations if o["production_match"])
+    total_reconstructed = len(observations)
+
+    watch_obs = [o for o in observations if o["decision_type"] == "WATCH"]
+    trade_obs = [o for o in observations if o["decision_type"] == "TRADE"]
+    actionable_obs = [o for o in observations if o["reconstructed_ea_state"] == "ACTIONABLE"]
+    unknown_obs = [o for o in observations if o["reconstructed_ea_state"] == "UNKNOWN"]
+    long_obs = [o for o in observations if o["direction"] == "LONG"]
+    short_obs = [o for o in observations if o["direction"] == "SHORT"]
+    trade_qualified_obs = [o for o in trade_obs if o["eq_state"] == "QUALIFIED"]
+
+    def _avail(rows: list, label: str) -> str:
+        return f"{label}_NOT_AVAILABLE" if not rows else f"{label}_AVAILABLE"
+
+    acceptance = (
+        binding_defects == 0
+        and pit_evidence_defects == 0
+        and len(unexpected_exceptions) == 0
+        and determinism_mismatches == 0
+        and len(mismatches) == 0
+    )
+
+    summary: dict[str, Any] = {
+        "metadata": {
+            "milestone": "ID-7F3",
+            "label": "production-vs-replay Mode B shadow equivalence -- independent "
+                      "reconstruction of persisted production EntryActionability rows, "
+                      "compared field-by-field against the real production artifact",
+            "source_db_path": str(db_path),
+            "schema_version_observed_at_start": schema_version_start,
+            "schema_version_observed_at_end": schema_version_end,
+            "schema_version_unchanged": schema_version_start == schema_version_end,
+            "read_only": "SQLite URI mode=ro with PRAGMA query_only=ON; zero writes; "
+                         "zero save_entry_actionability calls; zero provider/network calls",
+            "validation_cutoff": validation_cutoff.isoformat(),
+            "fixed_evaluated_at": evaluated_at.isoformat(),
+            "evaluated_at_semantics": "replay compute metadata only -- excluded from the "
+                                      "comparison mask, mirrors persisted_at's own exclusion",
+            "comparison_mask_included_fields": [
+                "instrument_id", "session_date", "entry_qualification_as_of", "decision_id",
+                "entry_qualification_methodology_version", "entry_actionability_as_of",
+                "entry_actionability_methodology_version", "decision_type", "direction",
+                "entry_qualification_state", "state", "reason_codes", "evidence_finality",
+                "evidence_as_of", "entry_reference", "entry_location_context",
+                "operative_invalidation", "reward", "opening_range_context", "explanation",
+            ],
+            "comparison_mask_excluded_fields": [
+                "run_id", "cycle_id", "evaluated_at", "persisted_at",
+            ],
+            "runtime_seconds": round(time.perf_counter() - started, 3),
+        },
+        "population_total": population_total,
+        "duplicate_population_total": duplicate_population_total,
+        "unique_population_total": unique_population_total,
+        "rows_attempted": rows_attempted,
+        "rows_reconstructed_successfully": total_reconstructed,
+        "observations_with_defects": observations_with_defects,
+        "binding_defects": binding_defects,
+        "pit_evidence_defects": pit_evidence_defects,
+        "evaluation_exceptions": pit_evidence_defects,
+        "unexpected_replay_exceptions": {
+            "total": len(unexpected_exceptions),
+            "by_exception_type": dict(sorted(
+                Counter(e.exception_type for e in unexpected_exceptions).items()
+            )),
+        },
+        "determinism_mismatches": determinism_mismatches,
+        "production_equivalence_mismatches": {
+            "total": len(mismatches),
+            "by_kind": dict(sorted(mismatch_kind_counts.items())),
+        },
+        "exact_match_count": exact_match_count,
+        "exact_match_rate_pct": pct(exact_match_count, total_reconstructed),
+        "path_specific": {
+            "scheduled_cycle": _path_split(observations, "scheduled_cycle"),
+            "symbol_validate": _path_split(observations, "symbol_validate"),
+        },
+        "session_distribution": _counter_payload(
+            Counter(o["session_date"] for o in observations), total_reconstructed
+        ),
+        "decision_type_distribution": _counter_payload(
+            Counter(o["decision_type"] for o in observations), total_reconstructed
+        ),
+        "eq_state_distribution": _counter_payload(
+            Counter(o["eq_state"] for o in observations), total_reconstructed
+        ),
+        "persisted_ea_state_distribution": _counter_payload(
+            Counter(o["persisted_ea_state"] for o in observations), total_reconstructed
+        ),
+        "direction_distribution": _counter_payload(
+            Counter(o["direction"] for o in observations), total_reconstructed
+        ),
+        "empirical_availability": {
+            "watch": _avail(watch_obs, "WATCH"),
+            "trade": _avail(trade_obs, "TRADE"),
+            "actionable": _avail(actionable_obs, "ACTIONABLE"),
+            "unknown": _avail(unknown_obs, "UNKNOWN"),
+            "long": _avail(long_obs, "LONG"),
+            "short": _avail(short_obs, "SHORT"),
+            "trade_qualified": _avail(trade_qualified_obs, "TRADE_QUALIFIED"),
+        },
+        "mode_b_acceptance": acceptance,
+    }
+    summary_path = output_dir / "id7f3_summary.json"
+    summary["artifacts"] = {
+        "summary_path": str(summary_path),
+        "observations_path": str(obs_path),
+        "defects_path": str(defects_path),
+        "mismatches_path": str(mismatches_path),
+        "unexpected_exceptions_path": str(unexpected_path),
+    }
+    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return summary
 
 
 def _summarize(
