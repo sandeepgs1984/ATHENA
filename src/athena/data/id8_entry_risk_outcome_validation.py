@@ -62,6 +62,39 @@ instead tracked via a separate `valid_geometry` coverage field.
 This is RAW_PRICE_PATH_VALIDATION only -- no execution cost data exists
 anywhere in the schema (confirmed by the ID-8 discovery milestone), so
 no profitability claim is made or implied anywhere in this module.
+
+Final methodology correction (owner, 2026-09-07):
+
+1. MAE-strictly-before-target: the running adverse-excursion tracker is
+   snapshotted for `mae_before_t1_pct`/`mae_before_t2_pct` BEFORE that
+   bar's own `adv` is folded in, and is frozen the instant its target
+   fires -- a same-bar adverse extreme co-occurring with the target
+   touch can never be counted as having occurred "before" it, since OHLC
+   data cannot prove the ordering within one bar. The hit bar's own
+   separate adverse range is exposed independently as
+   `t1_hit_bar_adverse_excursion_pct`/`t2_hit_bar_adverse_excursion_pct`.
+2. OR15-boundary and D1-ATR(1x) are now strictly LEVEL/GEOMETRY
+   comparators -- no forward event (intrabar-touch/close-confirmed) hit
+   detection is performed for either. Neither the frozen methodology
+   doc (which explicitly forbids OR15 event semantics, §10 tier 3) nor
+   `TradePlan`'s own D1-ATR usage (`decision/engine.py`, a static level,
+   never an evaluated trigger) nor ID-7B.1 §18 (measured stop-hit
+   rates/timing from an uncommitted scratch harness whose exact rule
+   cannot be recovered) states an explicit intrabar-vs-close-confirmed
+   trigger rule for either comparator -- inventing one, or justifying it
+   by how closely the resulting rate matches a legacy figure, would be
+   circular (a measured result cannot define the rule used to produce
+   itself). `or15_comparator`/`d1_atr_comparator` report only
+   availability, risk-distance geometry, and informational RR, each
+   carrying an explicit `..._EVENT_SEMANTICS_NOT_RECONSTRUCTABLE...`
+   classification.
+3. The session-block bootstrap now resamples the same
+   forward-data-bearing session population `_chronological_stability`
+   already used (`with_forward`, not `obs`) -- a session whose only
+   observations are `INSUFFICIENT_FORWARD_DATA` no longer silently
+   inflates the bootstrap's own session count relative to the
+   chronological-stability view. `session_accounting` in each direction
+   block reports the reconciliation explicitly.
 """
 
 from __future__ import annotations
@@ -422,19 +455,31 @@ def _vwap_at(store: ReadOnlyStore, indicator_engine: IndicatorEngine, *,
 
 
 def _or15_level(or15, direction: str) -> Decimal | None:
-    """OR15-boundary level -- a research comparator only (ID-7B.1 §18's
+    """OR15-boundary LEVEL only -- a research comparator (ID-7B.1 §18's
     own candidate), range low for LONG / range high for SHORT, matching
     ID-7C's own established directional convention. `None` when the
-    range has not `COMPLETE`d."""
+    range has not `COMPLETE`d. This is geometry only: the frozen
+    methodology itself (`ID-7B-ENTRY-RISK-METHODOLOGY.md` §10, tier 3)
+    states OR15 is used "strictly as a price *level*, never via
+    `breakout_event`/`returned_inside_range`/extension semantics" -- no
+    forward EVENT (hit/touch) detection is performed against this level
+    anywhere in this module (owner correction, 2026-09-07, Issue 3)."""
     if or15.formation.status is not OpeningRangeFormationStatus.COMPLETE:
         return None
     return or15.formation.low if direction != "SHORT" else or15.formation.high
 
 
 def _d1_atr_level(atr_value: Decimal | None, entry_price: Decimal, direction: str) -> Decimal | None:
-    """D1 ATR(1x) static level -- ID-7B.1's own explicit descriptive
+    """D1 ATR(1x) static LEVEL only -- ID-7B.1's own explicit descriptive
     comparator, never a proposed stop multiplier. LONG risk below entry,
-    SHORT above, matching the same convention as VWAP/OR15."""
+    SHORT above, matching the same convention as VWAP/OR15. This is
+    geometry only: no frozen source (`ID-7B-ENTRY-RISK-METHODOLOGY.md`
+    §10 tier 4, `TradePlan._build_plan` in `decision/engine.py`, or
+    ID-7B.1 §18) states an intrabar-vs-close-confirmed trigger rule for
+    this level -- `TradePlan`'s own D1-ATR usage is a static risk-framing
+    level, never an evaluated forward trigger. No forward EVENT (hit)
+    detection is performed against this level anywhere in this module
+    (owner correction, 2026-09-07, Issue 2)."""
     if atr_value is None:
         return None
     offset = atr_value * D1_ATR_MULTIPLE
@@ -444,8 +489,7 @@ def _d1_atr_level(atr_value: Decimal | None, entry_price: Decimal, direction: st
 def analyze_forward_outcome(
     *, store: ReadOnlyStore, indicator_engine: IndicatorEngine, instrument_id: str,
     session_date: str, entry_ts_open: str, entry_price: Decimal, direction: str,
-    checkpoint_vwap: Decimal | None, or15_lvl: Decimal | None, atr_lvl: Decimal | None,
-    session_close_ts: datetime | None,
+    checkpoint_vwap: Decimal | None, session_close_ts: datetime | None,
 ) -> dict[str, Any] | None:
     """PHASE B. Returns None only if zero forward candles exist at all
     (INSUFFICIENT_FORWARD_DATA) -- every other case returns a full result
@@ -453,7 +497,27 @@ def analyze_forward_outcome(
     (`TARGET_SIDE_NO_LATER_THAN_INVALIDATION`/`INVALIDATION_FIRST`/
     `SESSION_END_NO_RESOLUTION`) is only ever populated when
     `valid_geometry` is True -- an invalid-geometry observation can never
-    contribute a VWAP-vs-target ordering claim and reports `terminal=None`."""
+    contribute a VWAP-vs-target ordering claim and reports `terminal=None`.
+
+    MAE-strictly-before-target correction (owner, 2026-09-07, Issue 1):
+    a single OHLC bar cannot prove whether its own adverse extreme
+    occurred before or after that same bar's target touch when both fall
+    in the same bar. `mae_before_t1_pct`/`mae_before_t2_pct` are
+    therefore captured from the running adverse-excursion tracker BEFORE
+    the hit bar's own `adv` is folded into it, and the tracker is frozen
+    (never updated again) the instant its target fires -- so these
+    fields reflect only bars STRICTLY BEFORE the first T1/T2-hit bar,
+    never that bar's own range. The hit bar's own separate adverse range
+    is exposed independently as `t1_hit_bar_adverse_excursion_pct`/
+    `t2_hit_bar_adverse_excursion_pct`, never merged into the "before"
+    figure.
+
+    OR15-boundary and D1-ATR(1x) are LEVEL/GEOMETRY comparators only --
+    see `_or15_level`/`_d1_atr_level` docstrings. Their entry-time risk
+    distance is computed by the caller (`run_full_study`) directly from
+    the level and `entry_price`; this function performs no forward EVENT
+    (hit/touch) detection against either (owner correction, 2026-09-07,
+    Issues 2/3 -- no frozen source states their trigger semantics)."""
     forward = forward_candles(
         store, instrument_id=instrument_id, session_date=session_date,
         after_ts_open=entry_ts_open, session_close_ts=session_close_ts,
@@ -473,6 +537,7 @@ def analyze_forward_outcome(
     mfe = mae = Decimal("0")
     t1_intrabar = t1_close = t2_intrabar = t2_close = None
     mae_before_t1 = mae_before_t2 = None
+    t1_hit_bar_adverse_excursion = t2_hit_bar_adverse_excursion = None
     running_mae_before_t1 = running_mae_before_t2 = Decimal("0")
 
     valid_geometry = (
@@ -487,10 +552,6 @@ def analyze_forward_outcome(
     vwap_loss_min: float | None = None
     mfe_before_vwap_loss: float | None = None
     running_mfe_before_loss = Decimal("0")
-
-    or15_intrabar_min: float | None = None
-    or15_ambiguous_with_t1 = False
-    atr_close_min: float | None = None
 
     for ts_open, high, low, close in forward:
         bar_completion = datetime.fromisoformat(ts_open) + timedelta(minutes=5)
@@ -509,19 +570,27 @@ def analyze_forward_outcome(
 
         mfe, mae = max(mfe, fav), max(mae, adv)
 
+        # Snapshot the "strictly before" tracker BEFORE this bar's own
+        # adverse range is folded in, then freeze the tracker forever the
+        # instant its own target fires -- a later bar must never be able
+        # to retroactively pollute an already-resolved "before" figure,
+        # and the hit bar's own adv must never enter the tracker at all.
+        if t1_intrabar is None and t1_hit_i:
+            mae_before_t1 = float(running_mae_before_t1 * 100)
+            t1_hit_bar_adverse_excursion = float(adv * 100)
+            t1_intrabar = elapsed_min
+        if t2_intrabar is None and t2_hit_i:
+            mae_before_t2 = float(running_mae_before_t2 * 100)
+            t2_hit_bar_adverse_excursion = float(adv * 100)
+            t2_intrabar = elapsed_min
+
         if t1_intrabar is None:
             running_mae_before_t1 = max(running_mae_before_t1, adv)
         if t2_intrabar is None:
             running_mae_before_t2 = max(running_mae_before_t2, adv)
 
-        if t1_intrabar is None and t1_hit_i:
-            t1_intrabar = elapsed_min
-            mae_before_t1 = float(running_mae_before_t1 * 100)
         if t1_close is None and t1_hit_c:
             t1_close = elapsed_min
-        if t2_intrabar is None and t2_hit_i:
-            t2_intrabar = elapsed_min
-            mae_before_t2 = float(running_mae_before_t2 * 100)
         if t2_close is None and t2_hit_c:
             t2_close = elapsed_min
 
@@ -536,18 +605,6 @@ def analyze_forward_outcome(
                 if lost:
                     vwap_loss_min = elapsed_min
                     mfe_before_vwap_loss = float(running_mfe_before_loss * 100)
-
-        if or15_lvl is not None and or15_intrabar_min is None:
-            or15_hit = (low <= or15_lvl) if not is_short else (high >= or15_lvl)
-            if or15_hit:
-                or15_intrabar_min = elapsed_min
-                if t1_intrabar == elapsed_min:
-                    or15_ambiguous_with_t1 = True
-
-        if atr_lvl is not None and atr_close_min is None:
-            atr_hit = (close <= atr_lvl) if not is_short else (close >= atr_lvl)
-            if atr_hit:
-                atr_close_min = elapsed_min
 
     if valid_geometry:
         if t1_intrabar is not None and vwap_loss_min is not None:
@@ -566,14 +623,14 @@ def analyze_forward_outcome(
         "t1_intrabar_min": t1_intrabar, "t1_close_min": t1_close,
         "t2_intrabar_min": t2_intrabar, "t2_close_min": t2_close,
         "mae_before_t1_pct": mae_before_t1, "mae_before_t2_pct": mae_before_t2,
+        "t1_hit_bar_adverse_excursion_pct": t1_hit_bar_adverse_excursion,
+        "t2_hit_bar_adverse_excursion_pct": t2_hit_bar_adverse_excursion,
         "valid_geometry": valid_geometry,
         "risk_distance_pct": float(risk_distance_pct * 100) if risk_distance_pct is not None else None,
         "vwap_loss_min": vwap_loss_min, "mfe_before_vwap_loss_pct": mfe_before_vwap_loss,
         "terminal": terminal,
         "rr_to_t1": float(T1_PCT / risk_distance_pct) if valid_geometry and risk_distance_pct not in (None, Decimal(0)) else None,
         "rr_to_t2": float(T2_PCT / risk_distance_pct) if valid_geometry and risk_distance_pct not in (None, Decimal(0)) else None,
-        "or15_intrabar_min": or15_intrabar_min, "or15_ambiguous_with_t1": or15_ambiguous_with_t1,
-        "atr_close_min": atr_close_min,
     }
 
 
@@ -723,17 +780,24 @@ def run_full_study(
             outcome = analyze_forward_outcome(
                 store=store, indicator_engine=indicator_engine, instrument_id=q["instrument_id"],
                 session_date=q["session_date"], entry_ts_open=entry_ts_open, entry_price=entry_price,
-                direction=q["direction"], checkpoint_vwap=q["checkpoint_vwap"],
-                or15_lvl=or15_lvl, atr_lvl=atr_lvl, session_close_ts=close_ts,
+                direction=q["direction"], checkpoint_vwap=q["checkpoint_vwap"], session_close_ts=close_ts,
             )
+            # OR15/D1-ATR are LEVEL/GEOMETRY comparators only (owner
+            # correction, 2026-09-07) -- entry-time risk distance is the
+            # only claim made for either; no forward event/hit detection.
             or15_risk_pct = (
                 float(abs(entry_price - or15_lvl) / entry_price * 100)
                 if or15_lvl is not None and entry_price != 0 else None
+            )
+            atr_risk_pct = (
+                float(abs(entry_price - atr_lvl) / entry_price * 100)
+                if atr_lvl is not None and entry_price != 0 else None
             )
             record = {
                 "instrument_id": q["instrument_id"], "session_date": q["session_date"],
                 "decision_id": q["decision_id"], "direction": q["direction"],
                 "entry_price": float(entry_price), "or15_risk_distance_pct": or15_risk_pct,
+                "d1_atr_risk_distance_pct": atr_risk_pct,
                 "rs_pct": q["rs_pct"], "rvol_ratio": q["rvol_ratio"], "session_hour": q["session_hour"],
                 "regime": q["regime"],
             }
@@ -858,6 +922,8 @@ def _direction_block(obs: list[dict[str, Any]]) -> dict[str, Any]:
     n = len(obs)
     insufficient = [o for o in obs if o.get("terminal") == "INSUFFICIENT_FORWARD_DATA"]
     with_forward = [o for o in obs if o.get("terminal") != "INSUFFICIENT_FORWARD_DATA"]
+    total_sessions = sorted({o["session_date"] for o in obs})
+    forward_data_sessions = sorted({o["session_date"] for o in with_forward})
     valid_geo = [o for o in with_forward if o.get("valid_geometry")]
     invalid_geo = [o for o in with_forward if o.get("valid_geometry") is False]
     # Terminal ordering is only ever populated (non-None) for valid-geometry
@@ -877,20 +943,56 @@ def _direction_block(obs: list[dict[str, Any]]) -> dict[str, Any]:
     rr_t2 = [o["rr_to_t2"] for o in valid_geo if o.get("rr_to_t2") is not None]
     mae_before_t1 = [o["mae_before_t1_pct"] for o in with_forward if o.get("mae_before_t1_pct") is not None]
     mae_before_t2 = [o["mae_before_t2_pct"] for o in with_forward if o.get("mae_before_t2_pct") is not None]
+    t1_hit_bar_adv = [
+        o["t1_hit_bar_adverse_excursion_pct"] for o in with_forward
+        if o.get("t1_hit_bar_adverse_excursion_pct") is not None
+    ]
+    t2_hit_bar_adv = [
+        o["t2_hit_bar_adverse_excursion_pct"] for o in with_forward
+        if o.get("t2_hit_bar_adverse_excursion_pct") is not None
+    ]
     mfe_before_loss = [o["mfe_before_vwap_loss_pct"] for o in vwap_loss if o.get("mfe_before_vwap_loss_pct") is not None]
 
-    # OR15 full comparator (intrabar barrier -- ambiguous-with-T1-aware)
+    # OR15 LEVEL/GEOMETRY comparator only (owner correction, 2026-09-07,
+    # Issue 3): the frozen methodology itself (ID-7B-ENTRY-RISK-
+    # METHODOLOGY.md §10 tier 3) states OR15 is used "strictly as a price
+    # level, never via breakout_event/... semantics" -- no explicit A
+    # (intrabar)/B (close-confirmed)/C (other) event rule is documented
+    # anywhere, and ID-7B.1 §18's own "stop-hit rate"/"9.2 min" figures
+    # come from an uncommitted scratch harness whose exact trigger rule
+    # cannot be recovered. A measured legacy result cannot define the
+    # rule used to produce itself. Event-rate/time-to-event are therefore
+    # never computed or reported here -- only entry-time risk distance
+    # and the resulting informational RR.
     or15_avail = [o for o in with_forward if o.get("or15_risk_distance_pct") is not None]
-    or15_hits = [o for o in or15_avail if o.get("or15_intrabar_min") is not None]
-    or15_ambiguous = [o for o in or15_hits if o.get("or15_ambiguous_with_t1")]
-    or15_before_t1 = [
-        o for o in or15_hits
-        if o.get("t1_intrabar_min") is None or o["or15_intrabar_min"] < o["t1_intrabar_min"]
+    or15_rr_t1 = [
+        float(T1_PCT * 100) / o["or15_risk_distance_pct"] for o in or15_avail
+        if o["or15_risk_distance_pct"] not in (None, 0)
+    ]
+    or15_rr_t2 = [
+        float(T2_PCT * 100) / o["or15_risk_distance_pct"] for o in or15_avail
+        if o["or15_risk_distance_pct"] not in (None, 0)
     ]
 
-    # D1-ATR comparator (close-confirmed, ID-7B.1's own "1x descriptive" candidate)
-    atr_avail = [o for o in with_forward]  # level always computable once ATR exists; hit-rate is the real signal
-    atr_hits = [o for o in atr_avail if o.get("atr_close_min") is not None]
+    # D1-ATR(1x) LEVEL/GEOMETRY comparator only (owner correction,
+    # 2026-09-07, Issue 2): no frozen source (§10 tier 4 of the same
+    # methodology doc, `TradePlan._build_plan` in decision/engine.py, or
+    # ID-7B.1 §18) states an intrabar-vs-close-confirmed trigger rule for
+    # this level -- the prior CLOSE_CONFIRMED choice was an unstated
+    # analogy to VWAP-loss, not a sourced fact, and the closeness of its
+    # resulting rate to ID-7B.1's own published figure is not proof the
+    # assumed semantics were correct. Event-rate/time-to-event are
+    # therefore never computed or reported here -- only entry-time risk
+    # distance and the resulting informational RR.
+    atr_avail = [o for o in with_forward if o.get("d1_atr_risk_distance_pct") is not None]
+    atr_rr_t1 = [
+        float(T1_PCT * 100) / o["d1_atr_risk_distance_pct"] for o in atr_avail
+        if o["d1_atr_risk_distance_pct"] not in (None, 0)
+    ]
+    atr_rr_t2 = [
+        float(T2_PCT * 100) / o["d1_atr_risk_distance_pct"] for o in atr_avail
+        if o["d1_atr_risk_distance_pct"] not in (None, 0)
+    ]
 
     def _t1_rate_fn(rows: list[dict[str, Any]]) -> float:
         wf = [o for o in rows if o.get("terminal") != "INSUFFICIENT_FORWARD_DATA"]
@@ -906,6 +1008,26 @@ def _direction_block(obs: list[dict[str, Any]]) -> dict[str, Any]:
         "forward_data_available_n": len(with_forward),
         "valid_geometry_n": len(valid_geo),
         "invalid_geometry_n": len(invalid_geo),
+        "session_accounting": {
+            # Owner correction, 2026-09-07 (§5): explicit reconciliation
+            # of every session-count figure used anywhere in this block --
+            # the bootstrap and chronological-stability views must always
+            # agree on which sessions they draw from.
+            "long_primary_total_sessions": len(total_sessions),
+            "long_primary_forward_data_sessions": len(forward_data_sessions),
+            "bootstrap_session_count": len(forward_data_sessions),
+            "chronological_session_count": len(forward_data_sessions),
+            "note": (
+                "identical by construction: the bootstrap and chronological-stability views both draw "
+                "their session population from `with_forward` (observations that have at least one "
+                "forward-reading candle) -- a session containing only INSUFFICIENT_FORWARD_DATA "
+                "observations contributes to long_primary_total_sessions but is correctly excluded from "
+                "both bootstrap_session_count and chronological_session_count"
+                if len(total_sessions) != len(forward_data_sessions) else
+                "every session for this direction has at least one forward-data-bearing observation, so "
+                "total/forward-data/bootstrap/chronological session counts all agree"
+            ),
+        },
         "mfe_distribution_pct": _distribution(mfe_vals),
         "mae_distribution_pct": _distribution(mae_vals),
         "t1_intrabar_reachability": {
@@ -924,8 +1046,10 @@ def _direction_block(obs: list[dict[str, Any]]) -> dict[str, Any]:
             "n": len(with_forward), "hit": len(t2_close), "rate_pct": _rate(with_forward, "t2_close_min"),
             "time_to_hit_min": _distribution([o["t2_close_min"] for o in t2_close]),
         },
-        "mae_before_t1_pct_distribution": _distribution(mae_before_t1),
-        "mae_before_t2_pct_distribution": _distribution(mae_before_t2),
+        "mae_strictly_before_t1_pct_distribution": _distribution(mae_before_t1),
+        "mae_strictly_before_t2_pct_distribution": _distribution(mae_before_t2),
+        "t1_hit_bar_adverse_excursion_pct_distribution": _distribution(t1_hit_bar_adv),
+        "t2_hit_bar_adverse_excursion_pct_distribution": _distribution(t2_hit_bar_adv),
         "initial_risk_geometry": {
             "n": len(with_forward), "valid": len(valid_geo), "valid_rate_pct": pct(len(valid_geo), len(with_forward)),
             "risk_distance_pct_distribution": _distribution(risk_dist),
@@ -944,25 +1068,35 @@ def _direction_block(obs: list[dict[str, Any]]) -> dict[str, Any]:
         "rr_to_t1_distribution": _distribution(rr_t1),
         "rr_to_t2_distribution": _distribution(rr_t2),
         "or15_comparator": {
-            "available_n": len(or15_avail),
+            "classification": "OR15_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE",
+            "level_geometry_available_n": len(or15_avail),
             "risk_distance_pct_distribution": _distribution([o["or15_risk_distance_pct"] for o in or15_avail]),
-            "event_n": len(or15_hits), "event_rate_pct": pct(len(or15_hits), len(or15_avail)),
-            "time_to_event_min": _distribution([o["or15_intrabar_min"] for o in or15_hits]),
-            "event_before_t1_n": len(or15_before_t1),
-            "event_before_t1_rate_pct": pct(len(or15_before_t1), len(or15_hits)),
-            "ambiguous_same_bar_with_t1_n": len(or15_ambiguous),
-            "semantics": "INTRABAR_TOUCH (high/low) -- OR15 is treated as an intrabar barrier per ID-7B.1's own "
-                         "fast (~9min) empirical trigger time; AMBIGUOUS_SAME_BAR applies here (two intrabar "
-                         "barriers), separate from and never mixed with VWAP-loss's own close-confirmed-only semantics",
+            "rr_to_t1_distribution": _distribution(or15_rr_t1),
+            "rr_to_t2_distribution": _distribution(or15_rr_t2),
+            "event_semantics": "LEGACY_OR15_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE -- ID-7B-ENTRY-RISK-METHODOLOGY.md "
+                                "§10 tier 3 states OR15 is used strictly as a price level, 'never via "
+                                "breakout_event/returned_inside_range/extension semantics'; no explicit intrabar-"
+                                "touch/close-confirmed/other trigger rule is documented anywhere for a forward "
+                                "hit-rate comparator, and ID-7B.1 §18's own measured 9.2min/63.76% figures come "
+                                "from an uncommitted scratch harness whose exact rule cannot be recovered -- a "
+                                "measured legacy result cannot define the rule used to produce itself. No event "
+                                "rate, time-to-event, or target-vs-stop ordering is computed or reported for OR15.",
         },
         "d1_atr_comparator": {
+            "classification": "D1_ATR_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE",
             "multiple": "1x (ID-7B.1's own explicit descriptive choice, not re-derived)",
-            "available_n": len(atr_avail), "event_n": len(atr_hits),
-            "event_rate_pct": pct(len(atr_hits), len(atr_avail)),
-            "time_to_event_min": _distribution([o["atr_close_min"] for o in atr_hits]),
-            "semantics": "CLOSE_CONFIRMED (assumed, by analogy with VWAP-loss's own close-confirmed convention; "
-                         "no frozen source specifies intrabar vs. close-confirmed for this descriptive-only "
-                         "candidate) -- stated explicitly as an assumption, not a frozen contract element",
+            "level_geometry_available_n": len(atr_avail),
+            "risk_distance_pct_distribution": _distribution([o["d1_atr_risk_distance_pct"] for o in atr_avail]),
+            "rr_to_t1_distribution": _distribution(atr_rr_t1),
+            "rr_to_t2_distribution": _distribution(atr_rr_t2),
+            "event_semantics": "D1_ATR_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE_FROM_FROZEN_SOURCE -- no frozen source "
+                                "(ID-7B-ENTRY-RISK-METHODOLOGY.md §10 tier 4, TradePlan._build_plan in "
+                                "decision/engine.py, or ID-7B.1 §18) states an intrabar-vs-close-confirmed trigger "
+                                "rule; TradePlan's own D1-ATR usage is a static risk-framing level, never an "
+                                "evaluated forward trigger. The prior 1.72%-vs-1.76% closeness to ID-7B.1's own "
+                                "published figure under an assumed CLOSE_CONFIRMED rule is explicitly not treated "
+                                "as proof that assumption was correct. No event rate, time-to-stop, or "
+                                "target-vs-stop ordering is computed or reported for D1-ATR.",
         },
         "rs_quartile_vs_t1_rate": _quartile_t1_rate(with_forward, "rs_pct"),
         "rvol_quartile_vs_t1_rate": _quartile_t1_rate(with_forward, "rvol_ratio"),
@@ -985,8 +1119,16 @@ def _direction_block(obs: list[dict[str, Any]]) -> dict[str, Any]:
             }
         ),
         "chronological_stability": _chronological_stability(with_forward),
-        "session_block_bootstrap_t1_intrabar_rate": _session_block_bootstrap(obs, metric_fn=_t1_rate_fn),
-        "session_block_bootstrap_vwap_loss_rate": _session_block_bootstrap(obs, metric_fn=_vwap_loss_rate_fn),
+        # Owner correction, 2026-09-07 (§5): the bootstrap must resample
+        # over the SAME session population `_chronological_stability`
+        # uses -- sessions that actually contribute forward-data-bearing
+        # observations to the rate being estimated. Passing `obs` (every
+        # observation, including sessions whose only rows are
+        # INSUFFICIENT_FORWARD_DATA with zero forward-reading candles)
+        # let the bootstrap's own session count silently diverge from
+        # chronological stability's session count.
+        "session_block_bootstrap_t1_intrabar_rate": _session_block_bootstrap(with_forward, metric_fn=_t1_rate_fn),
+        "session_block_bootstrap_vwap_loss_rate": _session_block_bootstrap(with_forward, metric_fn=_vwap_loss_rate_fn),
     }
 
 

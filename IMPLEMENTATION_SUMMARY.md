@@ -6,6 +6,213 @@ status updated on approval.
 
 ---
 
+## ID-8 Full Historical Entry/Risk Outcome Validation — Final Methodology Correction, Ready for Owner Freeze Decision
+
+**Summary.** With ID-8's full historical study corrected once already
+(LONG/SHORT pooling, canonical forward-window/entry-selection, geometry-
+gated terminal ordering — see the entry below), the Owner's source
+review found three further methodology-rigor gaps and required a second
+correction inside the same milestone, same committed module and test
+file — no ID-8.1/ID-8.x sub-milestone created.
+
+**Issue 1 — MAE-strictly-before-target intrabar-ordering bug.** In
+`analyze_forward_outcome`, the running adverse-excursion tracker
+(`running_mae_before_t1`/`_t2`) was updated with a bar's own adverse
+range BEFORE checking whether that same bar was the T1/T2-hit bar —
+incorrectly assuming, whenever a single bar contained both an adverse
+extreme and the target touch, that the adverse extreme occurred first,
+which OHLC data cannot prove. **Fixed:** the "strictly before" snapshot
+(`mae_before_t1_pct`/`mae_before_t2_pct`) is now captured from the
+tracker's value BEFORE that bar's own `adv` is folded in, and the
+tracker is frozen forever the instant its own target fires. The hit
+bar's own separate adverse range is now exposed independently as new
+fields `t1_hit_bar_adverse_excursion_pct`/
+`t2_hit_bar_adverse_excursion_pct`, never merged into the "before"
+figure. 3 new regression tests construct exactly the scenario the Owner
+specified (a LONG/SHORT candle whose low/high crosses both an adverse
+extreme and the target in one bar) and prove the hit bar's own range is
+excluded.
+
+**Issue 2 — D1-ATR event semantics investigated from source, found
+unrecoverable, withdrawn.** The prior round assumed `CLOSE_CONFIRMED`
+"by analogy with VWAP-loss," explicitly self-acknowledged as unsourced.
+This round investigated the actual frozen sources directly:
+`ID-7B-ENTRY-RISK-METHODOLOGY.md` §10 tier 4 describes D1-ATR only as
+mirroring `TradePlan`'s own risk framing; `TradePlan._build_plan`
+(`decision/engine.py:230-256`) was read directly and found to compute a
+static price level only (`stop = last_close - stop_dist`), with no
+forward-trigger concept anywhere in its source to borrow; ID-7B.1 §18's
+own measured figures come from an uncommitted scratch harness whose
+exact rule cannot be recovered. **The Owner's own warning was directly
+confirmed**: the prior assumed-semantics result (1.72%) closely
+resembling ID-7B.1's own published figure (1.76%) is coincidental
+closeness, not validation of the assumption. **Withdrawn** — `_d1_atr_level`/
+`d1_atr_comparator` now report level/geometry only (availability, risk
+distance, informational RR), classified
+`D1_ATR_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE`/
+`D1_ATR_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE_FROM_FROZEN_SOURCE`. No
+event rate, time-to-stop, or target-vs-stop ordering is computed or
+reported for D1-ATR anywhere in this harness any more.
+
+**Issue 3 — OR15 event semantics investigated from source, found
+explicitly forbidden by the frozen methodology itself, withdrawn.** The
+prior round justified `INTRABAR_TOUCH` by observing that ID-7B.1's own
+measured trigger time was fast (~9 min) — the Owner identified this as
+circular ("a measured legacy result cannot define the rule used to
+produce itself") and required genuine source-text investigation
+instead. Investigation found `ID-7B-ENTRY-RISK-METHODOLOGY.md` §10 tier
+3 explicitly states OR15 is used "strictly as a price *level*, never
+via `breakout_event`/`returned_inside_range`/extension semantics" — the
+frozen production methodology deliberately never defines an OR15
+forward-event rule at all, by design. **Withdrawn** — `_or15_level`/
+`or15_comparator` now report level/geometry only, classified
+`OR15_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE`/
+`LEGACY_OR15_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE`. No event rate,
+time-to-event, before-T1 rate, or `AMBIGUOUS_SAME_BAR` tracking is
+computed for OR15 anymore (the corresponding test for the withdrawn
+behavior was replaced with a direct source-scan proof that no OR15/D1-ATR
+forward-event field is ever computed).
+
+**Bootstrap/chronological session-count reconciliation.** The report
+had flagged an apparent "19 vs. 20 sessions" mismatch between the
+session-block bootstrap and the chronological-stability view.
+Investigation found this was a **narrative writing error in the
+report's own prose, not a code or population defect**: the actual code
+(`_chronological_stability`'s own `len(sessions) // 2` split) has
+always produced a 9-session first half / 10-session second half for the
+real 19-session population — 9 + 10 = 19, matching the bootstrap's own
+figure exactly — but the report's prose incorrectly described the split
+as "10 earliest... 10 latest," implying 20. Verified directly against a
+fresh rerun: `sessions_first_half` contains exactly 9 dates,
+`sessions_second_half` exactly 10. **The bootstrap's own input
+population was still hardened** (now resamples `with_forward`, the same
+forward-data-bearing session population `_chronological_stability`
+already used, instead of the raw observation set including any
+`INSUFFICIENT_FORWARD_DATA`-only session) to close a genuine latent risk
+for a future population where the two populations could actually
+diverge — proven by a new synthetic regression test
+(`test_bootstrap_and_chronological_stability_share_session_population`).
+A new explicit `session_accounting` block reports
+`long_primary_total_sessions`/`long_primary_forward_data_sessions`/
+`bootstrap_session_count`/`chronological_session_count` on every future
+run.
+
+**§4 VWAP-loss semantics re-examined, confirmed unchanged.** Per
+explicit Owner instruction, VWAP-loss's own evolving/session-cumulative
+semantics were not reopened merely because the comparators needed
+correction — re-examined and found to require no change.
+
+**Rerun against the real `db/athena.db`** (strict read-only,
+`mode=ro`+`query_only=ON`): schema unchanged 18→18 both for the primary
+rerun and an independent second determinism run; `integrity_check: ok`
+after each; PID 2453 (`athena.cli serve --with-cycles`) confirmed
+running, untouched, throughout. LONG population fully reconciled and
+unaffected by these fixes (96,985 decisions / 6,624 episodes / 783
+QUALIFIED / 756 forward-data-available / 0 invalid-geometry — all
+unchanged from the prior round, as expected, since these corrections
+touch outcome computation, not population identity). SHORT population
+grew from 15 to match live production continuing to run (episodes
+152/observations 15, up from the prior round's 134/12) — expected, not
+a defect. `primary_LONG` block reproduced byte-for-byte identical across
+two independent full runs.
+
+**Revised acceptance Question F** (§26): changed from a simple "No" to
+`NO_DISPLACEMENT_CLAIM_POSSIBLE_FROM_COMPARABLE_EVENT_EVIDENCE` — since
+neither OR15 nor D1-ATR carries recoverable event evidence, there is no
+comparable basis to judge either "superior" or "not superior" to
+VWAP-loss on event grounds; only risk-distance geometry remains
+comparable, which is reported but is not on its own sufficient for a
+displacement claim either way.
+
+**New §32 directly answers the Owner's own final freeze question**
+("Can the PRIMARY LONG methodology be frozen independently of unresolved
+legacy comparator semantics?"): **Yes.** Every PRIMARY LONG dimension the
+Owner named — observation-identity determinism, canonical entry/session
+semantics, VWAP-loss source-grounding, T1/T2/MFE/MAE correctness (now
+more correct than before, via the Issue-1 fix), terminal-ordering
+correctness, and chronology/uncertainty soundness (now more precisely
+reconciled, via the session-count investigation) — is verified sound.
+What remains unresolved (the T1/T2/MFE discrepancy against ID-7B.1's own
+uncommitted, unreplayable scratch harness, and the OR15/D1-ATR
+semantics-not-recoverable verdicts) are honest non-recoverability
+findings about a different, prior artifact, not correctness defects in
+this harness — holding PRIMARY LONG hostage to a permanently-unrecoverable
+legacy artifact would mean V0 could never be frozen at all. **Verdict:
+the newly committed harness is judged sufficiently self-consistent and
+source-grounded to become authoritative for PRIMARY LONG V0 entry/risk
+evidence.**
+
+**Tests.** 24 tests in
+`tests/data_layer/test_id8_entry_risk_outcome_validation.py` (6 new, 1
+removed — the withdrawn OR15-intrabar-ambiguity test was replaced by a
+direct source-scan proof that no OR15/D1-ATR forward-event field is
+computed): `test_mae_strictly_before_t1_excludes_hit_bars_own_adverse_range_long`,
+`_single_bar_hit_reports_zero_long`, `_excludes_hit_bars_own_adverse_range_short`,
+`test_or15_and_d1_atr_have_no_forward_event_detection_in_source`,
+`test_or15_and_d1_atr_comparators_report_event_semantics_not_reconstructable`,
+`test_bootstrap_and_chronological_stability_share_session_population`,
+plus all 18 pre-existing tests. Full repository suite: **3768 passed, 1
+pre-existing unrelated skip, 0 failures.**
+
+**Files modified:** `src/athena/data/id8_entry_risk_outcome_validation.py`,
+`tests/data_layer/test_id8_entry_risk_outcome_validation.py`,
+`docs/research/ID-8-FULL-HISTORICAL-ENTRY-RISK-OUTCOME-VALIDATION.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. **Zero schema/production/
+EMR/DarvaX changes.** `db/athena.db` confirmed unchanged throughout
+(`schema_version` 18, `integrity_check: ok`); PID 2453 untouched; zero
+writes; zero provider/network calls.
+
+**Status: ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION
+METHODOLOGY-CORRECT — READY FOR OWNER / CHIEF ARCHITECT FREEZE
+DECISION.** Classification unchanged: `ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED`.
+Does not freeze the methodology itself (reserved for the Owner); does
+not start ID-9; does not begin an ID-6 SHORT correction; EMR and DarvaX
+untouched.
+
+**Suggested commit message** (for the owner to run themselves, per
+CLAUDE.md — no git action taken by the AI):
+
+```
+fix(intraday): correct ID-8 MAE-before-target ordering and comparator semantics
+
+- Fixed a real intrabar-ordering bug: the running adverse-excursion
+  tracker folded a bar's own adverse range into itself before checking
+  whether that bar was the T1/T2-hit bar, incorrectly letting a same-bar
+  adverse extreme count as occurring "before" a target touch OHLC data
+  cannot actually order. mae_before_t1_pct/mae_before_t2_pct now
+  reflect only bars strictly prior to the hit bar; the hit bar's own
+  range is exposed separately as t1_hit_bar_adverse_excursion_pct/
+  t2_hit_bar_adverse_excursion_pct, never merged in.
+- Investigated D1-ATR's assumed CLOSE_CONFIRMED event semantics against
+  every actual frozen source (methodology doc, TradePlan._build_plan,
+  ID-7B.1's own uncommitted harness) and found it stated nowhere -
+  withdrawn; d1_atr_comparator now reports level/geometry only,
+  classified D1_ATR_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE_FROM_FROZEN_SOURCE.
+- Investigated OR15's assumed INTRABAR_TOUCH semantics (previously
+  justified circularly by ID-7B.1's own measured result) and found the
+  methodology doc's own text explicitly forbids treating OR15 as an
+  event at all - withdrawn; or15_comparator now reports level/geometry
+  only, classified LEGACY_OR15_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE.
+- Reconciled a flagged 19-vs-20-session bootstrap/chronological-
+  stability mismatch: root-caused to a narrative writing error in the
+  report (not a code defect - both views always used the same
+  19-session population); hardened the bootstrap to explicitly share
+  chronological stability's own forward-data-bearing session population
+  regardless, closing a latent future-population risk.
+- Re-examined VWAP-loss's own frozen semantics per instruction and
+  confirmed no change needed.
+- Reran the full study against real db/athena.db (read-only, schema
+  18->18 unchanged, PID 2453 untouched): LONG population fully
+  reconciled and unaffected (783/756/0); added 6 tests (24 total, 1
+  removed); full suite 3768 passed.
+- Updated the ID-8 full-historical report, MILESTONES.md,
+  ATHENA_BRIEFING.md, and the ID-track handoff doc with the correction
+  and a direct answer to the Owner's own PRIMARY-LONG-freeze question.
+```
+
+---
+
 ## ID-8 Entry/Risk Methodology Validation — Discovery + Empirical Contract, Owner Approved / Frozen
 
 **Summary.** With ID-7 closed, the Owner authorized ID-8: given an

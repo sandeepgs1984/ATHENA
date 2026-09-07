@@ -249,12 +249,11 @@ def seeded_forward_db(tmp_path: Path) -> Path:
 
 
 def _call(store, *, instrument_id, session_date, entry_ts_open, entry_price, direction,
-          checkpoint_vwap=None, or15_lvl=None, atr_lvl=None, session_close_ts=None):
+          checkpoint_vwap=None, session_close_ts=None):
     return analyze_forward_outcome(
         store=store, indicator_engine=None, instrument_id=instrument_id, session_date=session_date,
         entry_ts_open=entry_ts_open, entry_price=entry_price, direction=direction,
-        checkpoint_vwap=checkpoint_vwap, or15_lvl=or15_lvl, atr_lvl=atr_lvl,
-        session_close_ts=session_close_ts,
+        checkpoint_vwap=checkpoint_vwap, session_close_ts=session_close_ts,
     )
 
 
@@ -395,41 +394,176 @@ def test_terminal_ordering_labels_never_include_ambiguous_same_bar() -> None:
     assert '"terminal"' in inspect.getsource(m)
 
 
-def test_or15_ambiguous_with_t1_when_both_intrabar_same_bar() -> None:
-    """A single forward bar whose high/low crosses BOTH the LONG T1 level
-    and the OR15-boundary level (both intrabar barriers) must be flagged
-    `or15_ambiguous_with_t1` -- genuine OHLC-level ambiguity, unlike the
-    target-vs-VWAP-loss pairing."""
+def test_or15_and_d1_atr_have_no_forward_event_detection_in_source() -> None:
+    """Owner correction, 2026-09-07 (Issues 2/3): OR15-boundary and
+    D1-ATR(1x) are LEVEL/GEOMETRY comparators only -- no frozen source
+    states an intrabar-vs-close-confirmed trigger rule for either, so
+    `analyze_forward_outcome`'s own forward loop must never compute or
+    return an OR15/D1-ATR hit/event field. Proven directly by source
+    scan, not merely by absence from one example's output dict."""
+    src = inspect.getsource(m.analyze_forward_outcome)
+    for forbidden in (
+        "or15_intrabar_min", "or15_ambiguous_with_t1", "atr_close_min",
+        "or15_lvl", "atr_lvl",
+    ):
+        assert forbidden not in src
+
+
+def test_or15_and_d1_atr_comparators_report_event_semantics_not_reconstructable() -> None:
+    """The summary's own OR15/D1-ATR comparator blocks must carry an
+    explicit `..._EVENT_SEMANTICS_NOT_RECONSTRUCTABLE...` classification
+    and must never report an event rate or time-to-event -- level/
+    geometry (availability, risk distance, informational RR) remains
+    the only claim made for either."""
+    obs = [{
+        "direction": "LONG", "session_date": "2026-08-13", "terminal": "SESSION_END_NO_RESOLUTION",
+        "mfe_pct": 0.5, "mae_pct": 0.3, "valid_geometry": True, "risk_distance_pct": 0.4,
+        "or15_risk_distance_pct": 0.2, "d1_atr_risk_distance_pct": 1.1,
+    }]
+    block = m._direction_block(obs)
+    assert block["or15_comparator"]["classification"] == "OR15_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE"
+    assert "LEGACY_OR15_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE" in block["or15_comparator"]["event_semantics"]
+    assert "event_n" not in block["or15_comparator"]
+    assert "event_rate_pct" not in block["or15_comparator"]
+    assert block["d1_atr_comparator"]["classification"] == "D1_ATR_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE"
+    assert "D1_ATR_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE_FROM_FROZEN_SOURCE" in block["d1_atr_comparator"]["event_semantics"]
+    assert "event_n" not in block["d1_atr_comparator"]
+    assert "event_rate_pct" not in block["d1_atr_comparator"]
+    # Level/geometry evidence must still be present.
+    assert block["or15_comparator"]["level_geometry_available_n"] == 1
+    assert block["d1_atr_comparator"]["level_geometry_available_n"] == 1
+
+
+def _bar(instrument_id, ts_open, *, o, h, low, c):
+    return Candle(instrument_id=instrument_id, timeframe=Timeframe.M5, ts_open=ts_open,
+                  open=Decimal(str(o)), high=Decimal(str(h)), low=Decimal(str(low)),
+                  close=Decimal(str(c)), volume=1000, source="test")
+
+
+def test_mae_strictly_before_t1_excludes_hit_bars_own_adverse_range_long() -> None:
+    """Owner correction, 2026-09-07 (Issue 1): a LONG position whose T1-
+    hit bar ALSO carries a deep low in that same bar must not have that
+    bar's own low counted in `mae_before_t1_pct` -- OHLC cannot prove the
+    adverse extreme preceded the target touch within one bar. Bar 1 has
+    a mild, genuinely-prior dip (0.2% adverse); bar 2 hits T1 (+1%, i.e.
+    high>=101) AND independently carries a much deeper low (5% adverse)
+    in that same bar. The old buggy code folded bar 2's own 5% adverse
+    range into the tracker before checking the hit, producing
+    mae_before_t1_pct=~5.0; the fix must report ~0.2 (bar 1 only) and
+    expose bar 2's own range separately."""
     with tempfile.TemporaryDirectory() as td:
         db_path = Path(td) / "athena.db"
         repo = SqliteRepository(db_path)
         repo.initialize()
-        iid = "NSE:EEE"
-        repo.upsert_instrument(Instrument(instrument_id=iid, symbol="EEE", exchange="NSE", series="EQ", status="ACTIVE"))
-        day = date(2026, 8, 13)
-        ts0 = datetime.combine(day, datetime.min.time(), tzinfo=IST).replace(hour=9, minute=15)
-        entry_candle = Candle(instrument_id=iid, timeframe=Timeframe.M5, ts_open=ts0,
-                               open=Decimal("100"), high=Decimal("100"), low=Decimal("100"),
-                               close=Decimal("100"), volume=1000, source="test")
-        # One forward bar whose range [98, 102] crosses both T1 (101, LONG)
-        # and a hypothetical OR15 level (98, LONG support) in the same bar.
-        forward_candle = Candle(instrument_id=iid, timeframe=Timeframe.M5, ts_open=ts0 + timedelta(minutes=5),
-                                 open=Decimal("100"), high=Decimal("102"), low=Decimal("98"),
-                                 close=Decimal("101.2"), volume=1000, source="test")
-        repo.add_candles([entry_candle, forward_candle])
+        iid = "NSE:FFF"
+        repo.upsert_instrument(Instrument(instrument_id=iid, symbol="FFF", exchange="NSE", series="EQ", status="ACTIVE"))
+        ts0 = datetime(2026, 8, 13, 9, 15, tzinfo=IST)
+        entry_candle = _bar(iid, ts0, o=100, h=100, low=100, c=100)
+        bar1 = _bar(iid, ts0 + timedelta(minutes=5), o=100, h=100.1, low=99.8, c=100.0)  # 0.2% adverse, no hit
+        bar2 = _bar(iid, ts0 + timedelta(minutes=10), o=100, h=101.2, low=95.0, c=101.0)  # hits T1 AND 5% adverse
+        repo.add_candles([entry_candle, bar1, bar2])
         repo.close()
 
         store = ReadOnlyStore(db_path)
         outcome = _call(
             store, instrument_id=iid, session_date="2026-08-13",
             entry_ts_open=ts0.isoformat(), entry_price=Decimal("100"), direction="LONG",
-            or15_lvl=Decimal("98"),
         )
         store.close()
         assert outcome is not None
-        assert outcome["or15_intrabar_min"] is not None
         assert outcome["t1_intrabar_min"] is not None
-        assert outcome["or15_ambiguous_with_t1"] is True
+        assert outcome["mae_before_t1_pct"] == pytest.approx(0.2, abs=1e-6)
+        assert outcome["t1_hit_bar_adverse_excursion_pct"] == pytest.approx(5.0, abs=1e-6)
+
+
+def test_mae_strictly_before_t1_single_bar_hit_reports_zero_long() -> None:
+    """A single forward bar that BOTH dips below entry AND hits T1 in the
+    same bar (no prior bars at all) must report mae_before_t1_pct=0.0 --
+    there are zero bars strictly before it -- while still exposing the
+    hit bar's own adverse range separately."""
+    with tempfile.TemporaryDirectory() as td:
+        db_path = Path(td) / "athena.db"
+        repo = SqliteRepository(db_path)
+        repo.initialize()
+        iid = "NSE:GGG"
+        repo.upsert_instrument(Instrument(instrument_id=iid, symbol="GGG", exchange="NSE", series="EQ", status="ACTIVE"))
+        ts0 = datetime(2026, 8, 13, 9, 15, tzinfo=IST)
+        entry_candle = _bar(iid, ts0, o=100, h=100, low=100, c=100)
+        only_bar = _bar(iid, ts0 + timedelta(minutes=5), o=100, h=101.5, low=97.0, c=101.0)
+        repo.add_candles([entry_candle, only_bar])
+        repo.close()
+
+        store = ReadOnlyStore(db_path)
+        outcome = _call(
+            store, instrument_id=iid, session_date="2026-08-13",
+            entry_ts_open=ts0.isoformat(), entry_price=Decimal("100"), direction="LONG",
+        )
+        store.close()
+        assert outcome is not None
+        assert outcome["t1_intrabar_min"] is not None
+        assert outcome["mae_before_t1_pct"] == 0.0
+        assert outcome["t1_hit_bar_adverse_excursion_pct"] == pytest.approx(3.0, abs=1e-6)
+
+
+def test_mae_strictly_before_t1_excludes_hit_bars_own_adverse_range_short() -> None:
+    """SHORT mirror: T1-hit bar (low<=99, i.e. -1%) also independently
+    carries a deep adverse HIGH (5% above entry) in that same bar; a
+    genuinely prior bar carries a mild 0.2% adverse high."""
+    with tempfile.TemporaryDirectory() as td:
+        db_path = Path(td) / "athena.db"
+        repo = SqliteRepository(db_path)
+        repo.initialize()
+        iid = "NSE:HHH"
+        repo.upsert_instrument(Instrument(instrument_id=iid, symbol="HHH", exchange="NSE", series="EQ", status="ACTIVE"))
+        ts0 = datetime(2026, 8, 13, 9, 15, tzinfo=IST)
+        entry_candle = _bar(iid, ts0, o=100, h=100, low=100, c=100)
+        bar1 = _bar(iid, ts0 + timedelta(minutes=5), o=100, h=100.2, low=99.9, c=100.0)  # 0.2% adverse, no hit
+        bar2 = _bar(iid, ts0 + timedelta(minutes=10), o=100, h=105.0, low=98.8, c=99.0)  # hits T1 AND 5% adverse
+        repo.add_candles([entry_candle, bar1, bar2])
+        repo.close()
+
+        store = ReadOnlyStore(db_path)
+        outcome = _call(
+            store, instrument_id=iid, session_date="2026-08-13",
+            entry_ts_open=ts0.isoformat(), entry_price=Decimal("100"), direction="SHORT",
+        )
+        store.close()
+        assert outcome is not None
+        assert outcome["t1_intrabar_min"] is not None
+        assert outcome["mae_before_t1_pct"] == pytest.approx(0.2, abs=1e-6)
+        assert outcome["t1_hit_bar_adverse_excursion_pct"] == pytest.approx(5.0, abs=1e-6)
+
+
+def test_bootstrap_and_chronological_stability_share_session_population() -> None:
+    """Owner correction, 2026-09-07 (§5): the session-block bootstrap and
+    chronological-stability views must draw from the identical
+    forward-data-bearing session population -- a session containing only
+    INSUFFICIENT_FORWARD_DATA observations must be excluded from both,
+    not just one, resolving the report's own flagged 19-vs-20 mismatch."""
+    # 5 sessions with genuine forward data (enough for both views' own
+    # minimum-support thresholds), plus 1 extra session whose only
+    # observation has zero forward data at all.
+    obs = []
+    for i, d in enumerate(range(10, 15)):
+        obs.append({
+            "direction": "LONG", "session_date": f"2026-08-{d:02d}",
+            "terminal": "TARGET_SIDE_NO_LATER_THAN_INVALIDATION" if i % 2 else "INVALIDATION_FIRST",
+            "t1_intrabar_min": 10.0 if i % 2 else None, "valid_geometry": True,
+            "vwap_loss_min": None if i % 2 else 5.0,
+        })
+    obs.append({
+        "direction": "LONG", "session_date": "2026-08-20",
+        "terminal": "INSUFFICIENT_FORWARD_DATA", "valid_geometry": None,
+    })
+    block = m._direction_block(obs)
+    acct = block["session_accounting"]
+    assert acct["long_primary_total_sessions"] == 6
+    assert acct["long_primary_forward_data_sessions"] == 5
+    assert acct["bootstrap_session_count"] == 5
+    assert acct["chronological_session_count"] == 5
+    assert block["session_block_bootstrap_t1_intrabar_rate"]["sessions"] == 5
+    assert len(block["chronological_stability"]["per_session"]) == 5
+    assert "2026-08-20" not in block["chronological_stability"]["per_session"]
 
 
 def test_session_block_bootstrap_is_deterministic() -> None:

@@ -1,15 +1,58 @@
 # ID-8 — Full Historical Entry/Risk Outcome Validation
 
-Status: **ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION CORRECTED
-AND COMPLETE — READY FOR OWNER / CHIEF ARCHITECT REVIEW.** V0
-methodology not frozen by this report; that decision is reserved for
-the Owner (§48-49).
+Status: **ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION
+METHODOLOGY-CORRECT — READY FOR OWNER / CHIEF ARCHITECT FREEZE
+DECISION.** See §32 for the Owner's own explicit freeze question,
+answered directly.
 
-**This is a correction/completion of the prior version of this same
-report (2026-09-07), per explicit Owner instruction — no new milestone
-was created.** §51 records exactly what changed and why.
+**This is the SECOND correction/completion of the same report
+(2026-09-07), per explicit Owner instruction — no new milestone was
+created.** §33 records exactly what changed in this round and why; §31
+records the prior round's own changes, preserved unmodified.
 
-## 1. Corrections made (summary — full detail in §51)
+## 0. This round's corrections (methodology-rigor pass — see §33 for full detail)
+
+1. **MAE-strictly-before-target intrabar-ordering bug fixed.** The
+   running adverse-excursion tracker no longer folds a bar's own `adv`
+   into itself before checking whether that same bar is the T1/T2-hit
+   bar — OHLC data cannot prove a same-bar adverse extreme preceded the
+   target touch. `mae_strictly_before_t1_pct`/`_t2_pct` now reflect only
+   bars genuinely prior to the hit bar; the hit bar's own separate
+   adverse range is exposed independently as
+   `t1_hit_bar_adverse_excursion_pct`/`t2_hit_bar_adverse_excursion_pct`,
+   never merged in (§7).
+2. **D1-ATR event semantics investigated from source, found
+   unrecoverable, and removed as an authoritative claim.** No frozen
+   source states an intrabar-vs-close-confirmed trigger rule for this
+   comparator (§13). Classified
+   `D1_ATR_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE_FROM_FROZEN_SOURCE`; only
+   level/geometry (availability, risk distance, informational RR) is
+   now reported.
+3. **OR15 event semantics investigated from source, found explicitly
+   forbidden by the frozen methodology itself, and removed as an
+   authoritative claim.** `ID-7B-ENTRY-RISK-METHODOLOGY.md` §10 tier 3
+   states OR15 is used "strictly as a price level, never via
+   breakout_event/... semantics" — the prior `INTRABAR_TOUCH` assumption
+   (justified circularly by ID-7B.1's own fast measured trigger time)
+   is withdrawn. Classified `LEGACY_OR15_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE`
+   (§12).
+4. **Bootstrap/chronological session-count reconciled.** The session-
+   block bootstrap now resamples the same forward-data-bearing session
+   population (`with_forward`) `_chronological_stability` already used,
+   rather than the full observation set including
+   `INSUFFICIENT_FORWARD_DATA`-only rows. On the real current
+   population this was already numerically 19=19 either way; the fix
+   removes the *risk* of divergence for any future population, and the
+   true root cause of the previously-reported "19 vs. 20" mismatch is
+   identified as a narrative miscount in §16, not a code defect (§5 of
+   the Owner's request; full detail in §16).
+5. **§4's VWAP-loss semantics were re-examined against these
+   corrections and found to require no change** — preserved verbatim,
+   per explicit Owner instruction not to reopen it.
+6. Acceptance Question F revised (§26) and a new §32 directly answers
+   the Owner's freeze question.
+
+## 1. Corrections made in the PRIOR round (summary — full detail in §51; superseded numbers below are updated throughout this document by §0's corrections above)
 
 1. **LONG/SHORT pooling eliminated.** `_summarize` now produces two
    entirely independent blocks, `primary_LONG` and
@@ -128,8 +171,39 @@ p95 2.592%, max 6.602% (n=756).
   (`artifacts/research/id8/id8_summary.json`, git-ignored); intrabar is
   the headline figure per the frozen contract's own primacy.
 - T2 intrabar: **147/756 = 19.44%**, time-to-hit median 75.0 min.
-- MAE-before-T1 (n=248): median 0.171%, p90 0.699%.
-- MAE-before-T2 (n=147): median 0.211%, p90 0.940%.
+- **MAE strictly before T1** (n=248, corrected §0 item 1): median
+  0.169%, p90 0.699%, max 2.344% — computed only from bars genuinely
+  prior to the first T1-hit bar; the hit bar's own adverse range is
+  excluded by construction (see `t1_hit_bar_adverse_excursion_pct`
+  below), not merely by observation.
+- **MAE strictly before T2** (n=147, corrected §0 item 1): median
+  0.207%, p90 0.940%, max 2.344%.
+- **T1-hit-bar's own adverse excursion** (n=248, new metric, exposed
+  separately, never merged into the "strictly before" figures above):
+  median −0.464%, p25 −0.645%, p75 −0.239%, p90 0.081%, p95 0.146%. The
+  predominantly-negative median means the hit bar's own low most often
+  never actually dips below entry at all (the raw signed
+  `(entry−low)/entry` distance is negative — zero real adverse movement
+  on that specific bar, following the same signed-distance convention
+  `mae_pct`/`mfe_pct` use before their own floor-clamp at 0); a positive
+  value means the hit bar genuinely also carried its own real adverse
+  excursion, co-occurring with (not necessarily before) the target
+  touch.
+- **T2-hit-bar's own adverse excursion** (n=147): median −0.960%, p90
+  −0.301%.
+- **Prior-version numbers superseded**: the pre-correction MAE-before-T1
+  median (0.171%) and MAE-before-T2 median (0.211%) were each inflated
+  by folding the hit bar's own adverse range into the running tracker
+  before checking whether that same bar was the hit bar — the corrected
+  figures above (0.169%/0.207%) are close in this population because
+  same-bar-adverse-and-hit co-occurrence is common but usually mild
+  here (median hit-bar-own-adverse is negative, i.e. usually zero real
+  adverse contribution), so the bug's numeric impact on the *median* was
+  small; the bug's impact is largest at the tail (a bar with a large
+  adverse low AND a same-bar target touch), exactly the scenario the
+  regression tests
+  (`test_mae_strictly_before_t1_excludes_hit_bars_own_adverse_range_long`/
+  `_short`) construct directly.
 
 ## 8. LONG-only VWAP geometry
 
@@ -166,34 +240,81 @@ newly implemented, all real, all computed only from candles up to and
 including the bar where the relevant event first fires (no lookahead
 past that bar).
 
-## 12. OR15 full comparator
+## 12. OR15 comparator — LEVEL/GEOMETRY reconstructed, EVENT SEMANTICS not recoverable
 
-Available 751/756 (99.34% — consistent with ID-7B.1's own ~99% target-
-cohort finding). **Event rate 170/751 = 22.64%**, using `INTRABAR_TOUCH`
-semantics (justified: ID-7B.1's own ~9-minute median trigger time is
-inconsistent with a close-confirmed check). Time-to-event: median 97.5
-min, p90 301.5 min (materially slower than ID-7B.1's own 9.2-minute
-figure — an `UNEXPLAINED_DIFFERENCE`, consistent with §14's broader
-outcome-rate discrepancy; the risk-distance dimension, by contrast,
-reconciles closely — see §14). **88.24% of OR15 events occur before
-T1** (150/170). **Zero `AMBIGUOUS_SAME_BAR` occurrences** (0/170) —
-tracked separately from, and never mixed with, VWAP-loss's own close-
-confirmed-only same-bar policy (§32 of the discovery contract).
-Risk-distance-pct: median 1.435% (materially wider than VWAP-loss's own
-0.470% median), directionally consistent with ID-7B.1's own §18 finding.
+**Source investigation performed this round (owner Issue 3), not
+assumed:** `docs/research/ID-7B-ENTRY-RISK-METHODOLOGY.md` §10 tier 3
+was re-read in full. It states OR15 is used "strictly as a price
+*level*, never via `breakout_event`/`returned_inside_range`/extension
+semantics" — the frozen production methodology deliberately never
+defines an OR15 forward-event rule at all, by design, not by omission.
+`docs/research/ID-7B1-RETROSPECTIVE-TRADE-EQ-RECONSTRUCTION.md` §18
+reports a "stop-hit rate" (63.76%) and "time-to-hit" (9.2 min) for OR15
+as a purely descriptive comparator, but nowhere states whether that
+measurement used an intrabar-touch, close-confirmed, or other rule —
+that script was never committed (per that report's own §25), so its
+exact rule cannot be recovered. The prior version of this report
+justified assuming `INTRABAR_TOUCH` because ID-7B.1's own measured
+trigger time was fast (~9 min) — **this is exactly the circular
+reasoning the Owner identified and rejected: a measured legacy result
+cannot define the rule used to produce itself.**
 
-## 13. D1 ATR comparator
+**Verdict: `LEGACY_OR15_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE`.** No
+event rate, time-to-event, or target-vs-stop ordering is computed or
+reported for OR15 anywhere in this corrected harness. What remains
+legitimately reconstructable and IS reported:
 
-Reconstructed using the real `IndicatorEngine` ATR computation on D1
-candles, `1x` multiple (ID-7B.1's own explicit descriptive choice,
-reused verbatim, never re-derived). Available 756/756. **Event rate
-13/756 = 1.72%** — an extremely close match to ID-7B.1's own 1.76%
-(`EXACT_MATCH`-adjacent, well within rounding/population-drift
-tolerance). Time-to-event median 265.0 min (slow, as expected for a
-rarely-triggered wide fallback). Semantics assumed `CLOSE_CONFIRMED` by
-analogy with VWAP-loss (no frozen source specifies this for a
-descriptive-only candidate — stated explicitly as an assumption, not a
-contract element).
+- **Classification: `OR15_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE`.**
+- Level/geometry availability: **751/756 (99.34%)** — consistent with
+  ID-7B.1's own ~99% target-cohort finding.
+- Risk-distance-pct distribution (n=751): median **1.435%**, p25
+  0.907%, p75 2.324%, p90 3.284%, p95 4.337%, max 9.615% — materially
+  wider than VWAP-loss's own 0.470% median, directionally consistent
+  with ID-7B.1's own §18 finding (this geometry dimension was never in
+  question — only the forward event rule was).
+- Informational RR-to-T1 (n=751): median 0.697, p90 1.623. RR-to-T2:
+  median 1.045, p90 2.435. Purely descriptive; not a gate.
+
+## 13. D1-ATR(1x) comparator — LEVEL/GEOMETRY reconstructed, EVENT SEMANTICS not recoverable
+
+**Source investigation performed this round (owner Issue 2), not
+assumed:** three sources were checked. (1)
+`docs/research/ID-7B-ENTRY-RISK-METHODOLOGY.md` §10 tier 4 describes
+the D1-ATR fallback only as mirroring "`TradePlan`'s own existing
+D1-ATR-based risk framing" — a static risk-framing level, with no
+trigger-rule language at all. (2) `TradePlan._build_plan`
+(`src/athena/decision/engine.py:230-256`) was read directly: it computes
+`stop = last_close - stop_dist` (LONG) as a static price level; nothing
+in `TradePlan`'s own domain model or the `DecisionEngine` ever evaluates
+that level against subsequent candles for a "hit" — `TradePlan` is
+advisory-only and never executes, so no forward-trigger concept exists
+anywhere in its source to borrow. (3)
+`docs/research/ID-7B1-RETROSPECTIVE-TRADE-EQ-RECONSTRUCTION.md` §18
+reports a "stop-hit rate" (1.76%) and "time-to-hit" (261.0 min) for D1
+ATR, again from the same uncommitted, unrecoverable scratch harness as
+OR15 — no trigger rule stated. The prior version of this report assumed
+`CLOSE_CONFIRMED` "by analogy with VWAP-loss's own close-confirmed
+convention" — an explicit, self-acknowledged assumption, not a sourced
+fact. **The Owner's own warning is directly confirmed by this
+investigation:** the prior assumed-semantics result (1.72%) closely
+resembling ID-7B.1's own published figure (1.76%) is coincidental
+closeness, not validation — no source anywhere states the rule that
+would make that match meaningful, and a different, equally plausible
+rule (e.g. intrabar-touch) was never tested against it.
+
+**Verdict: `D1_ATR_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE_FROM_FROZEN_SOURCE`.**
+No event rate, time-to-stop, or target-vs-stop ordering is computed or
+reported for D1-ATR anywhere in this corrected harness. What remains
+legitimately reconstructable and IS reported:
+
+- **Classification: `D1_ATR_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE`.**
+- Multiple: 1x (ID-7B.1's own explicit descriptive choice, reused
+  verbatim, never re-derived).
+- Level/geometry availability: **756/756 (100%)**.
+- Risk-distance-pct distribution (n=756): median **2.822%**, p25
+  2.294%, p75 3.445%, p90 4.136%, p95 4.443%, max 10.120%.
+- Informational RR-to-T1 (n=756): median 0.354, p90 0.501. RR-to-T2:
+  median 0.532, p90 0.752. Purely descriptive; not a gate.
 
 ## 14. Regime association or explicit PIT-unavailable verdict
 
@@ -211,20 +332,68 @@ Deterministic, fixed-seed (`20260907`) session-block bootstrap (2,000
 resamples, whole sessions resampled with replacement — never individual
 observations, respecting within-session correlation): **T1 intrabar
 rate 90% interval [28.81%, 36.69%]** around the point estimate 32.80%
-(19 distinct sessions with forward data). **VWAP-loss rate 90% interval
-[56.77%, 75.92%]** around 66.80%. These are genuinely wide intervals —
-reported honestly, not narrowed by any assumption of per-observation
-independence. This is evidence characterization only; no acceptance
-threshold is derived from it.
+(**19 sessions** — corrected this round, §0 item 4, to resample the
+same population §16 uses; see the explicit reconciliation there).
+**VWAP-loss rate 90% interval [56.77%, 75.92%]** around 66.80%. These
+are genuinely wide intervals — reported honestly, not narrowed by any
+assumption of per-observation independence. This is evidence
+characterization only; no acceptance threshold is derived from it.
 
-## 16. Chronological stability
+## 16. Chronological stability, and the bootstrap/chronological session-count reconciliation (owner §5)
 
-First-half (10 earliest sessions, n=223): T1 intrabar rate 34.53%, T2
-19.44%. Second-half (10 latest sessions, n=533): T1 32.08%, T2 18.20%.
-**The headline T1/T2 rates are not concentrated in a handful of
+**Session-count reconciliation, reported explicitly per the Owner's own
+request:**
+
+| Field | Value |
+|---|---|
+| `LONG_PRIMARY_TOTAL_SESSIONS` | 19 |
+| `LONG_PRIMARY_FORWARD_DATA_SESSIONS` | 19 |
+| `BOOTSTRAP_SESSION_COUNT` | 19 |
+| `CHRONOLOGICAL_SESSION_COUNT` | 19 |
+
+**All four agree, and always have, on the real current population** —
+every one of the 19 distinct LONG session dates has at least one
+forward-data-bearing observation; no session's LONG rows are 100%
+`INSUFFICIENT_FORWARD_DATA`. **Root cause of the prior version's
+reported "19 vs. 20" mismatch, investigated this round:** it was a
+**narrative writing error in this report's own prose, not a code or
+population defect.** The prior text read "First-half (**10** earliest
+sessions...) Second-half (**10** latest sessions...)" implying 20 total
+— but `_chronological_stability`'s own code has always split via
+`mid = len(sessions) // 2`, which for 19 sessions gives `sessions[:9]`
+(9, not 10) / `sessions[9:]` (10) — **9 + 10 = 19**, matching the
+bootstrap's own "19 distinct sessions" figure exactly, both before and
+after this round's fix. Direct proof, from the real rerun: first-half
+`sessions_first_half` contains exactly 9 dates
+(`2026-07-31`...`2026-08-12`), second-half `sessions_second_half`
+contains exactly 10 dates (`2026-08-13`...`2026-08-27`) — 19 total, the
+same 19 the bootstrap always used. **The underlying data and both
+computations were already correct; only the prose describing them was
+wrong**, and is corrected below.
+
+**Even though this specific population never actually exhibited the
+divergence risk, the code fix (§0 item 4 — bootstrap now resamples
+`with_forward`, not the raw observation set including
+`INSUFFICIENT_FORWARD_DATA`-only rows) is retained**, because it removes
+a genuine latent correctness risk: a future session whose LONG rows are
+100% `INSUFFICIENT_FORWARD_DATA` (not observed today, but not
+structurally impossible) would otherwise have silently inflated the
+bootstrap's own session count relative to chronological stability's,
+reintroducing the exact class of mismatch originally flagged. A
+dedicated regression test
+(`test_bootstrap_and_chronological_stability_share_session_population`)
+constructs exactly that scenario synthetically and proves both views
+now agree.
+
+First-half (**9** earliest sessions, n=223): T1 intrabar rate 34.53%, T2
+22.42%. Second-half (**10** latest sessions, n=533): T1 32.08%, T2
+18.20%. **The headline T1/T2 rates are not concentrated in a handful of
 sessions** — first-half and second-half rates are close (within ~2.5
-points), a reassuring stability signal reported descriptively, with no
-threshold fit to either half.
+points for T1), a reassuring stability signal reported descriptively,
+with no threshold fit to either half. (T2's own first/second-half gap —
+22.42% vs. 18.20% — is somewhat wider than T1's but still not
+concentrated in a single session; purely descriptive, no threshold
+implied.)
 
 ## 17. Extension/lateness corrected interpretation
 
@@ -242,7 +411,7 @@ similar genuine extension variable) *after* controlling for or
 describing remaining session time — not done here. No gate is proposed
 from either framing.
 
-## 18. ID-7B.1 reconciliation after corrections
+## 18. ID-7B.1 reconciliation after corrections (this round: OR15/D1-ATR rows revised to LEVEL/GEOMETRY only)
 
 | Metric | ID-7B.1 | This milestone (corrected) | Classification |
 |---|---|---|---|
@@ -251,32 +420,45 @@ from either framing.
 | LONG REPLAYED_QUALIFIED | 783 | 783 | **EXACT_MATCH** |
 | Max episode length | 60 | 60 | **EXACT_MATCH** |
 | Mean episode length | 14.64 | 14.64 | **EXACT_MATCH** |
-| D1-ATR(1x) stop-hit rate | 1.76% | 1.72% | **EXACT_MATCH** (within rounding) |
+| D1-ATR(1x) risk-distance geometry | available, descriptive | available 756/756, median 2.822% | **GEOMETRY_RECONSTRUCTED** (event rate no longer compared — see below) |
 | T1 (+1%) hit rate | 23.88% (187/783) | 32.80% (248/756, corrected denominator) | **UNEXPLAINED_DIFFERENCE** |
 | T2 (+1.5%) hit rate | 14.81% (116/783) | 19.44% (147/756) | **UNEXPLAINED_DIFFERENCE** |
 | Median MFE | 0.434% | 0.604% | **UNEXPLAINED_DIFFERENCE** |
 | VWAP-loss event rate | 66.98% | 66.80% | **EXACT_MATCH** (within rounding) |
-| OR15 event rate | 63.76% | 22.64% | **UNEXPLAINED_DIFFERENCE** |
-| OR15 time-to-event | 9.2 min | 97.5 min | **UNEXPLAINED_DIFFERENCE** |
+| OR15 risk-distance geometry | available, descriptive | available 751/756, median 1.435% | **GEOMETRY_RECONSTRUCTED** (event rate no longer compared — see below) |
 
-**`LEGACY_OUTCOME_DISCREPANCY_UNRESOLVABLE_FROM_AVAILABLE_SOURCE`** for
-the T1/T2/MFE/OR15 rows above. The population-identity metrics (top 5
-rows) now reconcile perfectly using the fully corrected harness — this
-sharply narrows the surface area of the remaining discrepancy to the
-*outcome-computation* logic specifically, and the VWAP-loss and D1-ATR
-rows' own near-perfect matches show this harness's forward-window
-mechanics are fundamentally sound. The OR15 discrepancy is the largest
-and most suspicious: `INTRABAR_TOUCH` semantics were assumed for this
-correction (justified by ID-7B.1's own fast trigger time, §12), but
-ID-7B.1's own 9.2-minute median cannot be reproduced under that same
-assumption here (97.5 min) — this may indicate ID-7B.1's own OR15 event
-definition differed from a pure intrabar high/low touch in some way not
-recoverable from its published prose alone. **This discrepancy does not
-require another milestone**: per the authorization's own instruction,
-the new committed, tested, deterministic harness is accepted as
-internally correct and is now authoritative for all future ID-8 work;
-ID-7B.1's own report remains preserved, unmodified, as historical
-record.
+**D1-ATR and OR15 event-rate/timing rows are removed from this
+reconciliation table this round** (owner Issues 2/3, §12-13): the prior
+version's "D1-ATR 1.72% vs. 1.76% `EXACT_MATCH`-adjacent" and "OR15
+63.76% vs. 22.64%/9.2min vs. 97.5min `UNEXPLAINED_DIFFERENCE`" rows both
+compared this harness's own *event* computation against ID-7B.1's own
+*event* computation — but neither comparator's event/trigger semantics
+are recoverable from any frozen source (§12-13), so **that comparison
+was never a valid apples-to-apples reconciliation in the first place**,
+for either row, regardless of whether the numbers happened to look close
+(D1-ATR) or far apart (OR15). The Owner's own warning is confirmed
+directly: the D1-ATR row's prior closeness (1.72% vs. 1.76%) was
+coincidental, not evidence the assumed `CLOSE_CONFIRMED` rule was
+correct — an equally plausible alternative rule was never tested against
+it, and no source states which (if either) ID-7B.1's own uncommitted
+harness actually used. Only the population-identity metrics (rows 1-5,
+all `EXACT_MATCH`), VWAP-loss (row 6, `EXACT_MATCH`-adjacent, sourced
+and unambiguous), and level/geometry availability for D1-ATR/OR15
+(sourced, comparator-semantics-independent) remain valid reconciliation
+claims.
+
+**`LEGACY_OUTCOME_DISCREPANCY_UNRESOLVABLE_FROM_AVAILABLE_SOURCE`**
+still applies, narrowed this round to exactly the T1/T2/MFE rows (the
+canonical target-reachability metrics, whose own trigger semantics
+`high>=target`/`low<=target` ARE fully frozen and sourced — the
+discrepancy here is not a semantics-recoverability question like
+OR15/D1-ATR's, but a genuine unexplained population/outcome-computation
+difference against ID-7B.1's own uncommitted, unreplayable harness).
+This does not require another milestone: per the authorization's own
+instruction, the new committed, tested, deterministic harness is
+accepted as internally correct and is now authoritative for all future
+ID-8 work; ID-7B.1's own report remains preserved, unmodified, as
+historical record.
 
 ## 19. SHORT replay appendix
 
@@ -303,49 +485,69 @@ this milestone, per the Owner's own explicit decision.
 
 ## 21. Defect accounting
 
-Source TRADE decisions: 97,586 (live, growing) — **LONG-only: 96,985**
-(§5). Episodes: 6,758 total (**LONG 6,624**, SHORT 134, live). Qualified
-episodes: 795 (LONG 783, SHORT 12, live-growing). Observations
-attempted: 6,758. Observations reconstructed: 795. **Binding defects: 0.
+Source TRADE decisions: 97,690 (live, growing) — **LONG-only: 96,985**
+(§5). Episodes: 6,776 total (**LONG 6,624**, SHORT 152, live). Qualified
+episodes: 798 (LONG 783, SHORT 15, live-growing). Observations
+attempted: 6,776. Observations reconstructed: 798. **Binding defects: 0.
 PIT evidence defects: 0. Evaluation exceptions: 0. Unexpected
 exceptions: 0. Duplicate identities: 0** (episode construction
 reconciles exactly, §5 of the discovery contract). Per-direction
 explicit fields (LONG primary): `forward_data_available_n=756`,
 `insufficient_forward_data_n=27`, `valid_geometry_n=756`,
-`invalid_geometry_n=0`. (SHORT diagnostic): `forward_data_available_n=12`,
+`invalid_geometry_n=0`. (SHORT diagnostic): `forward_data_available_n=15`,
 `insufficient_forward_data_n=0`, `valid_geometry_n=0`,
-`invalid_geometry_n=12`. No observation is counted in more than one of
-these mutually exclusive coverage categories.
+`invalid_geometry_n=15`. No observation is counted in more than one of
+these mutually exclusive coverage categories. (These totals grew from
+the prior round's 97,586/795/6,758 figures purely from live production
+continuing to run between report versions — not a defect, and the LONG
+population, the only one used as V0 methodology evidence, is completely
+unaffected: 96,985/6,624/783 unchanged.)
 
 ## 22. Determinism
 
-An independent second full run of the entire corrected study (6,758
-episodes, ~83s wall time) reproduced **byte-for-byte identical
-`primary_LONG` block output** — every field (N, MFE/MAE, T1/T2
-reachability + timing, VWAP-loss, terminal ordering, RR, OR15/D1-ATR
-comparators, and the session-block bootstrap's own CI, which uses a
-fixed seed) matched exactly across the two runs. The only cross-run
-variation was in the live, still-growing SHORT/total-decision counts
-(episodes 134 vs. 126 across the two runs, entirely attributable to
-production continuing to run between them) — expected, not a
-determinism defect.
+An independent second full run of the entire, methodology-corrected
+study (798 qualified observations, ~70s wall time) reproduced
+**byte-for-byte identical `primary_LONG` block output** — every field
+(N, MFE/MAE, T1/T2 reachability + timing, MAE-strictly-before-target,
+hit-bar-own-adverse-excursion, VWAP-loss, terminal ordering, RR,
+OR15/D1-ATR level/geometry comparators, session_accounting, and the
+session-block bootstrap's own CI, which uses a fixed seed) matched
+exactly across the two runs. `schema_version` confirmed unchanged
+(18→18) and `integrity_check: ok` after both runs. The only cross-run
+variation would be in the live, still-growing SHORT/total-decision
+counts — none occurred between these two specific runs (both LONG and
+SHORT populations were identical across the two, since no new
+production TRADE decision landed in the interval).
 
 ## 23. Tests
 
-19 tests in `tests/data_layer/test_id8_entry_risk_outcome_validation.py`
-(7 new this correction round): canonical session-close upper-bound
-exclusion (a deliberately-seeded post-close M5 row proven excluded),
-boundary-bar-at-exact-close proven included, LONG/SHORT never pooled
-(direct proof on synthetic data), invalid-geometry-excludes-terminal-
-ordering (a genuine T1 hit with invalid geometry proven to report
-`terminal=None`, never a false ordering claim), OR15
-`AMBIGUOUS_SAME_BAR`-with-T1 proof (two intrabar barriers on one bar),
-deterministic session-block bootstrap (same seed → same output), D1-ATR
-level direction-awareness, plus all 12 pre-existing tests (PIT/forward
-structural isolation, episode-boundary bug-fix regression, direction-
-correct target-touch, no-provider/no-persistence source scans, real
-disposable-DB integration tests). **19/19 passed.** Full repository
-suite: **3763 passed, 1 pre-existing unrelated skip, 0 failures.**
+24 tests in `tests/data_layer/test_id8_entry_risk_outcome_validation.py`
+(5 net new this round: `test_or15_and_d1_atr_have_no_forward_event_detection_in_source`,
+`test_or15_and_d1_atr_comparators_report_event_semantics_not_reconstructable`,
+`test_mae_strictly_before_t1_excludes_hit_bars_own_adverse_range_long`,
+`test_mae_strictly_before_t1_single_bar_hit_reports_zero_long`,
+`test_mae_strictly_before_t1_excludes_hit_bars_own_adverse_range_short`,
+`test_bootstrap_and_chronological_stability_share_session_population` —
+6 added, 1 removed: the prior round's
+`test_or15_ambiguous_with_t1_when_both_intrabar_same_bar` tested the
+now-withdrawn OR15 intrabar-event behavior and was replaced by the
+source-scan proof above). Covers: the exact same-bar information-limit
+scenario the Owner specified (a LONG/SHORT candle whose low/high crosses
+both an adverse extreme and the target in one bar, proven NOT counted in
+the "strictly before" metric, with the hit bar's own range exposed
+separately); a direct source-scan proof that no OR15/D1-ATR forward-
+event field is computed anywhere in `analyze_forward_outcome`; a proof
+the summary's own comparator blocks carry the exact
+`..._EVENT_SEMANTICS_NOT_RECONSTRUCTABLE...` classifications and never
+an event rate; a synthetic bootstrap/chronological session-population
+reconciliation proof; plus all 18 pre-existing tests (canonical
+session-close bound, LONG/SHORT never pooled, geometry-gated terminal
+ordering, deterministic bootstrap, D1-ATR level direction-awareness,
+PIT/forward structural isolation, episode-boundary bug-fix regression,
+direction-correct target-touch, no-provider/no-persistence source
+scans, real disposable-DB integration tests). **24/24 passed.** Full
+repository suite: **3768 passed, 1 pre-existing unrelated skip, 0
+failures.**
 
 ## 24. git diff --check
 
@@ -355,9 +557,13 @@ Clean.
 
 Read-only throughout; zero writes; zero provider/network calls; zero
 `save_*`/`INSERT` calls anywhere in the module (confirmed by source
-scan). `schema_version` confirmed unchanged at 18 before and after every
-run in this milestone. `integrity_check: ok`. PID 2453 untouched
-throughout.
+scan, including this round's new `_or15_level`/`_d1_atr_level`
+docstrings and the removed forward-event code). `schema_version`
+confirmed unchanged at 18 before and after every run in this round
+(both the primary rerun and the independent second determinism run).
+`integrity_check: ok` after each. PID 2453 (`athena.cli serve
+--with-cycles`) untouched throughout — confirmed still running,
+unchanged, via direct process inspection.
 
 ## 26. Revised acceptance questions A-H
 
@@ -393,63 +599,80 @@ effects; premature to call this "extension risk" without a dedicated
 follow-on.
 
 **F. Is OR15 or D1-ATR materially superior enough to displace VWAP-loss?**
-No. D1-ATR is rare (1.72%) and slow (median 265 min) — not a useful
-primary. OR15 is more frequent (22.6%) but its own timing figure could
-not be reconciled with ID-7B.1's published number (§18), so no
-displacement claim is defensible from this evidence.
+**Revised this round:** `NO_DISPLACEMENT_CLAIM_POSSIBLE_FROM_COMPARABLE_EVENT_EVIDENCE`
+— not simply "No." Neither comparator's forward-event semantics are
+recoverable from any frozen source (§12-13), so there is no comparable
+event-rate/timing evidence for either against which VWAP-loss's own
+66.80% event rate / 40.0 min median could be judged at all. What
+remains comparable is risk-distance geometry only: D1-ATR's risk
+distance (median 2.822%) and OR15's (median 1.435%) are both materially
+wider than VWAP-loss's (median 0.470%), which is suggestive but not
+sufficient on its own to support or reject a displacement claim, since
+distance and (unrecoverable) trigger frequency are different questions.
+VWAP-loss remains the only comparator with fully sourced, frozen,
+unambiguous event semantics (§4) — it is retained as primary on that
+basis, not on a comparative-superiority claim requiring OR15/D1-ATR
+event evidence that does not exist.
 
 **G. Is the evidence sufficient to freeze an ID-8 V0 entry/risk
-methodology for ID-9?** Closer than the prior version of this report,
-but not yet: the corrected harness is now internally verified (canonical
-helpers, correct denominators, determinism proven), and several
-completeness gaps are now closed (MFE/MAE-before-event, full OR15/D1-ATR
-comparators, regime, uncertainty, chronological stability) — but the
-OR15 timing discrepancy (§18) and the unresolved T1/T2/MFE legacy
-discrepancy remain open threads the Owner may want to weigh before
-freezing.
+methodology for ID-9?** See §32 — the Owner's own freeze question is now
+answered directly and explicitly there, rather than left open.
 
-**H. What empirical evidence remains missing?** Nothing structurally —
-every item requested in this correction round has been implemented with
-real data. What remains is an *interpretive* question: whether the
-legacy outcome-rate discrepancy (§18) needs further investigation before
-the Owner is comfortable freezing V0, or whether this harness's own
-internal correctness (determinism, canonical-helper usage, corrected
-denominators) is sufficient grounds to accept it as authoritative and
-move forward regardless.
+**H. What empirical evidence remains missing?** Nothing structurally,
+after this round: every item the Owner requested (MAE-before-target
+correction, OR15/D1-ATR source-grounded semantics verdicts, session-count
+reconciliation, revised acceptance questions, the freeze question) has
+been implemented and answered with real data or an explicit, sourced
+non-recoverability verdict. The two remaining open threads are
+interpretive, not missing-evidence: (1) the T1/T2/MFE legacy discrepancy
+against ID-7B.1's own uncommitted harness (§18,
+`LEGACY_OUTCOME_DISCREPANCY_UNRESOLVABLE_FROM_AVAILABLE_SOURCE`, a
+genuinely unrecoverable comparison, not a gap in this harness); and (2)
+whether the Owner wants OR15/D1-ATR event semantics pursued further via
+some other means (e.g. asking whoever ran ID-7B.1's original scratch
+harness whether they recall the exact rule) — not something this
+harness's own source code can resolve further.
 
 ## 27. Revised evidence classification
 
-**`ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED`** (unchanged classification,
-now on materially more rigorous grounds): the entry proxy, VWAP-loss
-invalidation, and risk geometry are all mechanically sound and produce
-real, internally consistent, deterministic evidence at scale on a
-correctly LONG-only, correctly-denominated population; genuine
-associations were found (session-time, RS, RVOL, risk-distance,
-regime); but the unresolved legacy outcome-rate/OR15-timing discrepancy
-(§18) means the evidence is not yet complete enough to freeze a V0
-methodology outright.
+**`ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED`** (unchanged classification
+label; materially more rigorous grounds this round): the entry proxy,
+VWAP-loss invalidation, and risk geometry are all mechanically sound,
+source-grounded, and produce real, internally consistent, deterministic
+evidence at scale on a correctly LONG-only, correctly-denominated
+population; genuine associations were found (session-time, RS, RVOL,
+risk-distance, regime); the MAE-before-target metric is now correctly
+computed under OHLC's real information limits; OR15/D1-ATR are honestly
+downgraded to level/geometry-only comparators rather than carrying an
+invented or circularly-justified event claim. The unresolved
+T1/T2/MFE legacy discrepancy (§18) is the only remaining open thread —
+see §32 for whether it blocks a freeze.
 
 ## 28. Recommendation for Owner (recommendation only)
 
-(1) Accept this harness as authoritative and proceed toward a V0 freeze
-despite the unresolved legacy discrepancy (§18), since the harness's own
-internal correctness is now thoroughly proven; or (2) authorize one
-narrowly-scoped investigation specifically into the OR15 timing
-mismatch (the largest, most suspicious remaining discrepancy) before
-freezing, since a 9-minute vs. 97-minute gap is large enough to warrant
-a closer look at whatever OR15 event definition ID-7B.1's own
-(uncommitted) harness actually used. Neither requires new architecture.
+Freeze PRIMARY LONG now (§32 answers this directly: yes, it can be
+frozen independently of the unresolved legacy comparator/T1-T2-MFE
+discrepancy). The OR15/D1-ATR event-semantics questions are not,
+in this recommendation's view, worth a further dedicated investigation
+milestone: both are now honestly classified as
+`_NOT_RECONSTRUCTABLE`/`_NOT_RECOVERABLE` from every available frozen
+source (the methodology doc, `TradePlan`'s own source, and ID-7B.1's own
+published prose) — the only way to close this gap further would be an
+external question to whoever ran ID-7B.1's original uncommitted scratch
+harness, which is outside this harness's own scope to pursue. Neither
+requires new architecture.
 
-## 29. Files changed (this correction round)
+## 29. Files changed (this round)
 
 Modified: `src/athena/data/id8_entry_risk_outcome_validation.py`
-(substantial rewrite: canonical session-close bound, canonical entry
-helper, geometry-gated terminal ordering, MFE/MAE-before-event, full
-OR15/D1-ATR comparators, PIT regime reconstruction, session-block
-bootstrap, chronological stability, LONG/SHORT-separated `_summarize`),
-`tests/data_layer/test_id8_entry_risk_outcome_validation.py` (7 new
-tests), this report. No new files created for this correction (per
-explicit instruction — updates the existing report only).
+(MAE-strictly-before-target ordering fix in `analyze_forward_outcome`;
+removal of all OR15/D1-ATR forward-event detection code; new
+`d1_atr_risk_distance_pct` field computed in `run_full_study`; rewritten
+`or15_comparator`/`d1_atr_comparator` blocks in `_direction_block`;
+bootstrap now resamples `with_forward`; new `session_accounting` block;
+updated module/function docstrings), `tests/data_layer/test_id8_entry_risk_outcome_validation.py`
+(6 new tests, 1 removed — §23), this report. No new files created this
+round (per explicit instruction — updates the existing report only).
 
 ## 30. Tests / git diff / status (restated)
 
@@ -473,7 +696,117 @@ completed now. All of these are corrected in this version, inside the
 same milestone, with the same committed module and test file — no
 ID-8.1/ID-8.x sub-milestone was created.
 
+## 32. Can PRIMARY LONG be frozen independently of the unresolved legacy comparator semantics? (Owner's own final question, answered directly)
+
+**Yes.** Point by point, against the Owner's own stated freeze criteria:
+
+- **Is PRIMARY LONG observation identity deterministic?** Yes — §22:
+  byte-for-byte identical `primary_LONG` output across two independent
+  full runs, fixed-seed bootstrap included.
+- **Is canonical entry/session semantics correct?** Yes — canonical
+  `latest_completed_candle` entry selection and canonical
+  `session_open_close_ts` forward-window bound, both already corrected
+  and owner-accepted in the prior round (§2-3), unchanged this round.
+- **Are VWAP-loss semantics source-grounded?** Yes — direct citation,
+  unambiguous, explicitly re-examined and NOT reopened this round (§4,
+  §0 item 5).
+- **Are T1/T2/MFE/MAE internally correct?** Yes, and MORE correct this
+  round: T1/T2 intrabar/close-confirmed triggers use the frozen,
+  sourced `high>=target`/`low<=target`/`close>=target`/`close<=target`
+  rules (unchanged); MAE-strictly-before-target's own real intrabar-
+  ordering bug is now fixed (§0 item 1, §7) — this is a genuine
+  correctness improvement, not a new open question.
+- **Is terminal ordering correct?** Yes — geometry-gated, unchanged from
+  the prior round's own correction (§10), unaffected by this round.
+- **Are chronology/uncertainty sound?** Yes, and reconciled more
+  precisely this round: the bootstrap/chronological session-count
+  question the Owner flagged is fully investigated and resolved (§16) —
+  the two views were never actually in conflict on this population; the
+  narrative describing them contained the only error, now corrected.
+
+**What remains genuinely unresolved is exactly one thing: the
+`LEGACY_OUTCOME_DISCREPANCY_UNRESOLVABLE_FROM_AVAILABLE_SOURCE`
+classification for T1/T2/MFE against ID-7B.1's own uncommitted,
+unreplayable scratch harness (§18), and the two comparator
+semantics-not-recoverable verdicts for OR15/D1-ATR (§12-13).** None of
+these are correctness defects IN this harness — they are honest
+non-recoverability findings about a DIFFERENT, prior, uncommitted
+harness whose exact internal rules cannot be reconstructed by any means
+available to this milestone. An unresolved old scratch-harness
+discrepancy does not automatically block Owner freeze of a newer,
+fully-sourced, fully-tested, deterministic harness — holding PRIMARY
+LONG hostage to a permanently-unrecoverable legacy artifact would mean
+V0 could never be frozen at all, regardless of how correct the new
+harness becomes, which cannot be the intended bar.
+
+**Verdict: the newly committed harness (`src/athena/data/id8_entry_risk_outcome_validation.py`)
+IS now sufficiently self-consistent and source-grounded to become
+authoritative for PRIMARY LONG V0 entry/risk evidence.** OR15 and D1-ATR
+remain honestly downgraded to level/geometry-only comparators (never an
+invented or circularly-derived event claim) rather than being silently
+dropped or over-claimed — this is itself evidence of rigor, not a
+blocker. SHORT remains diagnostic-only, unchanged, per
+`LONG_VALIDATED_SHORT_UNVALIDATED`.
+
+## 33. Correction record — this round (methodology-rigor pass, 2026-09-07)
+
+This is the SECOND in-place correction of this report, following the
+Owner's "ATHENA — ID-8 FULL HISTORICAL VALIDATION FINAL METHODOLOGY
+CORRECTION" authorization. Three primary defects were identified and
+fixed:
+
+1. **MAE-before-T1/T2 intrabar-ordering bug** (Issue 1): the running
+   adverse-excursion tracker folded a bar's own adverse range into
+   itself before checking whether that bar was the target-hit bar,
+   incorrectly assuming — when a single bar contained both an adverse
+   extreme and the target touch — that the adverse extreme occurred
+   first, which OHLC data cannot prove. Fixed in
+   `analyze_forward_outcome`: the "before" snapshot is now captured from
+   the tracker's value strictly prior to folding in the hit bar's own
+   `adv`, and the tracker is frozen the instant its target fires. The
+   hit bar's own separate adverse range is now exposed independently
+   (`t1_hit_bar_adverse_excursion_pct`/`t2_hit_bar_adverse_excursion_pct`),
+   never merged into the "before" figure. 3 new regression tests prove
+   this directly (LONG two-bar, LONG single-bar, SHORT mirror).
+2. **D1-ATR event semantics investigated from source, found
+   unsourced, and withdrawn as an authoritative claim** (Issue 2): the
+   prior `CLOSE_CONFIRMED` assumption ("by analogy with VWAP-loss") is
+   removed; `_d1_atr_level`/`d1_atr_comparator` now report level/
+   geometry only, classified
+   `D1_ATR_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE`
+   / `D1_ATR_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE_FROM_FROZEN_SOURCE`,
+   with the exact source investigation documented in §13.
+3. **OR15 event semantics investigated from source, found explicitly
+   forbidden by the frozen methodology's own text, and withdrawn as an
+   authoritative claim** (Issue 3): the prior `INTRABAR_TOUCH`
+   justification (circular — derived from ID-7B.1's own measured result)
+   is removed; `_or15_level`/`or15_comparator` now report level/geometry
+   only, classified
+   `OR15_LEVEL_GEOMETRY_RECONSTRUCTED_EVENT_SEMANTICS_NOT_RECOVERABLE`
+   / `LEGACY_OR15_EVENT_SEMANTICS_NOT_RECONSTRUCTABLE`, with the exact
+   source investigation (including the methodology doc's own explicit
+   "never via breakout_event... semantics" language) documented in §12.
+
+Additional corrections: the bootstrap/session-count population is now
+reconciled with chronological stability (§16) — investigated and found
+to be a narrative writing error in the prior report's own prose, not a
+code or population defect, with the underlying code hardened regardless
+against a latent future-population risk; §4's VWAP-loss semantics were
+re-examined per instruction and confirmed to require no change; §26
+Question F is revised to `NO_DISPLACEMENT_CLAIM_POSSIBLE_FROM_COMPARABLE_EVENT_EVIDENCE`;
+a new §32 directly answers the Owner's own freeze question (yes, PRIMARY
+LONG can be frozen independently of the unresolved legacy comparator
+discrepancy). All corrections were made inside the same milestone, the
+same committed module and test file, with no ID-8.1/ID-8.x
+sub-milestone created, per the Owner's own explicit instruction.
+
+The prior round's §31 correction record (LONG/SHORT pooling, forward-
+window/entry-selection canonicalization, geometry-gated terminal
+ordering, and the initial MFE/MAE-before-event/OR15/D1-ATR/regime/
+uncertainty/chronological-stability completions) is preserved unmodified
+above and remains historically accurate for that round.
+
 ---
 
-**ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION CORRECTED AND
-COMPLETE — READY FOR OWNER / CHIEF ARCHITECT REVIEW.**
+**ID-8 FULL HISTORICAL ENTRY/RISK OUTCOME VALIDATION METHODOLOGY-CORRECT
+— READY FOR OWNER / CHIEF ARCHITECT FREEZE DECISION.**
