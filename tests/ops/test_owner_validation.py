@@ -3599,15 +3599,459 @@ class TestOwnerValidationPipeline:
         assert ea.decision_type is DT.TRADE
 
     def test_id7e1_no_dag_change(self) -> None:
-        """ID-7E.1 #15: structural proof that the stage name, dependency
-        set, and produced-key set are all completely unchanged from
-        ID-7E -- this milestone is a body-only correction inside
-        entry_actionability_stage, never a DAG redesign."""
+        """ID-7E.1 #15: structural proof that the `entry_actionability`
+        stage's own name, dependency set, and produced-key set are all
+        completely unchanged from ID-7E -- ID-7E.1 was a body-only
+        correction inside entry_actionability_stage, never a DAG
+        redesign. The literal count grew from 4 (as of ID-7E.1) to 9
+        after ID-9 legitimately added a new downstream `position_sizing`
+        stage that depends on and reads "entry_actionability" (its own
+        `depends_on=(...)` literal, `ctx.get(...)` call, and explanatory
+        comments) -- this assertion locks in that new, deliberate,
+        reviewed count, not the pre-ID-9 one."""
         import inspect
 
         import athena.ops.owner_validation as ov
 
         source = inspect.getsource(ov)
-        assert source.count('"entry_actionability"') == 4, "stage/key name literal count changed"
+        assert source.count('"entry_actionability"') == 9, "stage/key name literal count changed"
         assert 'depends_on=("entry_qualification",)' in source
         assert 'produces=("entry_actionability",)' in source
+
+    # ------------------------------------------------------------ ID-9
+
+    def test_id9_position_sizing_stage_does_not_perturb_existing_stage_order(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-9: the new `position_sizing` stage explicitly depends only
+        on `entry_actionability` -- and, since nothing depends on IT,
+        the twelve pre-existing stages must keep their exact relative
+        order, mirroring ID-7E's own analogous proof."""
+        from athena.runtime.workflow import WorkflowStage, build_definition
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ps-stage-order"
+        )
+        assert detail["decision_reports"], "position_sizing stage must not break the existing scan"
+
+        noop = lambda ctx: {}  # noqa: E731
+        stages = [
+            WorkflowStage("indicators", noop,
+                          produces=("indicators", "vwap", "confluence", "latest_completed_m5")),
+            WorkflowStage("regime", noop, produces=("regime", "market_health")),
+            WorkflowStage("scoring", noop, depends_on=("indicators", "regime"), produces=("scoring",)),
+            WorkflowStage("confidence", noop, depends_on=("scoring", "regime"),
+                          produces=("evidence_bundle", "confidence")),
+            WorkflowStage("risk", noop, depends_on=("indicators", "regime"), produces=("risk",)),
+            WorkflowStage("decision", noop, depends_on=("scoring", "confidence", "risk"),
+                          produces=("outcome",)),
+            WorkflowStage("session", noop, produces=("session_context",)),
+            WorkflowStage("relative_strength", noop, depends_on=("session",), produces=("relative_strength",)),
+            WorkflowStage("relative_volume", noop, depends_on=("session",), produces=("relative_volume",)),
+            WorkflowStage(
+                "intraday_analytics", noop,
+                depends_on=("session", "indicators", "relative_strength", "relative_volume"),
+                produces=("intraday_signal_set",),
+            ),
+            WorkflowStage(
+                "entry_qualification", noop, depends_on=("decision", "intraday_analytics"),
+                produces=("entry_qualification",),
+            ),
+            WorkflowStage(
+                "entry_actionability", noop, depends_on=("entry_qualification",),
+                produces=("entry_actionability",),
+            ),
+        ]
+        original_order = build_definition("pre-id9", stages).execution_order
+        with_ps = build_definition(
+            "post-id9",
+            [*stages, WorkflowStage(
+                "position_sizing", noop, depends_on=("entry_actionability",),
+                produces=("position_sizing",),
+            )],
+        ).execution_order
+        pre_existing_names = [n for n in with_ps if n != "position_sizing"]
+        assert tuple(pre_existing_names) == original_order
+        assert "position_sizing" in with_ps
+
+    def test_id9_position_sizing_transitive_dependency_is_structurally_guaranteed(self) -> None:
+        """ID-9: proves -- from WorkflowEngine's own generic failure-
+        propagation mechanics, not from insertion order -- that
+        `position_sizing` (depending only on `entry_actionability`) can
+        safely read whatever `entry_actionability_stage` itself relied
+        on (`entry_qualification`, `indicators`, `intraday_analytics`):
+        if any of those had failed/been skipped, `entry_actionability`
+        itself could never reach COMPLETED."""
+        from athena.runtime.models import ExecutionStatus
+        from athena.runtime.workflow import WorkflowEngine, WorkflowStage, build_definition
+
+        def boom(ctx):
+            raise ValueError("indicators failed")
+
+        stages = [
+            WorkflowStage("indicators", boom, produces=("indicators",)),
+            WorkflowStage("intraday_analytics", lambda ctx: {"intraday_signal_set": True},
+                          depends_on=("indicators",), produces=("intraday_signal_set",)),
+            WorkflowStage("entry_qualification", lambda ctx: {"entry_qualification": True},
+                          depends_on=("intraday_analytics",), produces=("entry_qualification",)),
+            WorkflowStage("entry_actionability", lambda ctx: {"entry_actionability": True},
+                          depends_on=("entry_qualification",), produces=("entry_actionability",)),
+            WorkflowStage("position_sizing", lambda ctx: {"position_sizing": True},
+                          depends_on=("entry_actionability",), produces=("position_sizing",)),
+        ]
+        execution = WorkflowEngine().execute(
+            build_definition("id9-transitive-proof", stages), as_of=AS_OF
+        )
+        by_name = {r.stage_name: r for r in execution.stage_results}
+        assert by_name["indicators"].status is ExecutionStatus.FAILED
+        assert by_name["entry_actionability"].status is ExecutionStatus.SKIPPED
+        assert by_name["position_sizing"].status is ExecutionStatus.SKIPPED
+
+    def test_id9_out_of_scope_decision_position_sizing_never_invoked(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """A genuine out-of-scope Decision type (NO_TRADE -- outside
+        ID-7's own WATCH/TRADE funnel) means `entry_actionability_stage`
+        itself returns `{"entry_actionability": None}` (ADR-015's own
+        scope gate). `position_sizing_stage` must gate on that BEFORE
+        ever constructing/calling `PositionSizingV0Engine`, proven via a
+        direct call-count spy (not merely an absent result, which a
+        caught exception could also produce). WATCH itself is IN scope
+        for ID-9 (a WATCH-bound EntryActionability is a real
+        NOT_ACTIONABLE object, not None, so `evaluate()` is correctly
+        invoked and immediately resolves to NOT_SIZED/
+        UPSTREAM_NOT_ACTIONABLE -- covered by the no-policy test below)."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.enums import DecisionType as DT
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_no_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.NO_TRADE, trade_plan=None, gate_results=()
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_no_trade)
+
+        calls: list[object] = []
+        real_evaluate = PositionSizingV0Engine.evaluate
+
+        def spy_evaluate(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            return real_evaluate(self, *args, **kwargs)
+
+        monkeypatch.setattr(PositionSizingV0Engine, "evaluate", spy_evaluate)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ps-out-of-scope"
+        )
+        assert detail["scan_statistics"]["successful"] == 1
+
+        decision = repo.get_decision(f"decision-{iid}-{AS_OF.isoformat()}")
+        assert decision is not None
+        assert decision.decision_type is DT.NO_TRADE
+
+        assert calls == [], "PositionSizingV0Engine.evaluate must never be called for an out-of-scope Decision"
+
+    def test_id9_watch_decision_reaches_upstream_not_actionable(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """WATCH is IN scope for ID-7 (a persisted NOT_ACTIONABLE row
+        with UPSTREAM_DECISION_NOT_TRADE, never None) -- ID-9's own
+        stage correctly still calls `evaluate()` on it, which
+        immediately resolves to NOT_SIZED/UPSTREAM_NOT_ACTIONABLE
+        without ever reading capital policy or risk geometry."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.enums import DecisionType as DT
+        from athena.intraday import PositionSizingReasonCode, PositionSizingState
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_watch(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            if outcome.decision.decision_type is DT.TRADE:
+                forced = dataclasses.replace(
+                    outcome.decision, decision_type=DT.WATCH, trade_plan=None, gate_results=()
+                )
+                outcome = dataclasses.replace(outcome, decision=forced)
+            return outcome
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_watch)
+
+        results: list[object] = []
+        real_evaluate = PositionSizingV0Engine.evaluate
+
+        def spy_evaluate(self, *args, **kwargs):
+            result = real_evaluate(self, *args, **kwargs)
+            results.append(result)
+            return result
+
+        monkeypatch.setattr(PositionSizingV0Engine, "evaluate", spy_evaluate)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ps-watch")
+
+        assert len(results) == 1
+        sizing = results[0]
+        assert sizing.state is PositionSizingState.NOT_SIZED
+        assert sizing.reason_codes == (PositionSizingReasonCode.UPSTREAM_NOT_ACTIONABLE,)
+        assert sizing.entry_reference_price is None
+
+    def test_id9_no_capital_policy_configured_by_default_reports_unavailable(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """`OwnerValidationPipeline(repo, config_dir)` (no `capital_policy`
+        kwarg) is the real production default -- every real TRADE+
+        QUALIFIED+ACTIONABLE opportunity must honestly report
+        CAPITAL_POLICY_UNAVAILABLE until the Owner explicitly wires a
+        real policy; dormant config/capital.json/config/risk.json values
+        must never be silently substituted."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.decision import TradePlan
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.intraday import (
+            EntryQualificationEngine,
+            EntryQualificationState,
+            PositionSizingReasonCode,
+            PositionSizingState,
+        )
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.TRADE, direction=Dir.LONG, gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"), risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_qualified(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            return dataclasses.replace(eq, state=EntryQualificationState.QUALIFIED, reason_codes=())
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_qualified)
+
+        results: list[object] = []
+        real_evaluate = PositionSizingV0Engine.evaluate
+
+        def spy_evaluate(self, *args, **kwargs):
+            result = real_evaluate(self, *args, **kwargs)
+            results.append(result)
+            return result
+
+        monkeypatch.setattr(PositionSizingV0Engine, "evaluate", spy_evaluate)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)  # no capital_policy injected
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ps-no-policy")
+
+        assert len(results) == 1
+        sizing = results[0]
+        assert sizing is not None
+        assert sizing.state is PositionSizingState.NOT_SIZED
+        assert sizing.reason_codes == (PositionSizingReasonCode.CAPITAL_POLICY_UNAVAILABLE,)
+        # Geometry is still echoed even without a policy.
+        assert sizing.entry_reference_price == Decimal("102")
+        assert sizing.per_share_risk == Decimal("1")
+
+    def test_id9_capital_policy_injected_produces_sized_result(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """With an explicit, Owner-supplied `CapitalPolicy` injected at
+        construction, the same real TRADE+QUALIFIED+ACTIONABLE fixture
+        (per_share_risk=1, entry=102) reaches a genuine SIZED result via
+        the canonical, same-cycle EntryActionability -- never a
+        repository "latest" re-query."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.decision import TradePlan
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.intraday import (
+            CapitalPolicy,
+            EntryQualificationEngine,
+            EntryQualificationState,
+            PositionSizingState,
+        )
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.TRADE, direction=Dir.LONG, gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"), risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_qualified(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            return dataclasses.replace(eq, state=EntryQualificationState.QUALIFIED, reason_codes=())
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_qualified)
+
+        captured: list[object] = []
+        real_evaluate = PositionSizingV0Engine.evaluate
+
+        def spy_evaluate(self, *, entry_actionability, **kwargs):
+            result = real_evaluate(self, entry_actionability=entry_actionability, **kwargs)
+            captured.append((entry_actionability, result))
+            return result
+
+        monkeypatch.setattr(PositionSizingV0Engine, "evaluate", spy_evaluate)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        policy = CapitalPolicy(
+            total_deployable_capital=Decimal("100000"), risk_budget_per_trade_pct=Decimal("1.0"),
+            max_position_value_pct=Decimal("10.0"), policy_version="test-policy-v1",
+        )
+        pipe = OwnerValidationPipeline(repo, config_dir, capital_policy=policy)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ps-sized")
+
+        assert len(captured) == 1
+        entry_actionability_arg, sizing = captured[0]
+
+        # Exact same-cycle EntryActionability consumption -- never a
+        # repository "latest" re-query.
+        persisted = repo.list_entry_actionabilities_for_instrument_session(iid, AS_OF.date())
+        assert len(persisted) == 1
+        assert entry_actionability_arg == persisted[0]
+
+        assert sizing.state is PositionSizingState.SIZED
+        assert sizing.policy_version == "test-policy-v1"
+        # per_share_risk=1, risk_budget=1000 -> risk_quantity=1000;
+        # max_position_value=10000, entry=102 -> max_value_quantity=98
+        # (floor(10000/102)); theoretical_capital_quantity=980 (floor
+        # (100000/102)) -- MAX_POSITION_VALUE binds.
+        assert sizing.recommended_quantity == Decimal("98")
+
+    def test_id9_no_persistence_no_provider_calls_in_stage(self) -> None:
+        """ID-9 §18 (PERSISTENCE_NOT_YET_REQUIRED): no
+        `self._repo.save_position_sizing(...)` CALL exists anywhere in
+        owner_validation.py (a prose comment explaining this decision is
+        fine and expected), and the stage performs zero provider/
+        network access, mirroring ID-7E's own analogous proof."""
+        import inspect
+
+        import athena.ops.owner_validation as ov
+
+        source = inspect.getsource(ov)
+        assert "self._repo.save_position_sizing(" not in source
+        assert ".save_position_sizing(" not in source
+        for provider_token in ("KiteConnect", "kiteconnect", "requests.", "httpx."):
+            assert provider_token not in source
+
+    def test_id9_no_latest_repository_query_for_same_cycle_sizing(self) -> None:
+        """`position_sizing_stage`'s own body must read `entry_actionability`
+        exclusively from WorkflowContext (`ctx.get("entry_actionability")`)
+        -- never `latest_entry_actionability_for_entry_qualification`/
+        `latest_entry_actionability_for_instrument_session`, which are
+        read-time-only APIs this write-time stage must never call."""
+        import inspect
+
+        import athena.ops.owner_validation as ov
+
+        source = inspect.getsource(ov.OwnerValidationPipeline._scan_eligible)
+        stage_start = source.index("def position_sizing_stage")
+        stage_body = source[stage_start:source.index("defn = build_definition")]
+        assert "latest_entry_actionability_for_entry_qualification" not in stage_body
+        assert "latest_entry_actionability_for_instrument_session" not in stage_body
+        assert 'ctx.get("entry_actionability")' in stage_body

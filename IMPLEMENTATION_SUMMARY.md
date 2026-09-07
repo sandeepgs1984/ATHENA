@@ -6,6 +6,188 @@ status updated on approval.
 
 ---
 
+## ID-9 Position Sizing V0 Core Implementation — Complete, Ready for Owner Review
+
+**Summary.** With ID-9 discovery owner-approved/closed, the Owner
+authorized V0 core implementation same day: a pure, deterministic
+sizing evaluator consuming `EntryActionability` directly, wired into
+the canonical per-instrument workflow, with the dormant P5.2-P5.6
+pipeline's disposition explicitly resolved (no ambiguous two-pipeline
+outcome).
+
+**New domain contract** (`src/athena/intraday/position_sizing_models.py`):
+`CapitalPolicy` (frozen dataclass — `total_deployable_capital`,
+`risk_budget_per_trade_pct`, `max_position_value_pct`, `policy_version`
+— deliberately NOT `CapitalConfig`/`RiskConfig` themselves, both
+confirmed dormant/unused by discovery; a thin, explicit, V0-minimal
+view reusing their field semantics/percent-number convention without
+coupling to file-based config loading). `PositionSizing` (frozen
+dataclass) mirrors `EntryActionability`'s own identity/dimension-
+separation discipline exactly: full upstream `EntryActionability`
+composite identity copied verbatim, two independent field-presence
+rules (upstream-echoed risk geometry present whenever
+`UPSTREAM_NOT_ACTIONABLE` is absent; capital-derived/result fields
+present iff `state in (SIZED, ZERO_QUANTITY_UNDER_POLICY)`),
+`PositionSizingState` (`SIZED`/`NOT_SIZED`/`ZERO_QUANTITY_UNDER_POLICY`
+— no `UNKNOWN` needed), `PositionSizingReasonCode` (family-separated,
+mirroring `EntryActionabilityReasonCode`), `BindingConstraint`
+(`RISK_BUDGET`/`MAX_POSITION_VALUE`/`THEORETICAL_CAPITAL`, reported as
+a tuple so co-binding ties are never collapsed to one winner). 17
+dedicated domain-construction/rejection tests plus 3 `CapitalPolicy`
+validation tests.
+
+**New pure evaluator** (`position_sizing_engine.py`):
+`PositionSizingV0Engine.evaluate(...)` — upstream-`ACTIONABLE` gate
+first (mirrors `EntryActionabilityEngine`'s own gates-first order),
+then a defensive contract-error check for the structurally-impossible
+`direction==NONE` case (never a graceful result — mirrors
+`_validate_binding`'s own "reject an impossible supplied combination"
+precedent), then LONG-only direction scope (SHORT refused with
+`UNVALIDATED_DIRECTION`, its own real per-share risk still echoed for
+explainability), then capital-policy availability, then a defensive
+per-share-risk re-check (structurally guaranteed by
+`EntryActionability`'s own risk-geometry invariant, tested via a
+deliberate `object.__setattr__` bypass construction — the only way to
+reach a code path that should be, and is documented as, unreachable).
+Three independent constraints — `risk_quantity`, `max_value_quantity`,
+`theoretical_capital_quantity` — each via `_floor_money`/`_floor_to_lot`
+(never `ROUND_UP`, never forced to a minimum lot, generic over any real
+`instrument.lot_size`, not hardcoded to 1). **A genuine mathematical
+finding surfaced during implementation**: since
+`CapitalPolicy.max_position_value_pct <= 100%` is enforced,
+`theoretical_capital_quantity >= max_value_quantity` always holds — the
+theoretical-capital constraint can therefore never be the UNIQUE
+tightest constraint, only ever co-binding with max-position-value at
+the 100%-deployment boundary; this is reported honestly in the
+implementation report and proven by a dedicated co-binding test rather
+than asserting an impossible scenario. `GOAL_BANDS_ONLY`/
+`RR_INFORMATIONAL_ONLY` preserved: proven by source scan (RR/T1/T2/
+score/confidence/conviction/RS/RVOL/hit-rate/Kelly never referenced in
+the engine's own code) and behaviorally (an artificially extreme RR
+fixture produces an identical sizing result). Zero repository/provider/
+network access anywhere in either new module (source-scan-proven).
+34 tests in `tests/market_intel/test_position_sizing_engine.py`.
+
+**Dormant P5.2-P5.6 pipeline disposition** (required classification,
+per the Owner's own anti-duplication instruction):
+`CapitalAllocationEngine`/`PositionSizingEngine`/`OrderPlanningEngine`/
+`BrokerManager`/`OrderLifecycleEngine` and their domain models/configs
+are ALL classified `RETAIN_AS_LEGACY_COMPATIBILITY` — real, tested,
+code-complete, but architecturally incompatible (the legacy engines
+convert one already-decided rupee `allocated_amount` into a share
+count, with no `per_share_risk`/multi-constraint/binding-constraint
+concept at all); adapting them would break their own existing tests/API
+for zero benefit, since nothing in production invokes them today
+anyway. Confirmed by source-scan test that neither new ID-9 module
+imports anything from `athena.allocation`/`athena.sizing`/
+`athena.orders`/`athena.brokers`/`athena.execution` — production has
+exactly ONE canonical sizing path, no ambiguous "two pipelines" outcome.
+
+**Workflow integration** (`src/athena/ops/owner_validation.py`):
+`OwnerValidationPipeline.__init__` gained an optional
+`capital_policy: CapitalPolicy | None = None` parameter (mirrors the
+existing `persistence_clock` injectable pattern exactly) — production
+default is `None`, so every real cycle today honestly reports
+`CAPITAL_POLICY_UNAVAILABLE` until the Owner explicitly wires a real
+policy; no dormant `capital.json`/`risk.json` value is read anywhere. A
+new `instrument_by_id` lookup map (reusing the same `instruments`
+sequence already resolved for the whole scan, never a second repository
+read) supplies each instrument's canonical `lot_size`. New
+`position_sizing` `WorkflowStage` (`depends_on=("entry_actionability",)`,
+`produces=("position_sizing",)`), declared last (proven not to perturb
+the twelve pre-existing stages' order, mirroring ID-7E's own precedent;
+a transitive-dependency test proves the same failure/skip-propagation
+guarantee ID-7E established). Consumes the exact same-cycle
+`EntryActionability` `entry_actionability_stage` itself just produced
+(never a repository "latest" re-query — proven by source scan and an
+exact-identity end-to-end test); gates on `entry_actionability is None`
+(the out-of-scope-Decision-type case) BEFORE any instrument/policy
+composition, proven by a direct call-count spy showing zero engine
+invocations for a genuine `NO_TRADE` Decision. A WATCH-bound (non-
+`None`, `NOT_ACTIONABLE`) artifact correctly still reaches `evaluate()`,
+immediately resolving to `NOT_SIZED`/`UPSTREAM_NOT_ACTIONABLE`.
+`PERSISTENCE_NOT_YET_REQUIRED` — the pure result is published into
+`WorkflowContext` only; no `save_position_sizing` method exists;
+`SCHEMA_VERSION` remains 18; no order/broker/execution stage was
+activated. 8 new tests in `tests/ops/test_owner_validation.py`; one
+pre-existing locked-in literal-count assertion
+(`test_id7e1_no_dag_change`) updated from 4→9 with an explicit
+explanation of the new, deliberate count.
+
+**Tests.** 42 new tests total. Full repository suite: **3812 passed, 1
+pre-existing unrelated skip, 0 failures** (up from 3770, exactly +42).
+
+**Files created:** `src/athena/intraday/position_sizing_models.py`,
+`src/athena/intraday/position_sizing_engine.py`,
+`tests/market_intel/test_position_sizing_engine.py`,
+`docs/research/ID-9-POSITION-SIZING-V0-CORE-IMPLEMENTATION.md`. **Files
+modified:** `src/athena/intraday/__init__.py` (new exports),
+`src/athena/ops/owner_validation.py`, `tests/ops/test_owner_validation.py`,
+`docs/research/ID-9-POSITION-SIZING-DISCOVERY-AND-V0-CONTRACT.md`
+(§41/§42 files-changed accounting corrected per this milestone's own
+instruction), `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. **Zero schema/repository/
+config changes.** `db/athena.db` confirmed unchanged (`schema_version`
+18, `integrity_check: ok`); PID 2453 untouched; zero provider/network
+calls; zero order/broker/execution activation; zero EMR/DarvaX touch.
+
+**Status: ID-9 V0 CORE IMPLEMENTATION COMPLETE — READY FOR OWNER /
+CHIEF ARCHITECT REVIEW.** Classification
+`ID9_V0_CORE_IMPLEMENTATION_COMPLETE_NO_PRODUCTION_ACTIVATION` — the
+implementation is complete and source-review-ready, but production
+sizing remains inert (every real cycle reports
+`CAPITAL_POLICY_UNAVAILABLE`) until the Owner explicitly supplies a
+`CapitalPolicy` — a deliberate, zero-invented-numbers default, not an
+incomplete implementation. Does not start ID-10; does not activate
+dormant order/execution stages; EMR and DarvaX untouched.
+
+**Suggested commit message** (for the owner to run themselves, per
+CLAUDE.md — no git action taken by the AI):
+
+```
+feat(intraday): ID-9 position sizing V0 core implementation
+
+- Added a new pure, deterministic Position Sizing V0 engine
+  (PositionSizingV0Engine.evaluate) and domain contract (CapitalPolicy,
+  PositionSizing) under src/athena/intraday/, consuming EntryActionability
+  (state==ACTIONABLE) directly - no new EntryRisk artifact, per the
+  frozen ID-9 discovery decision.
+- LONG-only V0 scope: SHORT refused with UNVALIDATED_DIRECTION (per-share
+  risk still echoed for explainability); direction==NONE treated as a
+  genuine contract error (structurally impossible for an ACTIONABLE
+  artifact) rather than a graceful result.
+- Three independent constraints (risk-budget, max-position-value,
+  theoretical-deployable-capital), each floored DOWN to whole lots via
+  instrument.lot_size, never forced to a minimum; binding_constraints
+  reports every co-binding candidate, never one arbitrary winner.
+- Found and documented a genuine mathematical relationship: since
+  max_position_value_pct <= 100% is enforced, theoretical-capital can
+  only ever co-bind with max-position-value, never uniquely bind alone.
+- CapitalPolicy is a small explicit caller-supplied contract (not
+  CapitalConfig/RiskConfig, both confirmed dormant by discovery) -
+  OwnerValidationPipeline gained an optional capital_policy parameter
+  defaulting to None, so production honestly reports
+  CAPITAL_POLICY_UNAVAILABLE until the Owner supplies a real policy.
+- Preserved GOAL_BANDS_ONLY/RR_INFORMATIONAL_ONLY: proven by source scan
+  and behaviorally that RR/T1/T2/score/confidence/conviction/RS/RVOL/
+  hit-rate/Kelly never influence sizing.
+- Wired a new position_sizing WorkflowStage (depends_on=entry_actionability)
+  into the canonical DAG, consuming the exact same-cycle EntryActionability
+  (never a repository "latest" query); no persistence yet (schema stays
+  18), no order/broker/execution stage activated.
+- Classified the dormant P5.2-P5.6 allocation/sizing/order-planning/
+  broker/execution pipeline RETAIN_AS_LEGACY_COMPATIBILITY in full
+  (incompatible allocated-amount-based paradigm) and confirmed, by
+  source scan, it is never imported by any new ID-9 file - exactly one
+  canonical sizing path exists in production.
+- Added 42 tests (34 pure-engine/domain, 8 workflow-integration); full
+  suite 3812 passed.
+- Updated the ID-9 discovery report's own files-changed accounting,
+  MILESTONES.md, ATHENA_BRIEFING.md, and the ID-track handoff doc.
+```
+
+---
+
 ## ID-9 Position Sizing / Capital Allocation — Discovery + V0 Contract, Ready for Owner Review
 
 **Summary.** With ID-8 owner-frozen and closed

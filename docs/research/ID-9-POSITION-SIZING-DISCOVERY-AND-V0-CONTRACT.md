@@ -741,14 +741,29 @@ any `athena.config` model was read and is preserved, unmodified.
 
 ## 41. Files changed
 
+**Correction (per Owner instruction, ID-9 V0 core-implementation
+authorization §25): this section originally understated the actual
+changed-file set for this discovery milestone — it said "no other files
+created or modified," which was inaccurate. The full, corrected
+accounting:**
+
 Created: `docs/research/ID-9-POSITION-SIZING-DISCOVERY-AND-V0-CONTRACT.md`
-(this report). No other files created or modified. No code change of
-any kind.
+(this report). **Modified** (per CLAUDE.md's mandatory milestone-tracking
+workflow, updated in the same change set as this report): `docs/MILESTONES.md`
+(new ID-9 status entry + ID-8 owner-closure record), `ATHENA_BRIEFING.md`
+(§6 ID-track cell updated with the same), `docs/ATHENA-ID-TRACK-HANDOFF.md`
+(ID-9 discovery summary appended), `IMPLEMENTATION_SUMMARY.md` (new top
+entry for this milestone). No code, schema, or repository file was
+created or modified by this discovery pass — the four files above are
+documentation/tracking updates only, consistent with the milestone
+workflow mandated by `CLAUDE.md` for every completed milestone,
+regardless of Owner-approval status.
 
 ## 42. `git diff --check`
 
-Clean (only this new, untracked report file exists; no tracked file was
-modified).
+Clean. Diff for this discovery milestone is scoped to exactly the 5
+files named in §41 (1 new report + 4 tracking-doc updates) — zero
+source/test/config/schema files touched.
 
 ---
 

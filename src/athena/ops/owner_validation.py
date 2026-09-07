@@ -36,6 +36,7 @@ from athena.market_health.aggregates import (
 )
 from athena.market_health.engine import MarketHealthEngine
 from athena.market_health.score import construct_market_health_score
+from athena.intraday.position_sizing_models import CapitalPolicy
 from athena.ops.owner_candidates import (
     DEFAULT_EXCHANGE,
     SqliteCandidateStore,
@@ -83,6 +84,7 @@ class OwnerValidationPipeline:
         enable_scan: bool = True,
         symbols_filter: Sequence[str] | None = None,
         persistence_clock: Callable[[], datetime] | None = None,
+        capital_policy: CapitalPolicy | None = None,
     ) -> None:
         self._repo = repo
         self._config_dir = Path(config_dir)
@@ -94,6 +96,13 @@ class OwnerValidationPipeline:
             if symbols_filter
             else None
         )
+        # ID-9: deliberately NOT read from config/capital.json/risk.json
+        # (both confirmed dormant/consumed-by-nothing by the ID-9
+        # discovery report) -- an explicit, Owner-supplied policy or
+        # None. `None` is the correct, honest default: every ID-9
+        # position_sizing observation reports `CAPITAL_POLICY_UNAVAILABLE`
+        # until the Owner explicitly wires a real policy here.
+        self._capital_policy: CapitalPolicy | None = capital_policy
         # ID-6D.1: the real, timezone-aware wall-clock instant a persisted
         # EntryQualification observation was actually written -- distinct
         # from `as_of` (the evaluation/market-time checkpoint). Injectable
@@ -826,6 +835,7 @@ class OwnerValidationPipeline:
             RelativeVolumeEngine,
             resolve_evidence_finality,
         )
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
         from athena.market_health import MarketHealthEngine
         from athena.regime import RegimeEngine
         from athena.risk import RiskEngine
@@ -857,6 +867,7 @@ class OwnerValidationPipeline:
         relative_volume_engine = RelativeVolumeEngine()
         entry_qualification_engine = EntryQualificationEngine()
         entry_actionability_engine = EntryActionabilityEngine()
+        position_sizing_engine = PositionSizingV0Engine()
         gap_engine = GapEngine()
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
@@ -876,6 +887,17 @@ class OwnerValidationPipeline:
         sector_results = sector_results or {}
         sector_by_instrument: dict[str, str] = {
             inst.instrument_id: inst.sector for inst in (instruments or ()) if inst.sector
+        }
+        # ID-9: canonical `Instrument.lot_size` per instrument, for
+        # position_sizing_stage's own floor-to-lot rounding -- reuses
+        # the SAME `instruments` sequence already resolved for this
+        # scan, never a second repository read. Falls back to 1 (the
+        # domain model's own default and the only value ever observed
+        # for real NSE/BSE cash equities, per the ID-9 discovery
+        # report §14) only for an instrument absent from this mapping,
+        # which should not occur in practice.
+        instrument_by_id: dict[str, Instrument] = {
+            inst.instrument_id: inst for inst in (instruments or ())
         }
 
         # ID-4: RelativeStrengthContext's market/sector sides, computed
@@ -1547,6 +1569,55 @@ class OwnerValidationPipeline:
                 self._repo.save_entry_actionability(ea, persisted_at=clock_instant)
                 return {"entry_actionability": ea}
 
+            def position_sizing_stage(ctx):
+                # ID-9: the first stage downstream of `entry_actionability`.
+                # No methodology change to ID-6/ID-7/ID-8 -- the frozen V0
+                # sizing evaluator (upstream ACTIONABLE gate -> LONG-only
+                # direction scope -> capital-policy availability -> risk
+                # geometry -> risk-budget/max-value/theoretical-capital
+                # minimum) lives entirely inside `PositionSizingV0Engine`,
+                # untouched here.
+                #
+                # "entry_actionability": the exact same-cycle artifact
+                # `entry_actionability_stage` just produced from THIS
+                # Decision/EntryQualification pair -- read from
+                # WorkflowContext, never a repository "latest" query
+                # (mirrors ID-7E's own precedent exactly). `None` for any
+                # Decision type outside ID-7's own WATCH/TRADE funnel
+                # (entry_actionability_stage's own early scope gate) --
+                # gated here BEFORE any policy/instrument composition, so
+                # an out-of-scope Decision can never reach sizing
+                # arithmetic at all.
+                entry_actionability = ctx.get("entry_actionability")
+                if entry_actionability is None:
+                    return {"position_sizing": None}
+
+                # Canonical per-instrument lot size, resolved once per
+                # scan (§ above) -- never hardcoded to 1 even though
+                # every real NSE/BSE cash-equity row observed to date
+                # carries lot_size=1 (ID-9 discovery §14).
+                instrument = instrument_by_id.get(instrument_id)
+                lot_size = instrument.lot_size if instrument is not None else 1
+
+                # ID-9 §18 (PERSISTENCE_NOT_YET_REQUIRED): no
+                # `save_position_sizing` call exists -- the pure result is
+                # published into WorkflowContext only, for this cycle's
+                # own consumers, mirroring how `EntryActionabilityEngine`
+                # itself first shipped without persistence (ID-7C) before
+                # a later, separately-authorized milestone (ID-7A/ID-7E)
+                # added it. `self._capital_policy` is `None` in production
+                # until the Owner explicitly wires a real one -- every
+                # observation honestly reports `CAPITAL_POLICY_UNAVAILABLE`
+                # until then, never a silently-defaulted dormant config
+                # value.
+                sizing = position_sizing_engine.evaluate(
+                    entry_actionability=entry_actionability,
+                    capital_policy=self._capital_policy,
+                    instrument_lot_size=lot_size,
+                    evaluated_at=self._persistence_clock(),
+                )
+                return {"position_sizing": sizing}
+
             defn = build_definition(
                 f"owner-val-{instrument_id}",
                 [
@@ -1670,6 +1741,24 @@ class OwnerValidationPipeline:
                         entry_actionability_stage,
                         depends_on=("entry_qualification",),
                         produces=("entry_actionability",),
+                    ),
+                    # ID-9: depends only on "entry_actionability" -- that
+                    # stage's own depends_on=("entry_qualification",)
+                    # already transitively guarantees every upstream stage
+                    # (indicators/regime/scoring/confidence/risk/decision/
+                    # session/relative_strength/relative_volume/
+                    # intraday_analytics/entry_qualification) has itself
+                    # COMPLETED whenever "entry_actionability" completes,
+                    # for the exact same WorkflowEngine failure/skip-
+                    # propagation reason ID-7E's own analogous comment
+                    # documents. Declared last: nothing else depends on
+                    # it, so it cannot perturb the existing twelve stages'
+                    # relative execution order.
+                    WorkflowStage(
+                        "position_sizing",
+                        position_sizing_stage,
+                        depends_on=("entry_actionability",),
+                        produces=("position_sizing",),
                     ),
                 ],
             )
