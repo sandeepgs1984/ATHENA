@@ -152,10 +152,11 @@ def export_my_portfolio(
     request: Request,
     scope: str = Query(default="snapshot", pattern="^(snapshot|holdings|imports)$"),
     format_: str = Query(default="csv", alias="format", pattern="^(csv|xlsx|json)$"),
+    columns: str | None = Query(default=None, min_length=1),
     service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
     principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
 ) -> Response:
-    export_file = service.export_portfolio(scope=scope, format_=format_)
+    export_file = service.export_portfolio(scope=scope, format_=format_, columns=columns)
     return Response(
         content=export_file.content,
         media_type=export_file.media_type,

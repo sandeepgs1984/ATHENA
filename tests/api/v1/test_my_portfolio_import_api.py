@@ -1978,6 +1978,25 @@ def test_export_latest_snapshot_as_csv(my_portfolio_client: TestClient) -> None:
     assert "Snapshot Currentness" in text
 
 
+def test_export_latest_snapshot_csv_selected_columns(my_portfolio_client: TestClient) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    repo.add_candles([_candle("NSE:INFY", "1600")])
+    MyPortfolioService(repo).run_sync_inline()
+
+    response = my_portfolio_client.get(
+        "/api/v1/my-portfolio/export",
+        params={"scope": "snapshot", "format": "csv", "columns": "symbol,pnl_pct,next_action"},
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="selected-export-reader"),
+    )
+
+    assert response.status_code == 200
+    text = response.content.decode("utf-8-sig")
+    assert text.splitlines()[0] == "Symbol,P&L %,Next Action"
+    assert "INFY" in text
+    assert "Avg Price" not in text
+    assert "Snapshot Currentness" not in text
+
+
 def test_export_confirmed_holdings_as_xlsx(my_portfolio_client: TestClient) -> None:
     _confirm_infy_holding(my_portfolio_client)
 
@@ -2000,6 +2019,24 @@ def test_export_confirmed_holdings_as_xlsx(my_portfolio_client: TestClient) -> N
     assert "<t>15000</t>" in sheet
 
 
+def test_export_confirmed_holdings_xlsx_selected_columns(my_portfolio_client: TestClient) -> None:
+    _confirm_infy_holding(my_portfolio_client)
+
+    response = my_portfolio_client.get(
+        "/api/v1/my-portfolio/export",
+        params={"scope": "holdings", "format": "xlsx", "columns": "symbol,investment"},
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="selected-xlsx-export-reader"),
+    )
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(BytesIO(response.content)) as workbook:
+        sheet = workbook.read("xl/worksheets/sheet1.xml").decode("utf-8")
+    assert "<t>Symbol</t>" in sheet
+    assert "<t>Investment</t>" in sheet
+    assert "<t>Instrument ID</t>" not in sheet
+    assert "<t>Qty</t>" not in sheet
+
+
 def test_export_import_history_as_json(my_portfolio_client: TestClient) -> None:
     preview = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\n")
 
@@ -2015,6 +2052,44 @@ def test_export_import_history_as_json(my_portfolio_client: TestClient) -> None:
     assert payload["imports"][0]["import_id"] == preview["import_id"]
     assert payload["imports"][0]["filename"] == "holdings.csv"
     assert "athena-my-portfolio-imports-" in response.headers["content-disposition"]
+
+
+def test_export_import_history_json_selected_columns(my_portfolio_client: TestClient) -> None:
+    preview = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\n")
+
+    response = my_portfolio_client.get(
+        "/api/v1/my-portfolio/export",
+        params={"scope": "imports", "format": "json", "columns": "filename,status,accepted_rows"},
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="selected-json-export-reader"),
+    )
+
+    assert response.status_code == 200
+    payload = json.loads(response.content)
+    assert payload["scope"] == "imports"
+    assert payload["columns"] == [
+        {"id": "filename", "label": "Filename"},
+        {"id": "status", "label": "Status"},
+        {"id": "accepted_rows", "label": "Accepted Rows"},
+    ]
+    assert payload["rows"][0] == {
+        "filename": "holdings.csv",
+        "status": preview["status"],
+        "accepted_rows": "1",
+    }
+    assert "import_id" not in payload["rows"][0]
+
+
+def test_export_rejects_unknown_columns(my_portfolio_client: TestClient) -> None:
+    _confirm_infy_holding(my_portfolio_client)
+
+    response = my_portfolio_client.get(
+        "/api/v1/my-portfolio/export",
+        params={"scope": "holdings", "format": "csv", "columns": "symbol,secret_value"},
+        headers=get_auth_headers(my_portfolio_client, Role.READONLY, username="bad-column-export-reader"),
+    )
+
+    assert response.status_code == 400
+    assert "unknown export column(s): secret_value" in response.json()["detail"]
 
 
 def test_export_snapshot_requires_completed_sync(my_portfolio_client: TestClient) -> None:

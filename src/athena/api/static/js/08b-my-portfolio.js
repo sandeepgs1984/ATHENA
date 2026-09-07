@@ -27,6 +27,13 @@
     const myPortfolioExportPanel = document.getElementById("my-portfolio-export-panel");
     const myPortfolioExportScope = document.getElementById("my-portfolio-export-scope");
     const myPortfolioExportFormat = document.getElementById("my-portfolio-export-format");
+    const myPortfolioExportAdvanced = document.getElementById("my-portfolio-export-advanced");
+    const myPortfolioExportColumnCount = document.getElementById("my-portfolio-export-column-count");
+    const myPortfolioExportColumns = document.getElementById("my-portfolio-export-columns");
+    const myPortfolioExportPresetEssential = document.getElementById("my-portfolio-export-preset-essential");
+    const myPortfolioExportPresetReview = document.getElementById("my-portfolio-export-preset-review");
+    const myPortfolioExportSelectAll = document.getElementById("my-portfolio-export-select-all");
+    const myPortfolioExportClear = document.getElementById("my-portfolio-export-clear");
     const myPortfolioExportStatus = document.getElementById("my-portfolio-export-status");
     const myPortfolioExportDownload = document.getElementById("my-portfolio-export-download");
     const myPortfolioPrivacyToggle = document.getElementById("my-portfolio-privacy-toggle");
@@ -109,6 +116,113 @@
         detailOpenKey: null,
         syncCompletion: null,
         exporting: false,
+        exportColumnsByScope: {},
+    };
+
+    const MY_PORTFOLIO_EXPORT_COLUMNS = {
+        snapshot: [
+            ["no", "No."],
+            ["symbol", "Symbol"],
+            ["quantity", "Qty"],
+            ["avg_price", "Avg Price"],
+            ["last_price", "Last Price"],
+            ["price_as_of", "Price As Of"],
+            ["investment", "Investment"],
+            ["current_value", "Current Value"],
+            ["pnl", "P&L"],
+            ["pnl_pct", "P&L %"],
+            ["status", "Status"],
+            ["conviction", "Conviction"],
+            ["trend_setup", "Trend / Setup"],
+            ["daily_review_status", "Daily Review Status"],
+            ["supertrend_direction", "SuperTrend Direction"],
+            ["supertrend_value", "SuperTrend Value"],
+            ["rsi14", "RSI14"],
+            ["volume", "Volume"],
+            ["volume_ma20", "Volume MA20"],
+            ["next_action", "Next Action"],
+            ["plan_trigger", "Plan Trigger"],
+            ["plan_stop", "Plan Stop"],
+            ["plan_t1", "Plan T1"],
+            ["structural_support_1", "Structural Support 1"],
+            ["structural_major_support", "Structural Major Support"],
+            ["structural_review_trigger", "Structural Review Trigger"],
+            ["structural_target_1", "Structural Target 1"],
+            ["structural_target_2", "Structural Target 2"],
+            ["structural_target_3", "Structural Target 3"],
+            ["exit_risk", "Exit Risk"],
+            ["daily_guidance", "Daily Guidance"],
+            ["structural_guidance", "Structural Guidance"],
+            ["last_review", "Last Review"],
+            ["snapshot_id", "Snapshot ID"],
+            ["snapshot_currentness", "Snapshot Currentness"],
+        ],
+        holdings: [
+            ["no", "No."],
+            ["instrument_id", "Instrument ID"],
+            ["symbol", "Symbol"],
+            ["quantity", "Qty"],
+            ["avg_price", "Avg Price"],
+            ["investment", "Investment"],
+            ["imported_at", "Imported At"],
+            ["updated_at", "Updated At"],
+            ["source_import_id", "Source Import ID"],
+            ["source_row_id", "Source Row ID"],
+        ],
+        imports: [
+            ["no", "No."],
+            ["import_id", "Import ID"],
+            ["filename", "Filename"],
+            ["source", "Source"],
+            ["uploaded_at", "Uploaded At"],
+            ["confirmed_at", "Confirmed At"],
+            ["status", "Status"],
+            ["total_rows", "Total Rows"],
+            ["accepted_rows", "Accepted Rows"],
+            ["rejected_rows", "Rejected Rows"],
+            ["unresolved_rows", "Unresolved Rows"],
+            ["ambiguous_rows", "Ambiguous Rows"],
+            ["parser_version", "Parser Version"],
+        ],
+    };
+
+    const MY_PORTFOLIO_EXPORT_PRESETS = {
+        snapshot: {
+            essential: ["no", "symbol", "quantity", "last_price", "current_value", "pnl", "pnl_pct", "next_action"],
+            review: [
+                "no",
+                "symbol",
+                "status",
+                "conviction",
+                "trend_setup",
+                "daily_review_status",
+                "next_action",
+                "structural_support_1",
+                "structural_target_1",
+                "daily_guidance",
+                "structural_guidance",
+            ],
+        },
+        holdings: {
+            essential: ["no", "symbol", "quantity", "avg_price", "investment"],
+            review: ["no", "instrument_id", "symbol", "quantity", "avg_price", "investment", "updated_at"],
+        },
+        imports: {
+            essential: ["no", "filename", "status", "accepted_rows", "rejected_rows", "unresolved_rows"],
+            review: [
+                "no",
+                "import_id",
+                "filename",
+                "uploaded_at",
+                "confirmed_at",
+                "status",
+                "total_rows",
+                "accepted_rows",
+                "rejected_rows",
+                "unresolved_rows",
+                "ambiguous_rows",
+            ],
+        },
     };
 
     function escapeMyPortfolioHtml(value) {
@@ -202,6 +316,62 @@
         myPortfolioExportToggle.setAttribute("aria-expanded", String(expanded));
     }
 
+    function currentMyPortfolioExportScope() {
+        return myPortfolioExportScope?.value || "snapshot";
+    }
+
+    function selectedMyPortfolioExportColumns(scope = currentMyPortfolioExportScope()) {
+        return myPortfolioState.exportColumnsByScope[scope] || null;
+    }
+
+    function setMyPortfolioExportColumns(scope, selectedColumns) {
+        const available = MY_PORTFOLIO_EXPORT_COLUMNS[scope] || [];
+        const allowed = new Set(available.map(([columnId]) => columnId));
+        const normalized = selectedColumns.filter((columnId) => allowed.has(columnId));
+        myPortfolioState.exportColumnsByScope[scope] =
+            normalized.length === available.length ? null : normalized;
+        renderMyPortfolioExportColumns();
+    }
+
+    function renderMyPortfolioExportColumns() {
+        if (!myPortfolioExportColumns) return;
+        const scope = currentMyPortfolioExportScope();
+        const columns = MY_PORTFOLIO_EXPORT_COLUMNS[scope] || [];
+        const selected = selectedMyPortfolioExportColumns(scope);
+        const selectedSet = new Set(selected || columns.map(([columnId]) => columnId));
+        myPortfolioExportColumns.innerHTML = columns
+            .map(
+                ([columnId, label]) => `
+                    <label class="my-portfolio-export-column">
+                        <input type="checkbox" value="${escapeMyPortfolioHtml(columnId)}" ${selectedSet.has(columnId) ? "checked" : ""}>
+                        <span>${escapeMyPortfolioHtml(label)}</span>
+                    </label>
+                `
+            )
+            .join("");
+        if (myPortfolioExportColumnCount) {
+            myPortfolioExportColumnCount.textContent =
+                !selected || selected.length === columns.length ? "All columns" : `${selected.length}/${columns.length} selected`;
+        }
+        const hasSelection = selectedSet.size > 0;
+        myPortfolioExportDownload?.toggleAttribute("disabled", !hasSelection || myPortfolioState.exporting);
+    }
+
+    function applyMyPortfolioExportPreset(presetName) {
+        const scope = currentMyPortfolioExportScope();
+        const preset = MY_PORTFOLIO_EXPORT_PRESETS[scope]?.[presetName];
+        if (!preset) return;
+        setMyPortfolioExportColumns(scope, preset);
+    }
+
+    function updateMyPortfolioExportSelectionFromInputs() {
+        const scope = currentMyPortfolioExportScope();
+        const selected = Array.from(
+            myPortfolioExportColumns?.querySelectorAll('input[type="checkbox"]:checked') || []
+        ).map(input => input.value);
+        setMyPortfolioExportColumns(scope, selected);
+    }
+
     function setMyPortfolioExportStatus(message, tone = "neutral") {
         if (!myPortfolioExportStatus) return;
         myPortfolioExportStatus.textContent = message;
@@ -216,8 +386,13 @@
 
     async function downloadMyPortfolioExport() {
         if (myPortfolioState.exporting) return;
-        const scope = myPortfolioExportScope?.value || "snapshot";
+        const scope = currentMyPortfolioExportScope();
         const format = myPortfolioExportFormat?.value || "xlsx";
+        const selectedColumns = selectedMyPortfolioExportColumns(scope);
+        if (Array.isArray(selectedColumns) && selectedColumns.length === 0) {
+            setMyPortfolioExportStatus("Select at least one column to export.", "danger");
+            return;
+        }
         myPortfolioState.exporting = true;
         myPortfolioExportDownload?.setAttribute("disabled", "disabled");
         setMyPortfolioExportStatus("Preparing export…", "neutral");
@@ -225,8 +400,10 @@
             const headers = {};
             const accessToken = getAccessToken();
             if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+            const params = new URLSearchParams({ scope, format });
+            if (selectedColumns?.length) params.set("columns", selectedColumns.join(","));
             const response = await fetch(
-                `/api/v1/my-portfolio/export?scope=${encodeURIComponent(scope)}&format=${encodeURIComponent(format)}`,
+                `/api/v1/my-portfolio/export?${params.toString()}`,
                 { headers }
             );
             if (!response.ok) {
@@ -2049,6 +2226,25 @@
     myPortfolioExportPanel?.addEventListener("click", event => {
         event.stopPropagation();
     });
+    myPortfolioExportScope?.addEventListener("change", () => {
+        renderMyPortfolioExportColumns();
+        setMyPortfolioExportStatus("Choose a dataset, format, and optional column set.", "neutral");
+    });
+    myPortfolioExportFormat?.addEventListener("change", () => {
+        setMyPortfolioExportStatus("Choose a dataset, format, and optional column set.", "neutral");
+    });
+    myPortfolioExportColumns?.addEventListener("change", updateMyPortfolioExportSelectionFromInputs);
+    myPortfolioExportPresetEssential?.addEventListener("click", () => applyMyPortfolioExportPreset("essential"));
+    myPortfolioExportPresetReview?.addEventListener("click", () => applyMyPortfolioExportPreset("review"));
+    myPortfolioExportSelectAll?.addEventListener("click", () => {
+        myPortfolioState.exportColumnsByScope[currentMyPortfolioExportScope()] = null;
+        renderMyPortfolioExportColumns();
+    });
+    myPortfolioExportClear?.addEventListener("click", () => {
+        myPortfolioState.exportColumnsByScope[currentMyPortfolioExportScope()] = [];
+        renderMyPortfolioExportColumns();
+        setMyPortfolioExportStatus("Select at least one column to export.", "danger");
+    });
     myPortfolioExportDownload?.addEventListener("click", downloadMyPortfolioExport);
     myPortfolioHistoryToggle?.addEventListener("click", () => {
         myPortfolioState.historyExpanded = !myPortfolioState.historyExpanded;
@@ -2073,6 +2269,7 @@
     myPortfolioResetSubmit?.addEventListener("click", resetMyPortfolio);
     renderMyPortfolioPrivacyToggle();
     renderMyPortfolioExportPanel();
+    renderMyPortfolioExportColumns();
     syncMyPortfolioStickyHeaderState();
     window.addEventListener("scroll", syncMyPortfolioStickyHeaderState, { passive: true });
     window.addEventListener("resize", syncMyPortfolioStickyHeaderState);

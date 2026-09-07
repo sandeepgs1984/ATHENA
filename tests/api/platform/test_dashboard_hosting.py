@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.181.0" in html
-    assert "dashboard.js?v=9.181.0" in html
+    assert "dashboard.css?v=9.182.0" in html
+    assert "dashboard.js?v=9.182.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -374,9 +374,17 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-export-panel" class="my-portfolio-export-panel" hidden' in html
     assert 'id="my-portfolio-export-scope"' in html
     assert 'id="my-portfolio-export-format"' in html
+    assert 'id="my-portfolio-export-advanced"' in html
+    assert 'id="my-portfolio-export-columns"' in html
+    assert 'id="my-portfolio-export-preset-essential"' in html
+    assert 'id="my-portfolio-export-preset-review"' in html
+    assert 'id="my-portfolio-export-select-all"' in html
+    assert 'id="my-portfolio-export-clear"' in html
     assert 'id="my-portfolio-export-download"' in html
     assert "Latest analyzed snapshot" in html
     assert "Excel workbook (.xlsx)" in html
+    assert "Advanced columns" in html
+    assert "Essential" in html
     assert "Exports include private values" in html
     assert 'id="my-portfolio-alert" class="my-portfolio-alert my-portfolio-status-banner" hidden' in html
     assert 'class="my-portfolio-summary my-portfolio-kpi-strip"' in html
@@ -485,6 +493,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-export-menu" in my_portfolio_css
     assert ".my-portfolio-export-panel" in my_portfolio_css
     assert ".my-portfolio-export-panel[hidden]" in my_portfolio_css
+    assert ".my-portfolio-export-advanced" in my_portfolio_css
+    assert ".my-portfolio-export-columns" in my_portfolio_css
+    assert ".my-portfolio-export-column" in my_portfolio_css
     assert ".my-portfolio-export-status[data-tone=\"good\"]" in my_portfolio_css
     assert ".my-portfolio-privacy-toggle" in my_portfolio_css
     assert ".my-portfolio-privacy-toggle.active" in my_portfolio_css
@@ -681,7 +692,11 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function renderMyPortfolioPrivacyToggle()" in js
     assert "function setMyPortfolioValuesHidden" in js
     assert "function downloadMyPortfolioExport" in js
-    assert "/api/v1/my-portfolio/export?scope=" in js
+    assert "MY_PORTFOLIO_EXPORT_COLUMNS" in js
+    assert "MY_PORTFOLIO_EXPORT_PRESETS" in js
+    assert "function renderMyPortfolioExportColumns" in js
+    assert "columns\", selectedColumns.join" in js
+    assert "/api/v1/my-portfolio/export?${params.toString()}" in js
     assert "myPortfolioExportFilename" in js
     assert "URL.createObjectURL(blob)" in js
     assert "Exports include private values" in html

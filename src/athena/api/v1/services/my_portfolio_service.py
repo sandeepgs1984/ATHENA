@@ -107,6 +107,76 @@ _XLSX_WORKBOOK_RELS = (
     "</Relationships>"
 )
 
+_SNAPSHOT_EXPORT_COLUMNS = [
+    ("no", "No."),
+    ("symbol", "Symbol"),
+    ("quantity", "Qty"),
+    ("avg_price", "Avg Price"),
+    ("last_price", "Last Price"),
+    ("price_as_of", "Price As Of"),
+    ("investment", "Investment"),
+    ("current_value", "Current Value"),
+    ("pnl", "P&L"),
+    ("pnl_pct", "P&L %"),
+    ("status", "Status"),
+    ("conviction", "Conviction"),
+    ("trend_setup", "Trend / Setup"),
+    ("daily_review_status", "Daily Review Status"),
+    ("supertrend_direction", "SuperTrend Direction"),
+    ("supertrend_value", "SuperTrend Value"),
+    ("rsi14", "RSI14"),
+    ("volume", "Volume"),
+    ("volume_ma20", "Volume MA20"),
+    ("next_action", "Next Action"),
+    ("plan_trigger", "Plan Trigger"),
+    ("plan_stop", "Plan Stop"),
+    ("plan_t1", "Plan T1"),
+    ("structural_support_1", "Structural Support 1"),
+    ("structural_major_support", "Structural Major Support"),
+    ("structural_review_trigger", "Structural Review Trigger"),
+    ("structural_target_1", "Structural Target 1"),
+    ("structural_target_2", "Structural Target 2"),
+    ("structural_target_3", "Structural Target 3"),
+    ("exit_risk", "Exit Risk"),
+    ("daily_guidance", "Daily Guidance"),
+    ("structural_guidance", "Structural Guidance"),
+    ("last_review", "Last Review"),
+    ("snapshot_id", "Snapshot ID"),
+    ("snapshot_currentness", "Snapshot Currentness"),
+]
+_HOLDINGS_EXPORT_COLUMNS = [
+    ("no", "No."),
+    ("instrument_id", "Instrument ID"),
+    ("symbol", "Symbol"),
+    ("quantity", "Qty"),
+    ("avg_price", "Avg Price"),
+    ("investment", "Investment"),
+    ("imported_at", "Imported At"),
+    ("updated_at", "Updated At"),
+    ("source_import_id", "Source Import ID"),
+    ("source_row_id", "Source Row ID"),
+]
+_IMPORTS_EXPORT_COLUMNS = [
+    ("no", "No."),
+    ("import_id", "Import ID"),
+    ("filename", "Filename"),
+    ("source", "Source"),
+    ("uploaded_at", "Uploaded At"),
+    ("confirmed_at", "Confirmed At"),
+    ("status", "Status"),
+    ("total_rows", "Total Rows"),
+    ("accepted_rows", "Accepted Rows"),
+    ("rejected_rows", "Rejected Rows"),
+    ("unresolved_rows", "Unresolved Rows"),
+    ("ambiguous_rows", "Ambiguous Rows"),
+    ("parser_version", "Parser Version"),
+]
+_EXPORT_COLUMNS_BY_SCOPE = {
+    "snapshot": _SNAPSHOT_EXPORT_COLUMNS,
+    "holdings": _HOLDINGS_EXPORT_COLUMNS,
+    "imports": _IMPORTS_EXPORT_COLUMNS,
+}
+
 
 @dataclass(frozen=True, slots=True)
 class MyPortfolioExportFile:
@@ -494,7 +564,13 @@ class MyPortfolioService:
             rows=row_dtos,
         )
 
-    def export_portfolio(self, *, scope: str, format_: str) -> MyPortfolioExportFile:
+    def export_portfolio(
+        self,
+        *,
+        scope: str,
+        format_: str,
+        columns: str | None = None,
+    ) -> MyPortfolioExportFile:
         """Build a downloadable export from existing My Portfolio state.
 
         Exports are read-only projections over already-persisted holdings,
@@ -507,6 +583,7 @@ class MyPortfolioService:
             raise MyPortfolioHoldingError("export scope must be one of: snapshot, holdings, imports")
         if normalized_format not in {"csv", "xlsx", "json"}:
             raise MyPortfolioHoldingError("export format must be one of: csv, xlsx, json")
+        selected_column_ids = self._normalize_export_columns(normalized_scope, columns)
 
         generated_at = datetime.now(tz=timezone.utc)
         if normalized_scope == "snapshot":
@@ -527,6 +604,31 @@ class MyPortfolioService:
             headers, rows = self._imports_export_table(imports)
             payload = imports.model_dump(mode="json")
             timestamp = generated_at
+
+        column_ids = [column_id for column_id, _label in _EXPORT_COLUMNS_BY_SCOPE[normalized_scope]]
+        if selected_column_ids is not None:
+            headers, rows = self._filter_export_table(
+                column_ids=column_ids,
+                headers=headers,
+                rows=rows,
+                selected_column_ids=selected_column_ids,
+            )
+            if normalized_format == "json":
+                payload = {
+                    "generated_at": generated_at.isoformat(),
+                    "scope": normalized_scope,
+                    "columns": [
+                        {"id": column_id, "label": header}
+                        for column_id, header in zip(selected_column_ids, headers, strict=True)
+                    ],
+                    "rows": [
+                        {
+                            column_id: self._export_cell(value)
+                            for column_id, value in zip(selected_column_ids, row, strict=True)
+                        }
+                        for row in rows
+                    ],
+                }
 
         stem = self._export_filename_stem(normalized_scope, timestamp)
         if normalized_format == "json":
@@ -886,43 +988,7 @@ class MyPortfolioService:
         self,
         snapshot: PortfolioSnapshotDTO,
     ) -> tuple[list[str], list[list[object]]]:
-        headers = [
-            "No.",
-            "Symbol",
-            "Qty",
-            "Avg Price",
-            "Last Price",
-            "Price As Of",
-            "Investment",
-            "Current Value",
-            "P&L",
-            "P&L %",
-            "Status",
-            "Conviction",
-            "Trend / Setup",
-            "Daily Review Status",
-            "SuperTrend Direction",
-            "SuperTrend Value",
-            "RSI14",
-            "Volume",
-            "Volume MA20",
-            "Next Action",
-            "Plan Trigger",
-            "Plan Stop",
-            "Plan T1",
-            "Structural Support 1",
-            "Structural Major Support",
-            "Structural Review Trigger",
-            "Structural Target 1",
-            "Structural Target 2",
-            "Structural Target 3",
-            "Exit Risk",
-            "Daily Guidance",
-            "Structural Guidance",
-            "Last Review",
-            "Snapshot ID",
-            "Snapshot Currentness",
-        ]
+        headers = [label for _column_id, label in _SNAPSHOT_EXPORT_COLUMNS]
         rows: list[list[object]] = []
         for index, row in enumerate(snapshot.rows, start=1):
             daily = row.daily_review
@@ -972,18 +1038,7 @@ class MyPortfolioService:
         self,
         holdings: list[MyPortfolioHoldingDTO],
     ) -> tuple[list[str], list[list[object]]]:
-        headers = [
-            "No.",
-            "Instrument ID",
-            "Symbol",
-            "Qty",
-            "Avg Price",
-            "Investment",
-            "Imported At",
-            "Updated At",
-            "Source Import ID",
-            "Source Row ID",
-        ]
+        headers = [label for _column_id, label in _HOLDINGS_EXPORT_COLUMNS]
         rows = [
             [
                 index,
@@ -1005,21 +1060,7 @@ class MyPortfolioService:
         self,
         history: PortfolioImportHistoryDTO,
     ) -> tuple[list[str], list[list[object]]]:
-        headers = [
-            "No.",
-            "Import ID",
-            "Filename",
-            "Source",
-            "Uploaded At",
-            "Confirmed At",
-            "Status",
-            "Total Rows",
-            "Accepted Rows",
-            "Rejected Rows",
-            "Unresolved Rows",
-            "Ambiguous Rows",
-            "Parser Version",
-        ]
+        headers = [label for _column_id, label in _IMPORTS_EXPORT_COLUMNS]
         rows = [
             [
                 index,
@@ -1039,6 +1080,41 @@ class MyPortfolioService:
             for index, item in enumerate(history.imports, start=1)
         ]
         return headers, rows
+
+    def _normalize_export_columns(self, scope: str, columns: str | None) -> list[str] | None:
+        if columns is None or not columns.strip():
+            return None
+        allowed = {column_id for column_id, _label in _EXPORT_COLUMNS_BY_SCOPE[scope]}
+        selected: list[str] = []
+        invalid: list[str] = []
+        for raw_column in columns.split(","):
+            column_id = raw_column.strip().lower()
+            if not column_id:
+                continue
+            if column_id not in allowed:
+                invalid.append(column_id)
+                continue
+            if column_id not in selected:
+                selected.append(column_id)
+        if invalid:
+            allowed_text = ", ".join(column_id for column_id, _label in _EXPORT_COLUMNS_BY_SCOPE[scope])
+            raise MyPortfolioHoldingError(
+                f"unknown export column(s): {', '.join(invalid)}; allowed columns: {allowed_text}"
+            )
+        if not selected:
+            raise MyPortfolioHoldingError("export columns must include at least one known column")
+        return selected
+
+    def _filter_export_table(
+        self,
+        *,
+        column_ids: list[str],
+        headers: list[str],
+        rows: list[list[object]],
+        selected_column_ids: list[str],
+    ) -> tuple[list[str], list[list[object]]]:
+        indexes = [column_ids.index(column_id) for column_id in selected_column_ids]
+        return [headers[index] for index in indexes], [[row[index] for index in indexes] for row in rows]
 
     def _zone_text(self, zone: object | None) -> str:
         if zone is None:

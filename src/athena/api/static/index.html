@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.181.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.182.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -508,6 +508,19 @@
                                                 <option value="json">JSON audit (.json)</option>
                                             </select>
                                         </label>
+                                        <details id="my-portfolio-export-advanced" class="my-portfolio-export-advanced">
+                                            <summary>
+                                                <span>Advanced columns</span>
+                                                <span id="my-portfolio-export-column-count">All columns</span>
+                                            </summary>
+                                            <div class="my-portfolio-export-presets" role="group" aria-label="Export column presets">
+                                                <button id="my-portfolio-export-preset-essential" class="btn btn-sm" type="button">Essential</button>
+                                                <button id="my-portfolio-export-preset-review" class="btn btn-sm" type="button">Review</button>
+                                                <button id="my-portfolio-export-select-all" class="btn btn-sm" type="button">All</button>
+                                                <button id="my-portfolio-export-clear" class="btn btn-sm" type="button">Clear</button>
+                                            </div>
+                                            <div id="my-portfolio-export-columns" class="my-portfolio-export-columns" aria-label="Export columns"></div>
+                                        </details>
                                         <p id="my-portfolio-export-status" class="my-portfolio-export-status">Latest snapshot export requires at least one completed Portfolio Sync.</p>
                                         <button id="my-portfolio-export-download" class="btn btn-primary" type="button">
                                             <i class="fa-solid fa-download" aria-hidden="true"></i>
@@ -2203,7 +2216,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.181.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.182.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

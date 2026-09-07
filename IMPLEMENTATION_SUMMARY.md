@@ -6,7 +6,8 @@ status updated on approval.
 
 ---
 
-## My Portfolio Export Options — Implementation Complete, Ready for Owner Review
+
+## My Portfolio Export Options — Owner Approved / Closed
 
 **Summary.** Added production-ready My Portfolio exports so the owner can
 download ATHENA's server-owned portfolio state from the dashboard without
@@ -15,21 +16,26 @@ no Portfolio Sync execution, no recalculation, no methodology change, no
 interpretation-version bump, and no snapshot semantic change.
 
 **What changed.** Added `GET /api/v1/my-portfolio/export` with explicit
-`scope=snapshot|holdings|imports` and `format=csv|xlsx|json` query contracts.
+`scope=snapshot|holdings|imports` and `format=csv|xlsx|json` query contracts,
+plus optional `columns=<comma-separated-column-ids>` projection.
 The server flattens the latest analyzed Portfolio Snapshot, canonical confirmed
 holdings, or import-history audit rows into CSV/XLSX tables, and returns JSON
-for machine-readable audit/detail. XLSX output uses a deterministic minimal
-OpenXML workbook with a frozen header row and no new dependency. The My
-Portfolio command center now has a compact Export popover with Dataset and
-Format selectors, a private-values disclosure, status feedback, and a single
-Download Export action that fetches the server artifact with auth headers and
-uses the response filename.
+for machine-readable audit/detail. Full JSON keeps the native DTO payload;
+selected-column JSON returns a deterministic table payload keyed by selected
+column IDs. XLSX output uses a deterministic minimal OpenXML workbook with a
+frozen header row and no new dependency. The My Portfolio command center now has
+a compact Export popover with Dataset and Format selectors, a private-values
+disclosure, status feedback, Advanced Columns controls, Essential/Review/All/Clear
+presets, and a single Download Export action that fetches the server artifact
+with auth headers and uses the response filename.
 
 **Tests.** Added API coverage for snapshot CSV, holdings XLSX, import-history
-JSON, and missing-snapshot export failure. Dashboard contract tests cover the
-Export popover, scope/format selectors, private-value notice, download helper,
-and `9.181.0` cache-busted dashboard assets. Final focused validation passed:
-JS syntax check, targeted pytest suite with 85 tests, and ruff checks.
+JSON, selected-column CSV/XLSX/JSON output, unknown-column rejection, and
+missing-snapshot export failure. Dashboard contract tests cover the Export
+popover, scope/format selectors, advanced column controls, private-value notice,
+download helper, and `9.182.0` cache-busted dashboard assets. Final focused
+validation passed:
+JS syntax check, targeted pytest suite with 89 tests, and ruff checks.
 
 **Files created:** `docs/research/MY-PORTFOLIO-EXPORTS.md`.
 
@@ -43,8 +49,8 @@ JS syntax check, targeted pytest suite with 85 tests, and ruff checks.
 `tests/api/platform/test_decision_chart_release_gate.py`,
 `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
 
-**Status:** Implementation complete and focused validation passed; ready for
-Owner / Chief Architect review.
+**Status:** Owner approved 2026-09-07. Export options and advanced
+selected-column exports are closed for this milestone.
 
 ---
 
