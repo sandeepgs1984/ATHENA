@@ -6,6 +6,94 @@ status updated on approval.
 
 ---
 
+## ID-9 Position Sizing / Capital Allocation — Discovery + V0 Contract, Ready for Owner Review
+
+**Summary.** With ID-8 owner-frozen and closed
+(`ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED`), the Owner authorized ID-9:
+given an `ACTIONABLE` opportunity with ID-8's frozen entry/risk
+geometry, how much capital should ATHENA recommend allocating? This
+milestone is discovery + V0 contract design only — read-only, no
+schema/production/code change.
+
+**Key finding 1 — no EntryRisk artifact gap.** `EntryActionability`
+(ID-7A, schema v18, already persisted per canonical cycle) already
+carries `entry_reference.price`, `operative_invalidation.level`,
+`reward.t1_price`/`t2_price`/RR, and `direction` — exactly what a
+sizing engine needs, all Decimal, all immutable, queryable by exact
+identity via existing `SqliteRepository` methods. ID-9 consumes
+`EntryActionability` directly; no new upstream artifact or research-
+harness wiring is needed.
+
+**Key finding 2 — a complete P5.2-P5.6 sizing/allocation/order-
+planning/broker/execution pipeline already exists in the repository
+(`allocation/`, `sizing/`, `orders/`, `brokers/`, `execution/` engines,
+matching `config/*.json` policy files and pydantic schemas,
+unit-tested) — but it is entirely dormant in production.** Zero
+references from `cli.py`, `runtime/`, `ops/owner_validation.py`, or
+`scheduling/`; the whole `orchestration` package that declaratively
+registers these stages is itself unreachable from any live path. It
+operates on the pre-ID-track generic `Decision` object
+(`CapitalAllocationEngine.allocate(opportunities: Sequence[Decision])`),
+never `EntryQualification`/`EntryActionability`, and its own capital
+source is the separate legacy `owner_positions` manual-fill ledger
+(`CashBalance`/`exposure_by_sector`), never a live feed.
+`TradePlan.position_size`/`risk_amount` are hardcoded stub values
+(`cfg.default_units`), never wired to these engines.
+
+**Key finding 3 — real-looking policy config is loaded but unconsumed.**
+`config/capital.json`/`CapitalConfig` (`total_capital`, `reserved_pct`,
+per-position/per-sector caps) and `config/risk.json`/`RiskConfig`
+(`per_trade_risk_pct`, `max_daily_loss_pct`) are loaded by the config
+system but consumed by zero engines anywhere in the codebase.
+
+**Key finding 4 — no live capital state exists anywhere.** No broker
+cash/margin/account-balance capability exists (zero grep hits in
+`brokers/`); every capital figure in the repo is either a hardcoded
+config default or manually entered (the legacy fill ledger, or My
+Portfolio's CSV/XLSX import — two disjoint, unreconciled sources, per
+`my_portfolio_contracts.py` vs. `owner_positions`). V0 sizing must
+therefore be explicit `THEORETICAL_POLICY_CAPITAL_SIZING`, never
+implying brokerage synchronization.
+
+**Key finding 5 — instrument/rounding conventions.** NSE/BSE
+cash-equity `lot_size` is always 1 in this codebase's real data path
+(confirmed empirically, pinned by an existing test), but no tick-size
+price-rounding convention exists anywhere, including in `TradePlan`
+construction — a sizing engine would introduce the first such logic.
+
+**Recommendation — refuse SHORT sizing in V0** (not compute-and-label):
+`LONG_VALIDATED_SHORT_UNVALIDATED` means ID-8's entire evidence base
+justifying a sizing recommendation has zero validated SHORT
+observations; computing a mechanically-correct SHORT quantity would
+present unvalidated evidence with the same visual authority as a
+validated LONG one.
+
+**Proposed (not frozen).** A `PositionSizing` V0 contract mirroring
+ADR-013/ADR-015's own identity/state/reason-family patterns; V0
+constraints limited to risk-quantity + max-value-quantity +
+theoretical-available-capital-quantity (liquidity/concentration/
+portfolio-risk gates classified `NOT_AVAILABLE`/`CONTEXT_ONLY`/
+`OUT_OF_V0`); a `position_sizing` `WorkflowStage`
+(`depends_on=("entry_actionability",)`) mirroring ID-7E's own
+integration precedent; a multi-slice implementation sequence (pure
+contract+evaluator first, persistence/workflow-wiring later) mirroring
+ID-7A→ID-7E's own staged approach.
+
+**Files created:**
+`docs/research/ID-9-POSITION-SIZING-DISCOVERY-AND-V0-CONTRACT.md`.
+**Files modified:** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. **Zero code/schema/
+production changes.** No `db/athena.db` access needed this milestone
+(pure source-code/config discovery); zero provider/network calls; PID
+2453/EMR/DarvaX not referenced. `git diff --check` clean (one new
+untracked report file only).
+
+**Status: ID-9 POSITION SIZING DISCOVERY + V0 CONTRACT READY FOR OWNER
+/ CHIEF ARCHITECT REVIEW.** Contract not frozen; no implementation
+started; does not touch ID-6/ID-7/ID-8 methodology, EMR, or DarvaX.
+
+---
+
 ## ID-8 Full Historical Entry/Risk Outcome Validation — Diagnostic Sign Correction, Ready for Owner Freeze
 
 **Summary.** With the second methodology-rigor correction round accepted
