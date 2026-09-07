@@ -330,3 +330,297 @@ No live-process action was taken. No schema change was made. No code
 change was made. The verified pre-migration backup
 (`db/backups/athena-pre-id7f2-schema-v18-activation-20260905T064233Z.db`)
 is preserved, untouched, and not restored.
+
+---
+
+## 10. Addendum (2026-09-07): activation-provenance forensics + first canonical canary (read-only)
+
+On resuming ID-7F2 on the next trading day (2026-09-07), the fresh
+pre-flight required by §9 above (schema must still read 17 before any
+owner-operated restart) instead found `schema_version = 18` and a
+real, non-empty `entry_actionabilities` table — the activation boundary
+had already been crossed by *something*, without any owner-operated
+restart procedure (§7 above) having been reported as executed. Per
+explicit owner instruction, no restart/migration was attempted; a
+read-only forensic investigation was authorized and performed instead.
+All work below is 100% read-only (`mode=ro` + `PRAGMA query_only=ON`
+for every DB query; log/source files only read, never written).
+
+### 10.1 Activation-provenance classification: `EXECV_RESTART_CONFIRMED`
+
+`artifacts/logs/athena-serve.log` (the live, continuously-appended
+service log, 100,502 lines) contains direct, repeated, unambiguous
+evidence of the in-place `os.execv`-based restart mechanism ID-7P0.2
+first characterized on 2026-09-04: a `POST /api/v1/ops/restart` access
+line immediately followed by `Started server process [PID]` carrying
+**the exact same PID**, with no intervening `Shutting down` /
+`Application shutdown complete` / `Finished server process [PID]`
+lines (those lines, when present, mark a genuine clean stop+relaunch
+with a *new* PID instead — both patterns are directly distinguishable
+in the log and both are observed).
+
+The current serving PID, **2453**, first appears via a genuine clean
+restart (`Finished server process [17344]` → `Started server process
+[2453]`, log line 92148) and has since undergone **11 further
+in-place `execv` restarts** on the identical PID (log lines 94875,
+96112, 96587, 96897, 97036, 97248, 97489, 97633, 99195, 99970,
+100406), each immediately preceded by its own `POST
+/api/v1/ops/restart` line. This is direct log evidence, not an
+inference from PID/`ps`-start-time continuity alone (`ps`'s `STARTED`
+timestamp is consistent with `execv` semantics — the kernel's
+process-start bookkeeping is untouched by `execve()` — but the log
+lines above are the actual proof, satisfying the authorization's
+"do not infer from PID continuity alone" requirement).
+
+### 10.2 Earliest proven v18/EA activation evidence — bounds, not an exact instant
+
+An exact activation instant cannot be recovered: `athena-serve.log`
+carries no per-line timestamps (uvicorn's default access-log format),
+so individual `execv` events in the log cannot be dated directly.
+Two hard, evidence-backed bounds were established instead:
+
+- **`activation_lower_bound = 2026-09-05T11:00:15+05:30`** — the git
+  commit timestamp of `684ec4b` ("wire EntryActionability into the
+  canonical workflow (ID-7E)"), the commit that first introduces
+  `entry_actionability_stage` into `owner_validation.py`. Before this
+  instant existed on disk, no restart of any kind could have activated
+  the stage (schema v18 itself landed slightly earlier, in `49349a8`,
+  2026-09-05T00:19:09+05:30, but the stage that *invokes* it did not
+  exist until `684ec4b`).
+- **`activation_upper_bound = 2026-09-06T10:23:07.666132+00:00`**
+  (`= 2026-09-06T15:53:07+05:30`) — the `persisted_at`/`evaluated_at`
+  value on the two earliest real `entry_actionabilities` rows (see
+  §10.3), which is direct proof the full v18 schema + `EntryActionabilityEngine`
+  + `entry_actionability_stage` chain was executing for real at that
+  exact wall-clock instant.
+
+Activation therefore occurred somewhere in a bounded ~28.9-hour
+window; the exact `execv` instant within that window is not
+recoverable from available evidence. No further precision is claimed.
+
+### 10.3 The 2026-09-04 `as_of` / 2026-09-06 `persisted_at` gap: fully explained, not backfill
+
+Two of the 228 persisted rows (`NSE:GOLDBEES`, `NSE:SILVERCASE`) carry
+`entry_actionability_as_of = 2026-09-04T15:30:00+05:30` (inherited
+unconditionally from their bound `EntryQualification.as_of`, exactly
+per ID-7C's frozen Option-1 rule) but `persisted_at =
+2026-09-06T10:23:0[7/11]+00:00`. Both rows' `run_id`
+(`run-refresh-20260904T153000-43787100` and
+`run-refresh-20260904T153000-99db7f0c`) exist in `runs`, each with
+`config_snapshot_id = 'cfg-symbol-validate'` — traced via source
+(`grep`) to exactly one call site, `src/athena/ops/symbol_validate.py:243`,
+a **pre-existing** (651 historical runs, oldest dated 2026-07-24 — long
+before any ID-7 milestone), on-demand, dashboard/CLI-triggered
+single-symbol "Validate" feature (module docstring: *"On-demand symbol
+validation (ingest + eligibility + decisions) for dashboard/CLI"*).
+`symbol_validate.py` constructs and runs the exact same
+`OwnerValidationPipeline` class ID-7E extended — so once ID-7E's stage
+existed in the running code, *any* invocation of this pre-existing
+feature (not only the scheduled cycle worker) naturally also executes
+and persists `EntryActionability`, exactly as designed for the shared
+DAG. Because 2026-09-04→2026-09-06 spans the observed `SessionType.WEEKEND`
+(2026-09-05/06), the most recent real EQ available to validate against
+when this on-demand action ran (2026-09-06, real wall-clock) was
+genuinely the last trading day's EOD checkpoint (2026-09-04 15:30 IST)
+— there is no newer real data to have used instead. The underlying
+`Decision` row (`decision-NSE:GOLDBEES-2026-09-04T15:30:00+05:30`) is a
+real, coherent WATCH decision with genuine gate results (score
+56.53/100, confidence 91.7, six passing gates) — not a synthetic or
+manufactured record.
+
+**Classification: `OTHER_EXPLAINED_PRODUCTION_PATH`.** Grounded
+entirely in real `runs`/`decisions`/`entry_qualifications` rows and
+one exact source-code call site — not inferred from timestamps alone,
+and not treated as proven "no backfill" until that provenance chain
+was actually walked, per the authorization's own instruction.
+
+**Historical-backfill verdict: `HISTORICAL_BACKFILL_ABSENT`.**
+Supporting evidence: (1) only 2 of 228 rows show this pattern, both
+fully traced to the single pre-existing, non-batch, single-symbol
+on-demand feature above; (2) the remaining 226/228 rows all trace to
+exactly **one** genuine scheduled `PREMARKET` cycle
+(`run-premarket-20260907T081534`, `config_snapshot_id='cfg-host-ops'`,
+today, 2026-09-07); (3) no code path exists (and none was found) that
+iterates the 11,986/12,214-row historical `EntryQualification`
+population and calls `save_entry_actionability` — the only production
+writer of that table is `entry_actionability_stage` itself, reached
+only via `OwnerValidationPipeline` (scheduled cycle worker or the
+single-symbol Validate action above); the ID-7F1 replay harness is
+confirmed (by design and by a fresh source read) to never call
+`save_entry_actionability` at all. A batch backfill across the real
+11,986-row EQ history would show thousands of rows, not 228.
+
+### 10.4 Schema-v18 structure verification
+
+`entry_actionabilities` DDL read directly from `sqlite_master`: 23
+columns exactly matching ID-7A's approved design (all 7 identity
+columns `NOT NULL`, `decision_id REFERENCES decisions(decision_id)`,
+value-object columns nullable JSON), composite 7-column `PRIMARY KEY`
+(`instrument_id, session_date, entry_qualification_as_of, decision_id,
+entry_qualification_methodology_version, entry_actionability_as_of,
+entry_actionability_methodology_version`), plus the two approved
+supporting indexes (`idx_entry_actionabilities_decision`,
+`idx_entry_actionabilities_instrument_session`) and SQLite's own
+autoindex for the PK. No unrelated schema drift found.
+
+### 10.5 Pre-existing data preservation
+
+`PRAGMA integrity_check` → `ok`. `PRAGMA foreign_key_check` → 0
+violations. `schema_version` → `18`. Table-count deltas vs. the frozen
+pre-migration backup (`...20260905T064233Z.db.meta.json`, schema 17):
+
+| Table | Backup (2026-09-05) | Now (2026-09-07) | Δ | Verdict |
+|---|---|---|---|---|
+| `decisions` | 233,418 | 233,805 | +387 | expected natural growth |
+| `entry_qualifications` | 11,986 | 12,214 | +228 | expected — exactly equals new EA row count |
+| `runs` | 1,946 | 1,949 | +3 | expected — exactly equals 2 symbol-validate + 1 premarket |
+| `candles` | 2,994,346 | 2,994,505 | +159 | expected natural ingestion growth |
+| `entry_actionabilities` | 0 (table absent) | 228 | +228 | expected — the new table |
+
+Every delta is mutually coherent (228 new EQ ⇒ 228 new EA; 3 new runs
+⇒ 2 validate + 1 premarket). Zero unexpected loss or corruption found.
+The pre-migration backup file itself remains present, unrestored, and
+byte-identical in size (4927.1MB) with its `.meta.json` sidecar intact.
+
+### 10.6 Full production `EntryActionability` inventory (all 228 rows — no sampling)
+
+- **Total rows: 228.**
+- **Session-date distribution:** `2026-09-04` → 2, `2026-09-07` → 226.
+- **`run_id` distribution:** `run-refresh-20260904T153000-43787100` → 1,
+  `run-refresh-20260904T153000-99db7f0c` → 1,
+  `run-premarket-20260907T081534` → 226.
+- **`cycle_id` distribution:** `2026-09-04-refresh` → 2,
+  `2026-09-07-premarket` → 226.
+- **Decision-type distribution:** `WATCH` → 228, `TRADE` → 0.
+- **EA-state distribution:** `NOT_ACTIONABLE` → 228, `UNKNOWN` → 0,
+  `ACTIONABLE` → 0.
+- **Reason-code distribution:** `["UPSTREAM_DECISION_NOT_TRADE",
+  "UPSTREAM_EQ_NOT_QUALIFIED"]` → 228 (both codes together on every
+  row — exact, deterministic match to the frozen dual-reason
+  convention for a WATCH decision bound to a non-QUALIFIED EQ).
+- **EQ-state distribution:** `EXPIRED` → 228.
+- **Direction distribution:** `NONE` → 228.
+- **`entry_actionability_methodology_version`:** `entry-actionability-v0`
+  → 228 (100%, no override path exists per ID-7C.1).
+- **`evidence_finality`:** `UNKNOWN_PROVENANCE` → 228.
+- Earliest `entry_actionability_as_of`: `2026-09-04T15:30:00+05:30`.
+  Latest: `2026-09-07T08:15:34.096216+05:30`.
+- Earliest `persisted_at`: `2026-09-06T10:23:07.666132+00:00`. Latest:
+  `2026-09-07T02:57:0[2].*+00:00` (last row of the premarket batch).
+
+**Out-of-scope row count: 0** (every row's `decision_type` is WATCH or
+TRADE, verified by direct query). **Exact binding-defect count: 0**
+(every row's `decision_id` resolves to a real `decisions` row; every
+row's exact 5-part EQ identity — instrument, session_date, `as_of`,
+`decision_id`, methodology version — resolves to a real
+`entry_qualifications` row; every row's denormalized
+`entry_qualification_state` matches the bound EQ's own `state` column
+exactly). **Duplicate/conflicting-identity count: 0** (grouped by the
+full 7-column composite identity, zero groups with count > 1).
+
+### 10.7 WATCH semantics audit
+
+WATCH total: 228. `NOT_ACTIONABLE`: 228. `ACTIONABLE`: 0. `UNKNOWN`: 0.
+Reason distribution: both `UPSTREAM_DECISION_NOT_TRADE` (228/228, since
+all are WATCH) and `UPSTREAM_EQ_NOT_QUALIFIED` (228/228, since all 228
+bound EQs are `EXPIRED`, i.e. not `QUALIFIED`) are present together on
+every row, per the engine's frozen "both upstream reasons reported
+together" rule. **WATCH invariant violations: 0.**
+
+### 10.8 TRADE semantics audit
+
+Zero real TRADE `EntryActionability` rows exist (confirmed above and
+independently by `decisions.decision_type='TRADE'` count = 0 within
+the canary run). **`TRADE_EMPIRICAL_CANARY_NOT_AVAILABLE`** — not
+synthesized.
+
+### 10.9 First eligible post-activation canonical canary
+
+Because activation provenance traces to the pre-existing
+single-symbol Validate feature (2 rows, not a scheduled cycle), the
+first genuine **scheduled canonical cycle** to touch `EntryActionability`
+after activation is frozen as the ID-7F2 canary:
+
+- **`run_id`:** `run-premarket-20260907T081534`
+- **`cycle_id`:** `2026-09-07-premarket`
+- **Session date:** `2026-09-07`. **Phase:** `PREMARKET` (a normal
+  canonical cycle under the production workflow, per its own
+  `config_snapshot_id='cfg-host-ops'` — the ordinary host-scheduled
+  config, distinct from both `cfg-symbol-validate` and
+  `cfg-full-validation`; used as the canary since it is explicitly a
+  normal scheduled cycle, not because REGULAR-phase would be
+  inconvenient to wait for).
+- **Start/end:** both `2026-09-07T08:15:34.096216+05:30` (instantaneous
+  `started_ts`/`finished_ts` timestamps, as recorded by `runs`).
+- **Instrument population:** 385 total decisions this cycle (226
+  WATCH, 159 NO_TRADE, 0 TRADE).
+
+**Canary expected-vs-actual population** (exact composite identity,
+not count-only): expected in-scope EA population (EQ rows this
+`run_id`, bound to a WATCH/TRADE decision) = **226**. Actual persisted
+EA rows this `run_id` = **226**. **Missing: 0. Unexpected/out-of-scope:
+0.** **Exact-binding defects: 0. Duplicate/conflicting identities: 0.**
+
+### 10.10 M5/VWAP/OR15, stage health, provider-call contract, currentness
+
+All 226 canary rows resolve to `NOT_ACTIONABLE`/dual-upstream-reason
+before layer-3 (M5/VWAP/OR15) evidence is ever read, per ID-7C.2's own
+evaluation-order fix (WATCH-bound EQs never reach candidate/checkpoint
+evidence) — so no M5/VWAP/OR15 provenance evidence exists to audit for
+this canary (expected, not a defect; no violations to report).
+`entry_actionability_stage`'s own source (`owner_validation.py`,
+current working tree) was re-read in full for this addendum and
+confirmed to still read only from `WorkflowContext`/the same-cycle
+`Decision` object — zero provider/network imports or calls inside the
+stage. **Stage success count (canary): 226/226. Failure count: 0.**
+`runs.detail_json` for the canary carries no failure/error keys; a
+direct log search for `entry_actionability` paired with
+`error`/`fail`/`traceback` across the entire service log returned zero
+matches. Per-stage latency is not separately persisted (unchanged from
+ID-7E — no new instrumentation added here, per the read-only
+constraint); overall cycle `duration_seconds` is available in
+`detail_json` but stage-level breakdown is not. All 228 rows'
+`state` values are confirmed to be exclusively drawn from the frozen
+persisted set (`UNKNOWN`/`NOT_ACTIONABLE`/`ACTIONABLE`) — no
+`CURRENT`/`STALE`/`SUPERSEDED`/`SESSION_CLOSED` value exists anywhere
+in the table (those remain exclusively read-time, per
+`is_currently_usable`, never persisted).
+
+### 10.11 TRADE+QUALIFIED production evidence
+
+Not observed (0 TRADE rows exist). `TRADE_QUALIFIED_PRODUCTION_EVIDENCE_NOT_OBSERVED`
+— explicitly not an activation failure, consistent with ID-7F0/ID-7F1's
+own repeated finding that the real production population has carried
+zero TRADE decisions since well before EQ persistence began.
+
+### 10.12 Activation acceptance
+
+All of the frozen §19 acceptance conditions are met on the evidence
+above **except** one: the exact HTTP/operator identity behind each
+`POST /api/v1/ops/restart` call is not recoverable from available
+logs (the access-log line records only the loopback client address,
+not a caller identity). Per the authorization's own fallback:
+
+**`ACTIVATION_PATH_PARTIALLY_UNPROVEN_BUT_RUNTIME_ACTIVATION_VERIFIED`**
+— the `execv` mechanism itself is directly proven (§10.1), schema/table
+structure is exactly the approved design (§10.4), DB integrity is
+healthy with fully explained growth (§10.5), zero out-of-scope/binding/
+duplicate defects exist across the complete 228-row population
+(§10.6–§10.8), the 2026-09-04/09-06 gap is fully traced to a named,
+pre-existing, non-batch source file rather than left as an open
+question (§10.3), a genuine post-activation scheduled canonical canary
+was identified and its expected-vs-actual population matches exactly
+(§10.9–§10.9), and zero actionability-stage-attributable provider
+calls or system/contract failures were found (§10.10). No corrective
+or restart action was taken; PID 2453, the schema, and every persisted
+row were left untouched throughout this investigation.
+
+### 10.13 Updated classification
+
+**ID-7F2 ACTIVATION + CANARY VERIFIED — READY FOR OWNER / CHIEF
+ARCHITECT REVIEW.**
+
+ID-7F2 remains open pending this review. Mode-B shadow equivalence
+(ID-7F3) was not started. EMR and DarvaX were not touched. No source
+code was modified in this addendum — read-only forensics and this
+documentation file only.
