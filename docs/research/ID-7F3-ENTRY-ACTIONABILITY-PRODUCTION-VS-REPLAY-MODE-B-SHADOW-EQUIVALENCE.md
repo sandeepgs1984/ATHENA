@@ -1,7 +1,10 @@
 # ID-7F3 — Entry Actionability Production-vs-Replay Mode B Shadow Equivalence
 
-Status: **ID-7F3 MODE-B PRODUCTION EQUIVALENCE EXACT — READY FOR OWNER /
-CHIEF ARCHITECT REVIEW.** Not marked Owner-approved.
+Status: **ID-7F3 OWNER APPROVED / CLOSED — 2026-09-07.** Classification
+`MODE_B_PRODUCTION_EQUIVALENCE_EXACT` accepted in full (see §6). **ID-7
+OVERALL OWNER APPROVED / CLOSED same day** — the entire ADR-015/ID-7A0
+through ID-7F3 track is closed. ID-8 remains NOT STARTED, NOT
+AUTHORIZED.
 
 ## 1. Objective
 
@@ -271,5 +274,29 @@ necessary from this run's evidence.
 
 ---
 
-**ID-7F3 MODE-B PRODUCTION EQUIVALENCE EXACT — READY FOR OWNER / CHIEF
-ARCHITECT REVIEW.**
+## 9. Owner / Chief Architect closure (2026-09-07)
+
+**ID-7F3 OWNER APPROVED / CLOSED.** Classification
+`MODE_B_PRODUCTION_EQUIVALENCE_EXACT` accepted in full, per the
+evidence in §5–§6 above. `ACTIONABLE`/`LONG` production examples remain
+not yet naturally observed — recorded as an empirical-coverage
+limitation, explicitly not a closure blocker;
+`LONG_VALIDATED_SHORT_UNVALIDATED` stands unchanged for the upstream EQ
+methodology, unaffected by the newly-observed SHORT EntryActionability
+population. No ID-7F3.1 correction milestone; no periodic shadow
+execution added to production — natural accumulation continues, and
+`run_shadow_equivalence` may be re-invoked ad hoc later.
+
+**ID-7 OVERALL OWNER APPROVED / CLOSED, same day.** The entire
+ADR-015/ID-7A0 through ID-7F3 track — Intraday Actionability
+architecture, the `EntryActionability` domain model and persistence,
+the V0 deterministic evaluator, canonical workflow integration,
+historical Mode-A replay, production schema-v18 activation, and Mode-B
+production-vs-replay shadow equivalence — is now closed.
+
+**ID-8 remains NOT STARTED, NOT AUTHORIZED.**
+
+---
+
+**ID-7F3 OWNER APPROVED / CLOSED — ID-7 OVERALL OWNER APPROVED /
+CLOSED.**

@@ -6,7 +6,7 @@ status updated on approval.
 
 ---
 
-## ID-7F3 Production-vs-Replay Mode B Shadow Equivalence — Ready for Owner Review
+## ID-7F3 Production-vs-Replay Mode B Shadow Equivalence — Owner Approved / Closed; ID-7 Overall Owner Approved / Closed
 
 **Summary.** Owner approved and closed ID-7F2 (2026-09-07), then
 authorized ID-7F3 — the already-planned next validation step from
@@ -91,9 +91,35 @@ data modification of any kind** — PID 2453, the schema, and every
 persisted row were left untouched throughout.
 
 **Status: ID-7F3 MODE-B PRODUCTION EQUIVALENCE EXACT — READY FOR OWNER
-/ CHIEF ARCHITECT REVIEW.** Not marked Owner-approved. ID-7F3 does not
-start Mode-B-adjacent work beyond this scope; EMR and DarvaX were not
-touched.
+/ CHIEF ARCHITECT REVIEW.** ID-7F3 does not start Mode-B-adjacent work
+beyond this scope; EMR and DarvaX were not touched.
+
+**Owner/Chief Architect decision (2026-09-07): ID-7F3 OWNER APPROVED /
+CLOSED.** Classification `MODE_B_PRODUCTION_EQUIVALENCE_EXACT` accepted
+in full: frozen production population 488, 488/488 EXACT_MATCH (100%),
+scheduled-cycle path 486/486 exact, `symbol_validate` path 2/2 exact,
+0 binding/PIT-evidence/unexpected-exception/determinism/production-
+equivalence defects of any kind, WATCH 408, TRADE 80, TRADE+QUALIFIED
+15, real UNKNOWN 9, SHORT production evidence now available, 0
+production writes, 0 provider/network calls, schema remained 18,
+production process remained untouched, methodology/ID-6/EMR/DarvaX
+unchanged and isolated, focused tests 58 passed, full suite 3736
+passed/1 pre-existing skip, `git diff --check` clean. `ACTIONABLE` and
+`LONG` EntryActionability production examples remain not yet naturally
+observed — recorded as an empirical-coverage limitation, explicitly not
+a closure blocker; `LONG_VALIDATED_SHORT_UNVALIDATED` stands unchanged
+for the upstream EQ methodology (unaffected by the newly-observed
+SHORT EntryActionability population). No ID-7F3.1 correction milestone;
+no periodic shadow execution added to production — natural accumulation
+continues, and `run_shadow_equivalence` may be re-invoked ad hoc later.
+
+**Owner/Chief Architect decision, same day: ID-7 OVERALL OWNER APPROVED
+/ CLOSED.** The entire ADR-015/ID-7A0 through ID-7F3 track — Intraday
+Actionability architecture, the `EntryActionability` domain model and
+persistence, the V0 deterministic evaluator, canonical workflow
+integration, historical Mode-A replay, production schema-v18 activation,
+and Mode-B production-vs-replay shadow equivalence — is now closed.
+**ID-8 remains NOT STARTED, NOT AUTHORIZED.**
 
 **Suggested commit message** (for the owner to run themselves, per
 CLAUDE.md — no git action taken by the AI):
