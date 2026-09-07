@@ -1,0 +1,299 @@
+# My Portfolio Next-Level UX Roadmap
+
+Date: 2026-09-07
+
+Owner intent: take the existing My Portfolio workstation to a professional
+trading-operations level without changing Portfolio methodology, evidence
+semantics, interpretation versions, order placement, or advisory-only scope.
+
+## Current Baseline
+
+My Portfolio already supports:
+
+- confirmed holdings import and reconciliation;
+- Portfolio Sync over persisted market state;
+- server-owned current value, investment, P&L, and currentness;
+- Daily Review v0 and Portfolio Intelligence V2 structural review display;
+- compact/full holdings table modes;
+- symbol detail overlay;
+- row numbering, sorting, privacy masking, reset, recent imports, and exports;
+- advanced selected-column CSV/XLSX/JSON exports.
+
+The next step is not more raw data. The next step is better decision workflow:
+what needs attention, what changed, where risk is concentrated, and how the
+owner completes a daily review session with less scanning.
+
+## Complete UX Feature Inventory
+
+This roadmap covers the full 14-item next-level UX inventory:
+
+1. Portfolio Command Dashboard.
+2. Action Queue View.
+3. Column Profiles.
+4. Portfolio Heatmap.
+5. Symbol Detail Review Timeline.
+6. Change Since Last Sync.
+7. Risk Concentration Panel.
+8. Watchlist / Opportunity Bridge.
+9. Notes / Owner Override Layer.
+10. Review Session Mode.
+11. Pinned Rows.
+12. Smart Filters.
+13. Inline Mini Sparklines.
+14. Export Profiles.
+
+## Feature-to-Milestone Map
+
+| Feature | Milestone | Notes |
+|---|---|---|
+| Portfolio Command Dashboard | MP-NX1 | Triage strip and attention counts above Current Holdings. |
+| Action Queue View | MP-NX1 | Dedicated actionable-holdings view over existing snapshot fields. |
+| Smart Filters | MP-NX1 | Filter chips for review, trend, status, evidence availability, and currentness. |
+| Change Since Last Sync | MP-NX2 | Snapshot-to-snapshot factual diff badges and detail-panel deltas. |
+| Risk Concentration Panel | MP-NX2 | Exposure/status/trend/action concentration summaries over existing values. |
+| Column Profiles | MP-NX3 | Purposeful table layouts for scan, P&L, technical, risk, and audit workflows. |
+| Pinned Rows | MP-NX3 | Owner-controlled table priority separate from ATHENA ranking. |
+| Export Profiles | MP-NX3 | Named export presets built on the approved selected-column export contract. |
+| Portfolio Heatmap | MP-NX4 | Visual capital/performance/attention concentration map. |
+| Inline Mini Sparklines | MP-NX4 | Compact row-level D1 visual context, subject to performance and data availability. |
+| Symbol Detail Review Timeline | MP-NX5 | Per-symbol evolution across prior snapshots. |
+| Watchlist / Opportunity Bridge | MP-NX5 | Contextual bridge to watchlist/opportunity surfaces if stable contracts exist. |
+| Notes / Owner Override Layer | MP-NX6 | Owner-authored thesis, reminder, watch condition, and follow-up state. |
+| Review Session Mode | MP-NX6 | Guided daily review workflow using queue/profile/filter inputs. |
+
+## Design Principles
+
+- Preserve frozen portfolio methodology. UI may organize, filter, compare, or
+  summarize existing computed fields unless a later milestone explicitly
+  authorizes new domain evidence.
+- Keep advisory-only boundaries. No order placement, broker-side mutation, or
+  execution workflow.
+- Prefer workflow surfaces over decorative cards. The screen should answer
+  "what do I need to look at now?" first.
+- Separate owner-authored state from ATHENA-generated state. Notes, pins,
+  review marks, and preferences must never be confused with Portfolio
+  Intelligence output.
+- Every new view must degrade gracefully when a snapshot is missing, stale,
+  partial, or has unavailable evidence.
+- Each milestone must be independently reviewable, testable, and reversible.
+
+## Proposed Milestone Sequence
+
+### MP-NX1 — Action Queue and Smart Filters
+
+Objective: create a morning triage surface that shows holdings needing attention
+without requiring the owner to scan the full table.
+
+Scope:
+
+- Add a compact command strip above Current Holdings with counts for:
+  `Review / Hold Tight`, `Exit Risk`, `Near Trigger`, `Near Support`,
+  `Fresh Breakout`, `Stale Data`, `Unavailable Evidence`, and `Needs Review`.
+- Add smart filter chips that filter the existing holdings table.
+- Add an Action Queue view that lists only actionable holdings using existing
+  fields such as Status, Daily Review, Next Action, Trend / Setup, currentness,
+  and structural review values.
+- Establish the Portfolio Command Dashboard as the primary morning triage
+  surface without adding new methodology.
+- Preserve current sorting and view modes.
+
+Non-goals:
+
+- No new Status, Conviction, Next Action, structural level, or Daily Review
+  methodology.
+- No new broker calls outside the existing sync path.
+
+Primary UX outcome:
+
+- Owner can open My Portfolio and immediately know what deserves attention.
+
+### MP-NX2 — Change Since Last Sync
+
+Objective: make daily syncs meaningful by showing what changed versus the
+previous snapshot.
+
+Scope:
+
+- Add snapshot-to-snapshot diff derivation for display only.
+- Highlight changed fields per row: Status, Daily Review Status, Next Action,
+  Trend, Setup, P&L %, current value, key structural levels, guidance text, and
+  currentness.
+- Add badges such as `Status changed`, `Trend flipped`, `Action changed`,
+  `P&L moved +4.2%`, `New support`, and `Target reached` only when backed by
+  existing fields.
+- Add detail-overlay "Since last sync" panel.
+- Add a Risk Concentration Panel summarizing existing exposure by Status, Trend,
+  Next Action, high-conviction positions, top holdings by capital, largest
+  winners, and largest losers.
+
+Non-goals:
+
+- No persistence schema changes unless needed for efficient prior-snapshot
+  lookup and approved in the milestone.
+- No interpretation-version bump.
+- No new risk scoring methodology; concentration summaries are factual
+  aggregation of existing values only.
+
+Primary UX outcome:
+
+- Owner can see why today's portfolio view matters.
+
+### MP-NX3 — Column Profiles
+
+Objective: turn table density into purposeful professional layouts.
+
+Scope:
+
+- Add saved table profiles:
+  `Compact Scan`, `P&L Review`, `Technical Review`, `Risk Review`, `Full Audit`.
+- Each profile controls visible columns, default sort, density, and quick
+  context emphasis.
+- Add Pinned Rows so owner-selected holdings can stay visible regardless of
+  current sort/filter, clearly labeled as owner-pinned.
+- Add Export Profiles using the approved selected-column export contract:
+  `Daily Review`, `Full Audit`, `Private Sharing`, and future owner-defined
+  presets if approved.
+- Reuse the export selected-column catalog where practical, but keep table
+  profile state separate from export state.
+- Store preferences locally unless owner explicitly approves server persistence.
+
+Non-goals:
+
+- No data model or methodology change.
+- No automatic profile switching without owner action.
+- No server-persisted pins/export profiles unless owner approves persistence.
+
+Primary UX outcome:
+
+- Owner can switch from scanning to review to audit without fighting the table.
+
+### MP-NX4 — Portfolio Heatmap
+
+Objective: add an at-a-glance concentration and performance surface.
+
+Scope:
+
+- Add heatmap modes:
+  size by investment/current value;
+  color by P&L %, Status, Daily Review, Trend, or Next Action.
+- Clicking a tile opens the existing symbol detail overlay.
+- Add optional Inline Mini Sparklines in the holdings table for compact D1
+  visual context when the data and performance budget support it.
+- Support privacy masking by hiding money labels while preserving relative tile
+  sizing only if this is acceptable to the owner; otherwise use equal tile size
+  under privacy mode.
+
+Non-goals:
+
+- No sector/benchmark attribution unless already available in a stable contract.
+- No new risk methodology.
+- No TradingView/Kite visual parity claim for sparklines.
+
+Primary UX outcome:
+
+- Owner can see where capital, profit, loss, and attention are concentrated.
+
+### MP-NX5 — Symbol Review Timeline
+
+Objective: make each holding's evolution inspectable.
+
+Scope:
+
+- Add a timeline inside the symbol detail overlay using prior snapshots.
+- Show time-series events for price, P&L %, Status, Trend, Daily Review Status,
+  Next Action, and guidance changes.
+- Mark evidence staleness and partial-sync states.
+- Add Watchlist / Opportunity Bridge only if stable watchlist/opportunity
+  contracts exist: show relevant watchlist candidates, exited names, or better
+  setups near weak holdings without changing ATHENA decisions.
+
+Non-goals:
+
+- No charting replacement for TradingView/Kite.
+- No prediction layer.
+- No new watchlist ranking methodology unless separately approved.
+
+Primary UX outcome:
+
+- Owner can answer "what changed in this holding over the last few syncs?"
+
+### MP-NX6 — Owner Notes and Review Session Mode
+
+Objective: turn My Portfolio into a daily review workflow while preserving
+separation between owner judgment and ATHENA-generated intelligence.
+
+Scope:
+
+- Add owner-authored notes per holding: thesis, watch condition, manual reminder,
+  and review comment.
+- Add review marks: reviewed today, defer, pinned, needs manual follow-up.
+- Add Review Session mode:
+  one holding at a time, mark reviewed, add note, defer, next.
+- Keep owner-authored fields visually and contractually separate from ATHENA
+  evidence and guidance.
+
+Non-goals:
+
+- No order placement.
+- No automatic trading recommendations derived from owner notes.
+
+Primary UX outcome:
+
+- Owner can complete a disciplined daily portfolio review inside ATHENA.
+
+## Suggested Priority
+
+Recommended order:
+
+1. MP-NX1 — Action Queue and Smart Filters.
+2. MP-NX2 — Change Since Last Sync.
+3. MP-NX3 — Column Profiles.
+4. MP-NX4 — Portfolio Heatmap.
+5. MP-NX5 — Symbol Review Timeline.
+6. MP-NX6 — Owner Notes and Review Session Mode.
+
+Reasoning: MP-NX1 and MP-NX2 produce the highest workflow value with the lowest
+methodology risk. MP-NX3 then makes the table scalable. Heatmap and timeline add
+strong visual/contextual depth. Owner Notes and Review Session Mode are powerful
+but introduce user-authored persistence and should come after the display layer
+is stable.
+
+Expanded inventory order:
+
+1. Portfolio Command Dashboard.
+2. Action Queue View.
+3. Smart Filters.
+4. Change Since Last Sync.
+5. Risk Concentration Panel.
+6. Column Profiles.
+7. Pinned Rows.
+8. Export Profiles.
+9. Portfolio Heatmap.
+10. Inline Mini Sparklines.
+11. Symbol Detail Review Timeline.
+12. Watchlist / Opportunity Bridge.
+13. Notes / Owner Override Layer.
+14. Review Session Mode.
+
+## Acceptance Criteria for Each Milestone
+
+- Clear owner-facing UX with no hidden workflow steps.
+- Works with no holdings, holdings without sync, stale snapshot, partial sync,
+  and complete sync.
+- Respects privacy masking where private values appear.
+- Does not change Portfolio Intelligence semantics unless explicitly approved.
+- Has focused API/service tests when data contracts change.
+- Has dashboard contract tests for new controls and cache-busted assets.
+- Updates this roadmap, `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, and
+  `IMPLEMENTATION_SUMMARY.md`.
+
+## Open Questions for Owner Approval
+
+- Should smart filters be pure client-side filters over the latest loaded
+  snapshot, or should an API query layer be added for future scale?
+- Should column profiles be local browser preferences or server-persisted owner
+  preferences?
+- In privacy mode, should heatmap tile size still encode private capital values?
+- Should owner notes live inside ATHENA's database, or should they start as
+  local-only browser annotations until the workflow is proven?
+- Should Review Session Mode be daily-calendar aware or simply owner-triggered?

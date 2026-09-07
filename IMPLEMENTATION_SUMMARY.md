@@ -803,6 +803,34 @@ feat(intraday): full historical ID-8 entry/risk outcome validation
 
 ---
 
+## My Portfolio Next-Level UX Plan — Planning Docs Created
+
+**Summary.** Created a milestone-based roadmap and AI-agent handoff for the next
+generation of My Portfolio workflow UX. The plan keeps this future work
+presentation/workflow-first and explicitly protects the frozen Portfolio
+methodology, advisory-only boundary, privacy masking, and separation between
+owner-authored state and ATHENA-generated evidence.
+
+**What changed.** Added a design roadmap covering the full 14-item next-level
+UX inventory: Portfolio Command Dashboard, Action Queue View, Column Profiles,
+Portfolio Heatmap, Symbol Detail Review Timeline, Change Since Last Sync, Risk
+Concentration Panel, Watchlist / Opportunity Bridge, Notes / Owner Override
+Layer, Review Session Mode, Pinned Rows, Smart Filters, Inline Mini Sparklines,
+and Export Profiles. The roadmap maps those features to MP-NX1 through MP-NX6.
+Added a handoff document for future AI agents with read-first docs, mandatory
+guardrails, implementation surfaces, non-goals, suggested tests, the complete
+feature coverage checklist, and the recommended next owner authorization.
+
+**Files created:** `docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`.
+
+**Files modified:** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
+
+**Status:** Planning documentation created; awaiting Owner / Chief Architect
+review. No implementation started.
+
+---
+
 ## My Portfolio Export Options — Owner Approved / Closed
 
 **Summary.** Added production-ready My Portfolio exports so the owner can

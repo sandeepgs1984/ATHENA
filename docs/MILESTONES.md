@@ -36,7 +36,9 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/PS-P10D-DAILY-CHART-PORTFOLIO-REVIEW-IMPLEMENTATION.md`,
 `docs/research/MY-PORTFOLIO-V1-FINAL-UX-CLOSURE-REVIEW.md`,
 `docs/research/MY-PORTFOLIO-POST-CLOSURE-UI-REFINEMENTS.md`,
-`docs/research/MY-PORTFOLIO-EXPORTS.md`
+`docs/research/MY-PORTFOLIO-EXPORTS.md`,
+`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`
 
 Adds a My Portfolio dashboard feature/subdomain inside ATHENA's existing
 portfolio capability. The feature owns imported current holdings,
@@ -77,6 +79,7 @@ ScoringEngine/DecisionEngine methodology.
 | MY-PORTFOLIO-POST-CLOSURE-UI-REFINEMENTS | My Portfolio post-closure operational UX refinements — add visible row numbering, Excel-like client-side sorting, complete My Portfolio reset, clearer upload-first staged flow with modal-first preview/inline counts/confirm-and-sync in one action, `Upload Preview` / `Discard Upload` labels, top-level full-viewport Sync Existing Holdings blocker, trading-style table indicators, detail-modal scroll reset, screenshot-driven spacing polish, professional trading-workstation hierarchy (command center, four-card KPI strip, compact freshness strip, primary holdings workbench, secondary update/audit panels), professional detail-overlay hierarchy with section accents/icons/signed value tones/directional chips/guidance callout tones, integrated sticky holdings context with stateful opaque bleed protection, separated Sort/View controls with icon-only sort reset, Compact scan / Full review modes with Compact hiding lower-priority audit columns, eye/eye-slash privacy mode with non-text private-value masks, row-state rails, muted unavailable chips, collapsed Recent Imports audit panel with dedicated show/hide action lane, and detail summary hero; no Portfolio methodology, evidence, interpretation version, or schema contract change | 🔄 Implementation complete 2026-09-06; 2026-09-07 screenshot-review corrections complete; ready for Owner/Chief Architect review |
 | MY-PORTFOLIO-EXPORTS | My Portfolio export options — add read-only server-owned exports for Latest analyzed snapshot, Confirmed holdings, and Import history in CSV, XLSX, and JSON with a compact dashboard Export popover; exports include explicit private-value disclosure and never run sync, mutate holdings, recalculate Portfolio Intelligence, or change methodology/contracts | ✅ Owner/Chief Architect approved and closed 2026-09-07 |
 | MY-PORTFOLIO-EXPORTS-ADVANCED | My Portfolio advanced export options — extend read-only exports with optional selected-column output using stable server-validated column IDs, deterministic request-order projection, selected-column JSON table payloads, and dashboard Advanced Columns controls with Essential/Review/All/Clear presets; no sync, mutation, recalculation, methodology, interpretation-version, or schema semantic change | ✅ Owner/Chief Architect approved and closed 2026-09-07 |
+| MY-PORTFOLIO-NEXT-LEVEL-UX-PLAN | My Portfolio next-level UX planning and handoff — document a milestone-based roadmap covering all 14 proposed UX upgrades: Portfolio Command Dashboard, Action Queue View, Column Profiles, Portfolio Heatmap, Symbol Detail Review Timeline, Change Since Last Sync, Risk Concentration Panel, Watchlist / Opportunity Bridge, Notes / Owner Override Layer, Review Session Mode, Pinned Rows, Smart Filters, Inline Mini Sparklines, and Export Profiles; add an AI-agent handoff with guardrails, implementation surfaces, non-goals, test expectations, coverage checklist, and recommended next authorization | 🔄 Planning docs created 2026-09-07; awaiting Owner/Chief Architect review |
 
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 
