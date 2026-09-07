@@ -132,6 +132,15 @@ class PositionSizingReasonCode(str, Enum):
 
     UPSTREAM_NOT_ACTIONABLE = "UPSTREAM_NOT_ACTIONABLE"
     UNVALIDATED_DIRECTION = "UNVALIDATED_DIRECTION"
+    #: Owner correction, 2026-09-07: `EntryActionability.state == ACTIONABLE`
+    #: is a persisted, evaluation-time-only methodology verdict (ID-7A0.1's
+    #: own frozen dimension A) — it does NOT mean the artifact is currently
+    #: usable for a LIVE recommendation right now. This reason means the
+    #: bound `EntryActionability` failed the existing, unmodified ID-7
+    #: `entry_actionability_currentness.is_currently_usable(...)` contract
+    #: (superseded identity, stale evidence, or a non-REGULAR session) —
+    #: never a reimplementation of that rule.
+    UPSTREAM_NOT_CURRENT = "UPSTREAM_NOT_CURRENT"
     CAPITAL_POLICY_UNAVAILABLE = "CAPITAL_POLICY_UNAVAILABLE"
     INVALID_RISK_GEOMETRY = "INVALID_RISK_GEOMETRY"
     ZERO_QUANTITY_UNDER_POLICY = "ZERO_QUANTITY_UNDER_POLICY"
@@ -139,17 +148,30 @@ class PositionSizingReasonCode(str, Enum):
 
 #: The semantic family a persisted `NOT_SIZED` verdict may draw from —
 #: mirrors `EntryActionabilityReasonCode`'s own family-separation
-#: discipline (ID-7A.1). `UPSTREAM_NOT_ACTIONABLE`/`UNVALIDATED_DIRECTION`
-#: mean sizing arithmetic was never attempted at all;
-#: `CAPITAL_POLICY_UNAVAILABLE`/`INVALID_RISK_GEOMETRY` mean it could not
-#: proceed even though the opportunity itself was eligible.
+#: discipline (ID-7A.1). `UPSTREAM_NOT_ACTIONABLE`/`UNVALIDATED_DIRECTION`/
+#: `UPSTREAM_NOT_CURRENT` mean sizing arithmetic was never attempted at
+#: all (policy never inspected); `CAPITAL_POLICY_UNAVAILABLE`/
+#: `INVALID_RISK_GEOMETRY` mean it could not proceed even though the
+#: opportunity itself was eligible, current, and (for the latter) policy
+#: was genuinely available.
 NOT_SIZED_REASON_CODES = frozenset(
     {
         PositionSizingReasonCode.UPSTREAM_NOT_ACTIONABLE,
         PositionSizingReasonCode.UNVALIDATED_DIRECTION,
+        PositionSizingReasonCode.UPSTREAM_NOT_CURRENT,
         PositionSizingReasonCode.CAPITAL_POLICY_UNAVAILABLE,
         PositionSizingReasonCode.INVALID_RISK_GEOMETRY,
     }
+)
+
+#: Reason codes reached only AFTER capital-policy availability has been
+#: confirmed (i.e. a real `CapitalPolicy` genuinely participated in
+#: reaching this verdict, even though no quantity was computed) — the
+#: ONLY `NOT_SIZED` family member(s) for which `policy_version` must
+#: still be populated (§2 of the Owner's correction: policy_version
+#: reflects true evaluation participation, never blindly erased).
+POLICY_PARTICIPATED_NOT_SIZED_REASON_CODES = frozenset(
+    {PositionSizingReasonCode.INVALID_RISK_GEOMETRY}
 )
 
 #: The sole reason a `ZERO_QUANTITY_UNDER_POLICY` verdict may carry.
@@ -171,15 +193,26 @@ class BindingConstraint(str, Enum):
 class PositionSizing:
     """Immutable, point-in-time, advisory-only ID-9 V0 artifact.
 
-    Identity = the entire upstream `EntryActionability` composite key,
-    copied verbatim, plus this artifact's own `position_sizing_as_of`/
-    `sizing_methodology_version` — no surrogate id, mirroring
-    `EntryActionability`'s own frozen identity model (ID-7A0/ADR-015).
+    **Composite identity (corrected, 2026-09-07, §2 of the Owner's
+    correction):** the entire upstream `EntryActionability` composite
+    key, copied verbatim, plus this artifact's own
+    `position_sizing_as_of`, `sizing_methodology_version`, AND
+    `policy_version` — no surrogate id, mirroring `EntryActionability`'s
+    own frozen identity model (ID-7A0/ADR-015), but extended one field
+    further: two sizing assertions over the exact same upstream
+    checkpoint under two different `CapitalPolicy` versions are
+    genuinely different assertions (e.g. policy-v1 -> quantity 100 vs.
+    policy-v2 -> quantity 50) and must never share an identity. See
+    `identity_tuple()`. This does NOT mean a policy-value change bumps
+    `sizing_methodology_version` — POLICY VERSION remains an
+    independent dimension from SIZING METHODOLOGY VERSION (§3); it
+    means the *artifact's* identity is the combination of both, made
+    explicit rather than left implicit.
 
-    Two independent presence rules govern the optional fields (never
+    Three independent presence rules govern the optional fields (never
     conflated, per the Owner's own explicit instruction to keep
-    methodology result, policy availability, and direction-validation
-    status separate):
+    methodology result, currentness, policy availability, and
+    direction-validation status separate):
 
     1. Upstream-echoed risk-geometry fields (`direction`,
        `entry_reference_price`, `operative_invalidation_level`,
@@ -189,8 +222,19 @@ class PositionSizing:
        NOT in `reason_codes` — regardless of this artifact's own final
        `state` (e.g. a SHORT `ACTIONABLE` opportunity still echoes its
        real entry/invalidation/per-share-risk for explainability, even
-       though it is refused sizing under `UNVALIDATED_DIRECTION`).
-    2. Capital-derived fields (`policy_version`, `risk_budget_amount`,
+       though it is refused sizing under `UNVALIDATED_DIRECTION`; a
+       non-current `ACTIONABLE` opportunity under `UPSTREAM_NOT_CURRENT`
+       does too).
+    2. `policy_version` is present whenever a real `CapitalPolicy` was
+       genuinely inspected while reaching this verdict — always true
+       for `SIZED`/`ZERO_QUANTITY_UNDER_POLICY`, and additionally true
+       for the narrow `NOT_SIZED`/`INVALID_RISK_GEOMETRY` case (reached
+       only after policy availability was already confirmed) — never
+       true for `UPSTREAM_NOT_ACTIONABLE`/`UNVALIDATED_DIRECTION`/
+       `UPSTREAM_NOT_CURRENT`/`CAPITAL_POLICY_UNAVAILABLE` (policy was
+       never inspected, or does not exist). See
+       `POLICY_PARTICIPATED_NOT_SIZED_REASON_CODES`.
+    3. The other capital-derived fields (`risk_budget_amount`,
        `max_position_value`, `theoretical_available_capital`,
        `risk_quantity`, `max_value_quantity`,
        `theoretical_capital_quantity`, `binding_constraints`) and result
@@ -305,8 +349,15 @@ class PositionSizing:
                     f"upstream EntryActionability reached ACTIONABLE, got {self.direction}"
                 )
 
-        capital_fields = (
-            self.policy_version, self.risk_budget_amount, self.max_position_value,
+        # `policy_version` is tracked separately from the other six
+        # capital-derived fields (§2 of the Owner's correction, 2026-09-07):
+        # it must reflect true evaluation participation even for certain
+        # NOT_SIZED verdicts (INVALID_RISK_GEOMETRY, reached only after a
+        # real CapitalPolicy was confirmed available), whereas the other
+        # six (budget amounts/quantities) are never populated unless the
+        # full sizing computation genuinely ran (SIZED/ZERO_QUANTITY_UNDER_POLICY).
+        capital_amount_fields = (
+            self.risk_budget_amount, self.max_position_value,
             self.theoretical_available_capital, self.risk_quantity,
             self.max_value_quantity, self.theoretical_capital_quantity,
         )
@@ -324,20 +375,42 @@ class PositionSizing:
                     f"{sorted(c.value for c in NOT_SIZED_REASON_CODES)}, "
                     f"got {sorted(c.value for c in foreign)}"
                 )
-            if any(f is not None for f in capital_fields) or any(f is not None for f in result_fields):
+            if any(f is not None for f in capital_amount_fields) or any(f is not None for f in result_fields):
                 raise ValueError(
-                    "PositionSizing capital-derived/result fields must be None when state=NOT_SIZED"
+                    "PositionSizing capital-amount/result fields must be None when state=NOT_SIZED"
                 )
             if self.binding_constraints:
                 raise ValueError("PositionSizing.binding_constraints must be empty when state=NOT_SIZED")
+
+            policy_participated = bool(
+                set(self.reason_codes) & POLICY_PARTICIPATED_NOT_SIZED_REASON_CODES
+            )
+            if policy_participated:
+                if not self.policy_version:
+                    raise ValueError(
+                        "PositionSizing.policy_version is mandatory when reason_codes "
+                        f"includes any of {sorted(c.value for c in POLICY_PARTICIPATED_NOT_SIZED_REASON_CODES)} "
+                        "(a real CapitalPolicy was confirmed available before this verdict)"
+                    )
+            elif self.policy_version is not None:
+                raise ValueError(
+                    "PositionSizing.policy_version must be None when state=NOT_SIZED and "
+                    "no policy-participated reason code is present (policy was never "
+                    "inspected for this verdict) — got "
+                    f"{self.policy_version!r} with reason_codes={[c.value for c in self.reason_codes]}"
+                )
         else:
             # SIZED or ZERO_QUANTITY_UNDER_POLICY: the full constraint
             # computation genuinely ran -- every capital-derived/result
-            # field must be present.
-            if any(f is None for f in capital_fields) or any(f is None for f in result_fields):
+            # field (including policy_version) must be present.
+            if (
+                self.policy_version is None
+                or any(f is None for f in capital_amount_fields)
+                or any(f is None for f in result_fields)
+            ):
                 raise ValueError(
-                    "PositionSizing capital-derived/result fields are mandatory when "
-                    f"state={self.state.value}"
+                    "PositionSizing policy_version/capital-amount/result fields are all "
+                    f"mandatory when state={self.state.value}"
                 )
             if not self.binding_constraints:
                 raise ValueError(
@@ -390,3 +463,30 @@ class PositionSizing:
                         "ZERO_QUANTITY_UNDER_POLICY requires recommended_quantity == 0, "
                         f"got {self.recommended_quantity}"
                     )
+
+    def identity_tuple(self) -> tuple[object, ...]:
+        """The full composite identity of this sizing assertion (Owner
+        correction, 2026-09-07, §2): the entire upstream `EntryActionability`
+        identity, this artifact's own `position_sizing_as_of` and
+        `sizing_methodology_version`, AND its `policy_version`.
+
+        Two evaluations over the EXACT SAME upstream `EntryActionability`
+        checkpoint and the SAME sizing methodology, but under two
+        different `CapitalPolicy` versions, are genuinely different
+        sizing assertions (e.g. policy-v1 -> quantity 100 vs. policy-v2
+        -> quantity 50) — they must never compare as the same identity.
+        This does NOT mean a policy-value change bumps
+        `sizing_methodology_version` (that field identifies the
+        MATHEMATICS only, frozen independently of policy, per §3 of the
+        domain contract) — it means the ARTIFACT's own identity is the
+        combination of both, mirrored here explicitly rather than left
+        implicit in dataclass `__eq__`. No surrogate id is introduced;
+        this is a derived view over already-stored fields, exactly like
+        `entry_actionability_currentness.bound_entry_qualification_identity`
+        is a derived view over `EntryActionability`'s own fields."""
+        return (
+            self.instrument_id, self.session_date, self.entry_qualification_as_of,
+            self.decision_id, self.entry_qualification_methodology_version,
+            self.entry_actionability_as_of, self.position_sizing_as_of,
+            self.sizing_methodology_version, self.policy_version,
+        )

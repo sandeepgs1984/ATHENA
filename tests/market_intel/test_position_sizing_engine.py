@@ -24,6 +24,10 @@ import pytest
 from athena.domain.enums import DecisionType, Direction
 from athena.intraday import position_sizing_engine as engine_module
 from athena.intraday import position_sizing_models as models_module
+from athena.intraday.entry_actionability_currentness import (
+    CurrentnessResult,
+    EntryActionabilityCurrentness,
+)
 from athena.intraday.entry_actionability_models import (
     EntryActionability,
     EntryActionabilityReasonCode,
@@ -148,6 +152,18 @@ def _policy(
 
 ENGINE = PositionSizingV0Engine()
 
+#: A `CurrentnessResult` reporting CURRENT -- used by every test that is
+#: not itself exercising the currentness gate (Owner correction,
+#: 2026-09-07, issue 1), so those tests continue to exercise exactly the
+#: same downstream behavior as before the gate was added.
+_CURRENT = CurrentnessResult(status=EntryActionabilityCurrentness.CURRENT, explanation="test: current")
+
+
+def _non_current(
+    status: EntryActionabilityCurrentness = EntryActionabilityCurrentness.STALE,
+) -> CurrentnessResult:
+    return CurrentnessResult(status=status, explanation=f"test: {status.value}")
+
 
 # --------------------------------------------------------------------------- #
 # Core LONG sizing / binding-constraint tests
@@ -156,7 +172,7 @@ ENGINE = PositionSizingV0Engine()
 
 def test_valid_long_sizing_produces_sized_result() -> None:
     r = ENGINE.evaluate(
-        entry_actionability=_actionable(), capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
+        entry_actionability=_actionable(), currentness=_CURRENT, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.SIZED
     assert r.reason_codes == ()
@@ -169,7 +185,7 @@ def test_risk_budget_binding() -> None:
     # max_position_value=50000 -> max_value_quantity=500 (tie by construction avoided below)
     r = ENGINE.evaluate(
         entry_actionability=_actionable(),
-        capital_policy=_policy(total="100000", risk_pct="1.0", max_value_pct="90.0"),
+        currentness=_CURRENT, capital_policy=_policy(total="100000", risk_pct="1.0", max_value_pct="90.0"),
         instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.SIZED
@@ -180,7 +196,7 @@ def test_risk_budget_binding() -> None:
 def test_max_position_value_binding() -> None:
     r = ENGINE.evaluate(
         entry_actionability=_actionable(),
-        capital_policy=_policy(total="100000", risk_pct="1.0", max_value_pct="10.0"),
+        currentness=_CURRENT, capital_policy=_policy(total="100000", risk_pct="1.0", max_value_pct="10.0"),
         instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.SIZED
@@ -199,7 +215,7 @@ def test_theoretical_capital_co_binds_with_max_value_at_full_deployment() -> Non
     # keeps RISK_BUDGET from binding (risk_quantity=500, well above 10).
     r = ENGINE.evaluate(
         entry_actionability=_actionable(),
-        capital_policy=_policy(total="1000", risk_pct="100.0", max_value_pct="100.0"),
+        currentness=_CURRENT, capital_policy=_policy(total="1000", risk_pct="100.0", max_value_pct="100.0"),
         instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.SIZED
@@ -214,7 +230,7 @@ def test_two_way_co_binding_reports_both_constraints() -> None:
     # risk_pct=0.4% -> risk_budget=400 -> risk_quantity = 400/2 = 200.
     r = ENGINE.evaluate(
         entry_actionability=_actionable(),
-        capital_policy=_policy(total="100000", risk_pct="0.4", max_value_pct="20.0"),
+        currentness=_CURRENT, capital_policy=_policy(total="100000", risk_pct="0.4", max_value_pct="20.0"),
         instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.SIZED
@@ -228,7 +244,7 @@ def test_lot_size_floor_rounds_down_to_whole_lots() -> None:
     # with lot_size=7, floor(500/7)*7 = 71*7 = 497.
     r = ENGINE.evaluate(
         entry_actionability=_actionable(),
-        capital_policy=_policy(total="100000", risk_pct="1.0", max_value_pct="90.0"),
+        currentness=_CURRENT, capital_policy=_policy(total="100000", risk_pct="1.0", max_value_pct="90.0"),
         instrument_lot_size=7, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.SIZED
@@ -239,7 +255,7 @@ def test_lot_size_floor_rounds_down_to_whole_lots() -> None:
 def test_zero_quantity_never_forced_to_minimum_lot() -> None:
     r = ENGINE.evaluate(
         entry_actionability=_actionable(),
-        capital_policy=_policy(total="50", risk_pct="1.0", max_value_pct="10.0"),
+        currentness=_CURRENT, capital_policy=_policy(total="50", risk_pct="1.0", max_value_pct="10.0"),
         instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.ZERO_QUANTITY_UNDER_POLICY
@@ -254,7 +270,7 @@ def test_zero_quantity_never_forced_to_minimum_lot() -> None:
 
 def test_derived_value_invariants_hold_for_sized_result() -> None:
     r = ENGINE.evaluate(
-        entry_actionability=_actionable(), capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
+        entry_actionability=_actionable(), currentness=_CURRENT, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.SIZED
     assert r.capital_at_risk <= r.risk_budget_amount
@@ -269,7 +285,7 @@ def test_derived_value_invariants_hold_for_sized_result() -> None:
 
 def test_short_direction_refused_with_unvalidated_direction_reason() -> None:
     ea = _actionable(direction=Direction.SHORT, entry_price=Decimal("100"), invalidation_level=Decimal("102"))
-    r = ENGINE.evaluate(entry_actionability=ea, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF)
+    r = ENGINE.evaluate(entry_actionability=ea, currentness=_CURRENT, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF)
     assert r.state is PositionSizingState.NOT_SIZED
     assert r.reason_codes == (PositionSizingReasonCode.UNVALIDATED_DIRECTION,)
     assert r.recommended_quantity is None
@@ -289,7 +305,90 @@ def test_none_direction_raises_contract_error_defensively() -> None:
     impossible supplied combination" precedent."""
     ea = _illegal_actionable_direction_none()
     with pytest.raises(ValueError):
-        ENGINE.evaluate(entry_actionability=ea, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF)
+        ENGINE.evaluate(entry_actionability=ea, currentness=_CURRENT, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF)
+
+
+# --------------------------------------------------------------------------- #
+# Currentness (Owner correction, 2026-09-07, issue 1): a persisted
+# ACTIONABLE verdict is a methodology result at evaluation time, never a
+# live-currentness guarantee. The engine never computes currentness
+# itself (no clock/repository/provider/session read) -- it only gates on
+# an already-derived `CurrentnessResult` supplied by the caller, exactly
+# as produced by the real, unmodified `is_currently_usable(...)`.
+# --------------------------------------------------------------------------- #
+
+
+def test_current_actionable_proceeds_to_sizing() -> None:
+    r = ENGINE.evaluate(
+        entry_actionability=_actionable(), currentness=_CURRENT, capital_policy=_policy(),
+        instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r.state is PositionSizingState.SIZED
+
+
+def test_stale_currentness_returns_not_sized_upstream_not_current() -> None:
+    r = ENGINE.evaluate(
+        entry_actionability=_actionable(),
+        currentness=_non_current(EntryActionabilityCurrentness.STALE),
+        capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r.state is PositionSizingState.NOT_SIZED
+    assert r.reason_codes == (PositionSizingReasonCode.UPSTREAM_NOT_CURRENT,)
+    # Geometry is still echoed for explainability even though refused.
+    assert r.entry_reference_price == Decimal("100")
+    assert r.per_share_risk == Decimal("2")
+    # Policy was never inspected for a non-current opportunity.
+    assert r.policy_version is None
+
+
+def test_superseded_currentness_returns_not_sized_upstream_not_current() -> None:
+    r = ENGINE.evaluate(
+        entry_actionability=_actionable(),
+        currentness=_non_current(EntryActionabilityCurrentness.SUPERSEDED),
+        capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r.state is PositionSizingState.NOT_SIZED
+    assert r.reason_codes == (PositionSizingReasonCode.UPSTREAM_NOT_CURRENT,)
+    assert r.policy_version is None
+
+
+def test_session_closed_currentness_returns_not_sized_upstream_not_current() -> None:
+    r = ENGINE.evaluate(
+        entry_actionability=_actionable(),
+        currentness=_non_current(EntryActionabilityCurrentness.SESSION_CLOSED),
+        capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r.state is PositionSizingState.NOT_SIZED
+    assert r.reason_codes == (PositionSizingReasonCode.UPSTREAM_NOT_CURRENT,)
+    assert r.policy_version is None
+
+
+def test_currentness_gate_precedes_capital_policy_check() -> None:
+    """A non-current opportunity with NO policy supplied at all must
+    still report UPSTREAM_NOT_CURRENT, never CAPITAL_POLICY_UNAVAILABLE
+    -- proving currentness is checked first (per the Owner's own
+    explicit evaluation-order example list) and policy is never even
+    inspected for a non-current opportunity."""
+    r = ENGINE.evaluate(
+        entry_actionability=_actionable(),
+        currentness=_non_current(EntryActionabilityCurrentness.STALE),
+        capital_policy=None, instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r.reason_codes == (PositionSizingReasonCode.UPSTREAM_NOT_CURRENT,)
+
+
+def test_methodology_not_actionable_currentness_also_refuses_sizing() -> None:
+    """A caller-supplied `METHODOLOGY_NOT_ACTIONABLE` currentness verdict
+    (the status `is_currently_usable` itself returns for a non-ACTIONABLE
+    artifact) is still treated as "not CURRENT" by this engine's own
+    generic gate -- any status other than CURRENT refuses sizing."""
+    r = ENGINE.evaluate(
+        entry_actionability=_actionable(),
+        currentness=_non_current(EntryActionabilityCurrentness.METHODOLOGY_NOT_ACTIONABLE),
+        capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r.state is PositionSizingState.NOT_SIZED
+    assert r.reason_codes == (PositionSizingReasonCode.UPSTREAM_NOT_CURRENT,)
 
 
 # --------------------------------------------------------------------------- #
@@ -299,7 +398,7 @@ def test_none_direction_raises_contract_error_defensively() -> None:
 
 def test_missing_capital_policy_returns_not_sized() -> None:
     r = ENGINE.evaluate(
-        entry_actionability=_actionable(), capital_policy=None, instrument_lot_size=1, evaluated_at=AS_OF,
+        entry_actionability=_actionable(), currentness=_CURRENT, capital_policy=None, instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.NOT_SIZED
     assert r.reason_codes == (PositionSizingReasonCode.CAPITAL_POLICY_UNAVAILABLE,)
@@ -311,7 +410,7 @@ def test_missing_capital_policy_returns_not_sized() -> None:
 
 def test_upstream_not_actionable_returns_not_sized_without_reading_evidence() -> None:
     r = ENGINE.evaluate(
-        entry_actionability=_not_actionable(), capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
+        entry_actionability=_not_actionable(), currentness=_CURRENT, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.state is PositionSizingState.NOT_SIZED
     assert r.reason_codes == (PositionSizingReasonCode.UPSTREAM_NOT_ACTIONABLE,)
@@ -323,16 +422,21 @@ def test_upstream_not_actionable_returns_not_sized_without_reading_evidence() ->
 
 def test_invalid_risk_geometry_returns_not_sized_defensively() -> None:
     ea = _illegal_actionable_invalid_geometry()
-    r = ENGINE.evaluate(entry_actionability=ea, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF)
+    r = ENGINE.evaluate(entry_actionability=ea, currentness=_CURRENT, capital_policy=_policy(version="policy-v3"), instrument_lot_size=1, evaluated_at=AS_OF)
     assert r.state is PositionSizingState.NOT_SIZED
     assert r.reason_codes == (PositionSizingReasonCode.INVALID_RISK_GEOMETRY,)
     assert r.per_share_risk is not None and r.per_share_risk <= 0
+    # Owner correction, 2026-09-07, §2: a real CapitalPolicy was already
+    # confirmed available before this defensive geometry check runs, so
+    # its version genuinely participated and must be preserved, never
+    # blindly erased.
+    assert r.policy_version == "policy-v3"
 
 
 def test_evaluate_rejects_naive_evaluated_at() -> None:
     with pytest.raises(ValueError):
         ENGINE.evaluate(
-            entry_actionability=_actionable(), capital_policy=_policy(),
+            entry_actionability=_actionable(), currentness=_CURRENT, capital_policy=_policy(),
             instrument_lot_size=1, evaluated_at=datetime(2026, 9, 7, 10, 0),
         )
 
@@ -340,7 +444,7 @@ def test_evaluate_rejects_naive_evaluated_at() -> None:
 def test_evaluate_rejects_lot_size_below_one() -> None:
     with pytest.raises(ValueError):
         ENGINE.evaluate(
-            entry_actionability=_actionable(), capital_policy=_policy(),
+            entry_actionability=_actionable(), currentness=_CURRENT, capital_policy=_policy(),
             instrument_lot_size=0, evaluated_at=AS_OF,
         )
 
@@ -352,7 +456,7 @@ def test_evaluate_rejects_lot_size_below_one() -> None:
 
 def test_all_numeric_fields_are_decimal_never_float() -> None:
     r = ENGINE.evaluate(
-        entry_actionability=_actionable(), capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
+        entry_actionability=_actionable(), currentness=_CURRENT, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
     )
     for field in (
         "per_share_risk", "risk_budget_amount", "max_position_value",
@@ -366,7 +470,7 @@ def test_all_numeric_fields_are_decimal_never_float() -> None:
 
 def test_exact_upstream_provenance_preserved() -> None:
     ea = _actionable()
-    r = ENGINE.evaluate(entry_actionability=ea, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF)
+    r = ENGINE.evaluate(entry_actionability=ea, currentness=_CURRENT, capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF)
     assert r.instrument_id == ea.instrument_id
     assert r.session_date == ea.session_date
     assert r.entry_qualification_as_of == ea.entry_qualification_as_of
@@ -380,17 +484,102 @@ def test_exact_upstream_provenance_preserved() -> None:
 
 def test_capital_policy_version_echoed_in_result() -> None:
     r = ENGINE.evaluate(
-        entry_actionability=_actionable(), capital_policy=_policy(version="policy-v7"),
+        entry_actionability=_actionable(), currentness=_CURRENT, capital_policy=_policy(version="policy-v7"),
         instrument_lot_size=1, evaluated_at=AS_OF,
     )
     assert r.policy_version == "policy-v7"
 
 
+# --------------------------------------------------------------------------- #
+# Policy-version identity (Owner correction, 2026-09-07, issue 2): two
+# sizing assertions over the exact same upstream EntryActionability
+# checkpoint under two different CapitalPolicy versions are genuinely
+# different assertions and must never share an identity, even though a
+# policy-value change must never bump sizing_methodology_version.
+# --------------------------------------------------------------------------- #
+
+
+def test_identity_tuple_differs_across_policy_versions_for_same_entry_actionability() -> None:
+    ea = _actionable()
+    r1 = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_CURRENT, capital_policy=_policy(version="policy-v1"),
+        instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    r2 = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_CURRENT, capital_policy=_policy(version="policy-v2"),
+        instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r1.identity_tuple() != r2.identity_tuple()
+    assert r1 != r2
+
+
+def test_sizing_methodology_version_unchanged_across_policy_versions() -> None:
+    """A policy-value change must NOT masquerade as a methodology-version
+    change -- the two dimensions remain independent even though both now
+    participate in the artifact's own composite identity."""
+    ea = _actionable()
+    r1 = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_CURRENT, capital_policy=_policy(version="policy-v1"),
+        instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    r2 = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_CURRENT, capital_policy=_policy(version="policy-v2"),
+        instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r1.sizing_methodology_version == r2.sizing_methodology_version == DEFAULT_METHODOLOGY_VERSION
+
+
+def test_different_policy_versions_can_change_recommended_quantity() -> None:
+    """The example from the Owner's own correction: the same checkpoint
+    under two policy versions can genuinely produce different
+    quantities -- proving the identity difference is not merely
+    formal but reflects a real, different sizing assertion."""
+    ea = _actionable()
+    r1 = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_CURRENT,
+        capital_policy=_policy(version="policy-v1", risk_pct="1.0", max_value_pct="90.0"),
+        instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    r2 = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_CURRENT,
+        capital_policy=_policy(version="policy-v2", risk_pct="0.5", max_value_pct="90.0"),
+        instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r1.recommended_quantity != r2.recommended_quantity
+    assert r1.identity_tuple() != r2.identity_tuple()
+
+
+def test_policy_version_none_for_upstream_not_current() -> None:
+    r = ENGINE.evaluate(
+        entry_actionability=_actionable(),
+        currentness=_non_current(EntryActionabilityCurrentness.STALE),
+        capital_policy=_policy(), instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r.policy_version is None
+
+
+def test_policy_version_none_for_upstream_not_actionable() -> None:
+    r = ENGINE.evaluate(
+        entry_actionability=_not_actionable(), currentness=_CURRENT, capital_policy=_policy(),
+        instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r.policy_version is None
+
+
+def test_policy_version_none_for_unvalidated_direction() -> None:
+    ea = _actionable(direction=Direction.SHORT, entry_price=Decimal("100"), invalidation_level=Decimal("102"))
+    r = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_CURRENT, capital_policy=_policy(),
+        instrument_lot_size=1, evaluated_at=AS_OF,
+    )
+    assert r.policy_version is None
+
+
 def test_deterministic_repeat_produces_identical_result() -> None:
     ea = _actionable()
     policy = _policy()
-    r1 = ENGINE.evaluate(entry_actionability=ea, capital_policy=policy, instrument_lot_size=1, evaluated_at=AS_OF)
-    r2 = ENGINE.evaluate(entry_actionability=ea, capital_policy=policy, instrument_lot_size=1, evaluated_at=AS_OF)
+    r1 = ENGINE.evaluate(entry_actionability=ea, currentness=_CURRENT, capital_policy=policy, instrument_lot_size=1, evaluated_at=AS_OF)
+    r2 = ENGINE.evaluate(entry_actionability=ea, currentness=_CURRENT, capital_policy=policy, instrument_lot_size=1, evaluated_at=AS_OF)
     assert r1 == r2
 
 
@@ -435,8 +624,8 @@ def test_extreme_rr_does_not_change_sizing_result() -> None:
         }
     )
     policy = _policy()
-    r1 = ENGINE.evaluate(entry_actionability=ea_normal, capital_policy=policy, instrument_lot_size=1, evaluated_at=AS_OF)
-    r2 = ENGINE.evaluate(entry_actionability=ea_extreme_rr, capital_policy=policy, instrument_lot_size=1, evaluated_at=AS_OF)
+    r1 = ENGINE.evaluate(entry_actionability=ea_normal, currentness=_CURRENT, capital_policy=policy, instrument_lot_size=1, evaluated_at=AS_OF)
+    r2 = ENGINE.evaluate(entry_actionability=ea_extreme_rr, currentness=_CURRENT, capital_policy=policy, instrument_lot_size=1, evaluated_at=AS_OF)
     assert r1.recommended_quantity == r2.recommended_quantity
     assert r1.binding_constraints == r2.binding_constraints
 
@@ -546,6 +735,66 @@ def test_domain_rejects_upstream_not_actionable_with_geometry_present() -> None:
     )
     with pytest.raises(ValueError):
         PositionSizing(**kwargs)  # direction/entry_reference_price/etc. still populated
+
+
+def test_domain_rejects_not_sized_policy_version_when_not_participated() -> None:
+    """A NOT_SIZED verdict whose reason is UPSTREAM_NOT_ACTIONABLE (policy
+    never inspected) must not carry a policy_version -- proven directly
+    against the domain model's own construction invariant, independent
+    of the engine."""
+    kwargs = _sized_kwargs(
+        state=PositionSizingState.NOT_SIZED,
+        reason_codes=(PositionSizingReasonCode.CAPITAL_POLICY_UNAVAILABLE,),
+        risk_budget_amount=None, max_position_value=None,
+        theoretical_available_capital=None, risk_quantity=None, max_value_quantity=None,
+        theoretical_capital_quantity=None, recommended_quantity=None,
+        recommended_position_value=None, capital_at_risk=None, binding_constraints=(),
+        # policy_version left at the fixture default ("policy-v1") -- illegal here.
+    )
+    with pytest.raises(ValueError):
+        PositionSizing(**kwargs)
+
+
+def test_domain_requires_policy_version_for_invalid_risk_geometry() -> None:
+    """INVALID_RISK_GEOMETRY is reached only after policy availability is
+    confirmed -- the domain model must reject a construction that omits
+    policy_version for this specific reason."""
+    kwargs = _sized_kwargs(
+        state=PositionSizingState.NOT_SIZED,
+        reason_codes=(PositionSizingReasonCode.INVALID_RISK_GEOMETRY,),
+        policy_version=None,
+        risk_budget_amount=None, max_position_value=None,
+        theoretical_available_capital=None, risk_quantity=None, max_value_quantity=None,
+        theoretical_capital_quantity=None, recommended_quantity=None,
+        recommended_position_value=None, capital_at_risk=None, binding_constraints=(),
+    )
+    with pytest.raises(ValueError):
+        PositionSizing(**kwargs)
+
+
+def test_domain_accepts_invalid_risk_geometry_with_policy_version_present() -> None:
+    """The legal counterpart of the rejection above -- INVALID_RISK_GEOMETRY
+    WITH a policy_version present constructs cleanly."""
+    kwargs = _sized_kwargs(
+        state=PositionSizingState.NOT_SIZED,
+        reason_codes=(PositionSizingReasonCode.INVALID_RISK_GEOMETRY,),
+        policy_version="policy-v1",
+        risk_budget_amount=None, max_position_value=None,
+        theoretical_available_capital=None, risk_quantity=None, max_value_quantity=None,
+        theoretical_capital_quantity=None, recommended_quantity=None,
+        recommended_position_value=None, capital_at_risk=None, binding_constraints=(),
+    )
+    sizing = PositionSizing(**kwargs)
+    assert sizing.policy_version == "policy-v1"
+
+
+def test_domain_identity_tuple_includes_policy_version() -> None:
+    a = PositionSizing(**_sized_kwargs(policy_version="policy-v1"))
+    b = PositionSizing(**_sized_kwargs(policy_version="policy-v2"))
+    assert a.identity_tuple() != b.identity_tuple()
+    # Everything else about the identity is identical -- only the last
+    # tuple element (policy_version) differs.
+    assert a.identity_tuple()[:-1] == b.identity_tuple()[:-1]
 
 
 def test_domain_rejects_capital_at_risk_exceeding_budget() -> None:

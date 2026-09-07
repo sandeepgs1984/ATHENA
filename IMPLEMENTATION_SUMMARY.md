@@ -6,6 +6,153 @@ status updated on approval.
 
 ---
 
+## ID-9 Position Sizing V0 Core Implementation — Final Correction, Ready for Owner Freeze Decision
+
+**Summary.** With the initial V0 core implementation accepted in
+substance, the Owner's source review held final closure for three
+correctness issues, all resolved in this same milestone (no
+ID-9.1/ID-9.x created).
+
+**1. Currentness enforcement.** The initial implementation argued
+same-cycle synchronous evaluation made the frozen ID-7 currentness
+contract unnecessary for V0 — the Owner correctly rejected this:
+`EntryActionability.state == ACTIONABLE` is a persisted methodology
+verdict at evaluation time, not a live-currentness guarantee, and a
+real canonical cycle can take long enough for a completed-M5 evidence
+checkpoint to cross the frozen 10-minute currentness boundary before
+`position_sizing_stage` runs. `PositionSizingV0Engine.evaluate` now
+takes a mandatory `currentness: CurrentnessResult` parameter (from the
+existing, unmodified `entry_actionability_currentness.is_currently_usable`,
+never re-implemented) and gates on `status is CURRENT` immediately
+after the direction check, before capital-policy availability —
+matching the Owner's own explicit evaluation-order example list. Any
+other status (`STALE`/`SUPERSEDED`/`SESSION_CLOSED`/
+`METHODOLOGY_NOT_ACTIONABLE`) yields `NOT_SIZED`/`UPSTREAM_NOT_CURRENT`
+(a new reason code), with upstream-echoed geometry still present for
+explainability and `policy_version` correctly absent (policy is never
+inspected for a non-current opportunity). The engine itself computes
+nothing — no clock/repository/provider/session read — it only inspects
+an already-derived value; `position_sizing_stage` composes the real
+verdict via one captured `sizing_clock_instant`, the same-cycle
+`EntryQualification`'s own identity, and the existing, cheap
+`session.classify_session_phase` helper evaluated at that real instant
+(not the cycle's nominal `ctx.as_of`).
+
+**2. Policy-version identity.** `policy_version` was previously a
+payload field only, excluded from `PositionSizing`'s own composite
+identity, with an imprecise presence rule for `NOT_SIZED` results. Two
+sizing assertions over the exact same upstream `EntryActionability`
+checkpoint under two different `CapitalPolicy` versions are genuinely
+different assertions (e.g. policy-v1 → quantity 100 vs. policy-v2 →
+quantity 50) and must never share an identity — even though a
+policy-value change must never bump `sizing_methodology_version`
+(that dimension stays independent and provably unchanged). Fixed with
+a new `identity_tuple()` method (full upstream identity +
+`position_sizing_as_of` + `sizing_methodology_version` +
+`policy_version`) and a refined presence rule via a new
+`POLICY_PARTICIPATED_NOT_SIZED_REASON_CODES = {INVALID_RISK_GEOMETRY}`
+frozenset: `policy_version` is `None` whenever policy was never
+inspected (`UPSTREAM_NOT_ACTIONABLE`/`UNVALIDATED_DIRECTION`/
+`UPSTREAM_NOT_CURRENT`/`CAPITAL_POLICY_UNAVAILABLE`), but preserved for
+`INVALID_RISK_GEOMETRY` (reached only after a real policy was already
+confirmed available) — provenance is never blindly erased for a
+diagnostic branch that genuinely depended on it.
+
+**3. Silent lot-size fallback removed.** `position_sizing_stage`
+previously defaulted `lot_size` to `1` whenever canonical `Instrument`
+metadata was absent from its own `instrument_by_id` lookup map. Traced
+directly: every instrument reaching this stage is itself sourced from
+the same `instruments` sequence this scan already resolved
+(`UniverseEngine.build`'s own input), so that absence is a genuine
+invariant violation, never a plausible runtime condition — fabricating
+a lot size to size around it would violate the V0 rule that lot size
+comes from canonical instrument metadata. `position_sizing_stage` now
+raises `ValueError` immediately instead (and defensively re-checks
+`lot_size >= 1`), proven by a dedicated source-scan test.
+
+**Reviewed and confirmed correct, unchanged**: `position_sizing_as_of`
+semantics (genuinely the right market-time checkpoint for a pure
+capital projection over an already-settled entry/risk assertion, not
+merely convenient) and every accepted piece of the original
+implementation (sizing mathematics, gates-first evaluation order,
+dormant P5.2-P5.6 disposition, absence of any liquidity/concentration/
+order/execution surface). One clock-coherence improvement was made
+alongside the currentness fix: `position_sizing_stage` now captures
+exactly one wall-clock instant, reused for both the currentness `now`
+and this artifact's own `evaluated_at` — proven by a dedicated spy test
+on `is_currently_usable`'s own `now` kwarg.
+
+**Tests.** 19 new tests (16 in `tests/market_intel/test_position_sizing_engine.py`
+covering every currentness status and every policy-identity/provenance
+case; 3 in `tests/ops/test_owner_validation.py` covering a real stale-
+evidence pipeline refusal, sizing-clock reuse, and the lot-size-fallback
+removal). 2 pre-existing tests updated, neither weakened: `test_id7e1_no_dag_change`'s
+own locked-in literal-count assertion (4→9, explained), and
+`test_id7e_no_currentness_no_provider_no_config_in_stage` re-scoped to
+`entry_actionability_stage`'s own body only (ID-9's later,
+architecturally separate `position_sizing_stage` now legitimately
+reuses currentness concepts for its own live-currentness gate — a
+different stage's responsibility, not a regression of ID-7E's own
+write-time-stage invariant). Full repository suite: **3831 passed, 1
+pre-existing unrelated skip, 0 failures** (up from 3812, exactly +19).
+
+**Files modified** (no new files this round):
+`src/athena/intraday/position_sizing_models.py`,
+`src/athena/intraday/position_sizing_engine.py`,
+`tests/market_intel/test_position_sizing_engine.py`,
+`src/athena/ops/owner_validation.py`,
+`tests/ops/test_owner_validation.py`,
+`docs/research/ID-9-POSITION-SIZING-V0-CORE-IMPLEMENTATION.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`,
+`docs/ATHENA-ID-TRACK-HANDOFF.md`, this file. **Zero schema/repository/
+config changes.** `db/athena.db` confirmed unchanged (`schema_version`
+18, `integrity_check: ok`); PID 2453 untouched; zero provider/network
+calls; zero order/broker/execution activation; zero EMR/DarvaX/ID-6/
+ID-7/ID-8-methodology touch; `git diff --check` clean.
+
+**Status: ID-9 POSITION SIZING V0 CORE IMPLEMENTATION CORRECTED —
+READY FOR OWNER / CHIEF ARCHITECT FREEZE DECISION.** Classification
+`ID9_V0_CORE_IMPLEMENTATION_METHODOLOGY_CORRECT_NO_PRODUCTION_ACTIVATION`
+— production sizing remains inert (every real cycle reports
+`CAPITAL_POLICY_UNAVAILABLE`) until the Owner explicitly supplies a
+`CapitalPolicy`. Does not start ID-10; does not activate dormant order/
+execution stages; EMR and DarvaX untouched.
+
+**Suggested commit message** (for the owner to run themselves, per
+CLAUDE.md — no git action taken by the AI):
+
+```
+fix(intraday): ID-9 position sizing currentness/identity/lot-size correction
+
+- Enforced the frozen ID-7 EntryActionability currentness contract for
+  live sizing: PositionSizingV0Engine.evaluate now requires a caller-
+  supplied CurrentnessResult (reusing the existing, unmodified
+  is_currently_usable, never re-implemented) and refuses NOT_SIZED/
+  UPSTREAM_NOT_CURRENT for anything but CURRENT - a persisted ACTIONABLE
+  verdict is evaluation-time methodology only, never a live-currentness
+  guarantee, and a real cycle can outlast the frozen 10-minute band.
+- Made policy_version participate in PositionSizing's own composite
+  identity via a new identity_tuple() method, and refined its presence
+  rule (POLICY_PARTICIPATED_NOT_SIZED_REASON_CODES) so it correctly
+  distinguishes "policy never inspected" from "policy inspected but
+  still refused" (INVALID_RISK_GEOMETRY) - two sizing assertions under
+  different policy versions over the same checkpoint must never share
+  an identity, while sizing_methodology_version stays independent.
+- Removed position_sizing_stage's silent lot_size=1 fallback for
+  missing canonical Instrument metadata; it now raises a contract error
+  instead, since that absence is proven architecturally impossible.
+- Reviewed and confirmed position_sizing_as_of semantics correct,
+  unchanged; made position_sizing_stage capture one wall-clock instant
+  reused for both currentness `now` and `evaluated_at`.
+- Added 19 regression tests (currentness matrix, policy-identity/
+  provenance matrix, lot-size-fallback removal, clock-reuse proof); full
+  suite 3831 passed.
+- Updated the ID-9 implementation report and tracking docs with the
+  correction.
+```
+
+---
+
 ## ID-9 Position Sizing V0 Core Implementation — Complete, Ready for Owner Review
 
 **Summary.** With ID-9 discovery owner-approved/closed, the Owner

@@ -835,6 +835,10 @@ class OwnerValidationPipeline:
             RelativeVolumeEngine,
             resolve_evidence_finality,
         )
+        from athena.intraday.entry_actionability_currentness import (
+            EntryQualificationIdentity,
+            is_currently_usable,
+        )
         from athena.intraday.position_sizing_engine import PositionSizingV0Engine
         from athena.market_health import MarketHealthEngine
         from athena.regime import RegimeEngine
@@ -844,6 +848,7 @@ class OwnerValidationPipeline:
         from athena.scoring import ConfluenceInputs, ScoringEngine
         from athena.session import (
             SessionContextEngine,
+            classify_session_phase,
             completed_candles,
             latest_completed_candle,
             session_day_start,
@@ -1573,10 +1578,10 @@ class OwnerValidationPipeline:
                 # ID-9: the first stage downstream of `entry_actionability`.
                 # No methodology change to ID-6/ID-7/ID-8 -- the frozen V0
                 # sizing evaluator (upstream ACTIONABLE gate -> LONG-only
-                # direction scope -> capital-policy availability -> risk
-                # geometry -> risk-budget/max-value/theoretical-capital
-                # minimum) lives entirely inside `PositionSizingV0Engine`,
-                # untouched here.
+                # direction scope -> currentness -> capital-policy
+                # availability -> risk geometry -> risk-budget/max-value/
+                # theoretical-capital minimum) lives entirely inside
+                # `PositionSizingV0Engine`, untouched here.
                 #
                 # "entry_actionability": the exact same-cycle artifact
                 # `entry_actionability_stage` just produced from THIS
@@ -1592,12 +1597,66 @@ class OwnerValidationPipeline:
                 if entry_actionability is None:
                     return {"position_sizing": None}
 
-                # Canonical per-instrument lot size, resolved once per
-                # scan (§ above) -- never hardcoded to 1 even though
-                # every real NSE/BSE cash-equity row observed to date
-                # carries lot_size=1 (ID-9 discovery §14).
+                # Canonical per-instrument lot size, resolved from the
+                # SAME `instruments` sequence this whole scan already
+                # resolved (never a second repository read, never
+                # hardcoded to 1). Every instrument reaching this stage
+                # was itself sourced from that same sequence
+                # (UniverseEngine.build's own input) -- absence here would
+                # be a genuine invariant violation, not a runtime
+                # condition to size around with fabricated metadata
+                # (Owner correction, 2026-09-07, issue 3: no silent
+                # lot_size=1 fallback).
                 instrument = instrument_by_id.get(instrument_id)
-                lot_size = instrument.lot_size if instrument is not None else 1
+                if instrument is None:
+                    raise ValueError(
+                        f"position_sizing_stage: no canonical Instrument metadata found "
+                        f"for {instrument_id!r} -- every instrument reaching this stage "
+                        "must already be present in this scan's own resolved `instruments` "
+                        "sequence; this is a genuine invariant violation, never sized "
+                        "around with a fabricated lot size."
+                    )
+                lot_size = instrument.lot_size
+                if lot_size < 1:
+                    raise ValueError(
+                        f"position_sizing_stage: instrument.lot_size must be >= 1, got "
+                        f"{lot_size} for {instrument_id!r}"
+                    )
+
+                # ID-9 Owner correction, 2026-09-07, issue 1: a persisted
+                # ACTIONABLE verdict is a methodology result at evaluation
+                # time, never a live-currentness guarantee -- same-cycle
+                # synchronous production does NOT waive the frozen ID-7
+                # evidence-age/session-phase currentness contract (a cycle
+                # can take long enough for a completed-M5 checkpoint to
+                # cross the 10-minute band before this stage runs). The
+                # EXISTING, unmodified `is_currently_usable(...)` is
+                # reused directly -- never re-implemented here. One
+                # explicitly captured wall-clock instant
+                # (`sizing_clock_instant`) serves BOTH the currentness
+                # `now` and this artifact's own `evaluated_at` (issue 7 --
+                # never two independent clock reads for one sizing
+                # decision, and never `ctx.as_of` as a wall clock).
+                decision = box["cap"].outcome.decision
+                entry_qualification = ctx.get("entry_qualification")
+                sizing_clock_instant = self._persistence_clock()
+                current_session_phase = classify_session_phase(
+                    calendar.context_for(sizing_clock_instant.astimezone(session_tzinfo).date()),
+                    cfg.market.sessions, as_of=sizing_clock_instant, tzinfo=session_tzinfo,
+                )
+                currentness = is_currently_usable(
+                    entry_actionability,
+                    current_decision_id=decision.decision_id,
+                    current_entry_qualification_identity=EntryQualificationIdentity(
+                        instrument_id=entry_qualification.instrument_id,
+                        session_date=entry_qualification.session_date,
+                        as_of=entry_qualification.as_of,
+                        decision_id=entry_qualification.decision_id,
+                        methodology_version=entry_qualification.methodology_version,
+                    ),
+                    current_session_phase=current_session_phase,
+                    now=sizing_clock_instant,
+                )
 
                 # ID-9 §18 (PERSISTENCE_NOT_YET_REQUIRED): no
                 # `save_position_sizing` call exists -- the pure result is
@@ -1612,9 +1671,10 @@ class OwnerValidationPipeline:
                 # value.
                 sizing = position_sizing_engine.evaluate(
                     entry_actionability=entry_actionability,
+                    currentness=currentness,
                     capital_policy=self._capital_policy,
                     instrument_lot_size=lot_size,
-                    evaluated_at=self._persistence_clock(),
+                    evaluated_at=sizing_clock_instant,
                 )
                 return {"position_sizing": sizing}
 

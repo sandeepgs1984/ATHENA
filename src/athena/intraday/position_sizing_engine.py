@@ -1,18 +1,32 @@
 """Position Sizing Engine (ID-9 V0) — pure, deterministic, side-effect-free.
 
 `PositionSizingV0Engine.evaluate(...)` converts one exact, already-bound
-`EntryActionability` plus an explicit `CapitalPolicy` into one immutable
-`PositionSizing`. Deliberately named apart from `athena.sizing.engine
-.PositionSizingEngine` (the dormant P5.3 engine — see the ID-9
-implementation report §3 for the full disposition) to keep the two
-architecturally and nominally distinct: no shared base class, no shared
-domain model, no runtime dependency in either direction.
+`EntryActionability`, an already-derived currentness verdict, and an
+explicit `CapitalPolicy` into one immutable `PositionSizing`.
+Deliberately named apart from `athena.sizing.engine.PositionSizingEngine`
+(the dormant P5.3 engine — see the ID-9 implementation report §3 for
+the full disposition) to keep the two architecturally and nominally
+distinct: no shared base class, no shared domain model, no runtime
+dependency in either direction.
 
 Mirrors `EntryActionabilityEngine`'s own established contract (ID-7C)
 exactly: no repository/provider/network/clock read, O(1) per candidate,
 `_validate_binding`-style upstream-identity trust (the caller supplies
 one already-resolved `EntryActionability`, never re-fetched here), and
 upstream-gate-then-methodology evaluation order.
+
+**Currentness (Owner correction, 2026-09-07, issue 1):** a persisted
+`EntryActionability.state == ACTIONABLE` is a methodology verdict at
+evaluation time — it does NOT by itself mean the artifact is currently
+usable for a LIVE recommendation right now (same-cycle synchronous
+production does not waive the frozen ID-7 evidence-age/session-phase
+currentness contract; a cycle can take long enough for a completed-M5
+checkpoint to cross the 10-minute currentness boundary before this
+stage runs). This engine therefore requires the caller to supply an
+already-computed `CurrentnessResult` from the existing, unmodified
+`entry_actionability_currentness.is_currently_usable(...)` — never
+re-implemented here, never computed here (no clock/repository/provider/
+session-service read of any kind inside this module).
 
 V0 scope, frozen by the Owner's ID-9 core-implementation authorization:
 LONG only (`LONG_VALIDATED_SHORT_UNVALIDATED`); risk-budget + max-
@@ -30,6 +44,10 @@ from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
 
 from athena.domain.enums import Direction
+from athena.intraday.entry_actionability_currentness import (
+    CurrentnessResult,
+    EntryActionabilityCurrentness,
+)
 from athena.intraday.entry_actionability_models import (
     EntryActionability,
     EntryActionabilityState,
@@ -76,6 +94,7 @@ class PositionSizingV0Engine:
         self,
         *,
         entry_actionability: EntryActionability,
+        currentness: CurrentnessResult,
         capital_policy: CapitalPolicy | None,
         instrument_lot_size: int,
         evaluated_at: datetime,
@@ -180,6 +199,34 @@ class PositionSizingV0Engine:
                 ),
             )
 
+        # direction is LONG here (SHORT/NONE both returned/raised above).
+        # Computed once, reused by every subsequent gate/branch below --
+        # LONG's own geometry invariant is `invalidation_level < entry_price`.
+        per_share_risk = entry_price - invalidation_level
+
+        # ---- currentness: a persisted ACTIONABLE verdict does not by
+        # itself mean this artifact is currently usable for a LIVE
+        # recommendation right now (Owner correction, issue 1) -- the
+        # caller's own `currentness` (already computed via the existing,
+        # unmodified `is_currently_usable(...)`) must report CURRENT.
+        # Checked before capital-policy availability, matching the
+        # Owner's own explicit evaluation-order example list: policy is
+        # never inspected for a non-current opportunity. ----
+        if currentness.status is not EntryActionabilityCurrentness.CURRENT:
+            return self._not_sized(
+                identity,
+                reason_codes=(PositionSizingReasonCode.UPSTREAM_NOT_CURRENT,),
+                direction=direction, entry_reference_price=entry_price,
+                operative_invalidation_level=invalidation_level,
+                per_share_risk=per_share_risk,
+                evidence_as_of=evidence_as_of,
+                explanation=(
+                    f"Upstream EntryActionability is ACTIONABLE but not currently usable "
+                    f"(currentness={currentness.status.value}: {currentness.explanation}) -- "
+                    "sizing refused, never sized against stale/superseded/session-closed evidence."
+                ),
+            )
+
         # ---- capital policy availability ----
         if capital_policy is None:
             return self._not_sized(
@@ -187,15 +234,18 @@ class PositionSizingV0Engine:
                 reason_codes=(PositionSizingReasonCode.CAPITAL_POLICY_UNAVAILABLE,),
                 direction=direction, entry_reference_price=entry_price,
                 operative_invalidation_level=invalidation_level,
-                per_share_risk=entry_price - invalidation_level,
+                per_share_risk=per_share_risk,
                 evidence_as_of=evidence_as_of,
                 explanation="No CapitalPolicy supplied -- sizing requires an explicit Owner-approved policy.",
             )
 
         # ---- per-share risk geometry (defensive; structurally
         # guaranteed by EntryActionability's own ACTIONABLE invariant
-        # for LONG: invalidation_level < entry_price) ----
-        per_share_risk = entry_price - invalidation_level
+        # for LONG: invalidation_level < entry_price). Reached only after
+        # capital-policy availability is confirmed, so a real policy
+        # genuinely participated -- its version is preserved below, per
+        # the Owner's own policy-provenance instruction (§2/§5), never
+        # blindly erased for this diagnostic branch. ----
         if per_share_risk <= 0:
             return self._not_sized(
                 identity,
@@ -204,6 +254,7 @@ class PositionSizingV0Engine:
                 operative_invalidation_level=invalidation_level,
                 per_share_risk=per_share_risk,
                 evidence_as_of=evidence_as_of,
+                policy_version=capital_policy.policy_version,
                 explanation=(
                     f"per_share_risk={per_share_risk} is not strictly positive for LONG -- "
                     "sizing refused (defensive check; should be structurally unreachable "
@@ -293,6 +344,7 @@ class PositionSizingV0Engine:
         per_share_risk: Decimal | None,
         evidence_as_of: datetime | None,
         explanation: str,
+        policy_version: str | None = None,
     ) -> PositionSizing:
         return PositionSizing(
             **identity,
@@ -301,7 +353,7 @@ class PositionSizingV0Engine:
             direction=direction, entry_reference_price=entry_reference_price,
             operative_invalidation_level=operative_invalidation_level,
             per_share_risk=per_share_risk,
-            policy_version=None, risk_budget_amount=None, max_position_value=None,
+            policy_version=policy_version, risk_budget_amount=None, max_position_value=None,
             theoretical_available_capital=None, risk_quantity=None, max_value_quantity=None,
             theoretical_capital_quantity=None,
             recommended_quantity=None, recommended_position_value=None, capital_at_risk=None,

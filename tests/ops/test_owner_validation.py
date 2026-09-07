@@ -3287,23 +3287,34 @@ class TestOwnerValidationPipeline:
         assert len(history) == 1
 
     def test_id7e_no_currentness_no_provider_no_config_in_stage(self) -> None:
-        """ID-7E #27/#30/#41/#42: source-scan proof that owner_validation.py
+        """ID-7E #27/#30/#41/#42: source-scan proof that
+        `entry_actionability_stage` (the write-time ID-7 stage) itself
         never references currentness concepts or provider/network
-        libraries in connection with EntryActionability -- currentness
-        remains a later read-time consumer's exclusive responsibility, and
-        the write-time stage performs zero provider/network access."""
+        libraries -- currentness remains a later read-time consumer's
+        exclusive responsibility for EntryActionability itself, and the
+        write-time stage performs zero provider/network access.
+
+        Scoped to `entry_actionability_stage`'s own body only (not the
+        whole module) since ID-9's own `position_sizing_stage` --a
+        DIFFERENT, later stage-- legitimately reuses the existing
+        `is_currently_usable(...)` contract for its own LIVE-currentness
+        gate (Owner correction, 2026-09-07); that is ID-9's
+        responsibility, not a regression of this ID-7E invariant."""
         import inspect
 
         import athena.ops.owner_validation as ov
 
-        source = inspect.getsource(ov)
+        source = inspect.getsource(ov.OwnerValidationPipeline._scan_eligible)
+        stage_start = source.index("def entry_actionability_stage")
+        stage_end = source.index("def position_sizing_stage")
+        stage_body = source[stage_start:stage_end]
         for forbidden in (
             "is_currently_usable", "EntryActionabilityCurrentness",
             "current_decision_id", "current_entry_qualification_identity",
         ):
-            assert forbidden not in source, f"currentness concept leaked into owner_validation.py: {forbidden}"
+            assert forbidden not in stage_body, f"currentness concept leaked into entry_actionability_stage: {forbidden}"
         for provider_token in ("KiteConnect", "kiteconnect", "requests.", "httpx."):
-            assert provider_token not in source
+            assert provider_token not in stage_body
 
     def test_id7e_evaluator_invocation_uses_policy_none(self) -> None:
         """ID-7E #16/#26: proves the wired stage calls
@@ -3913,7 +3924,16 @@ class TestOwnerValidationPipeline:
         repo.add_candles(_candles(iid, seed=100))
         repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
 
-        pipe = OwnerValidationPipeline(repo, config_dir)  # no capital_policy injected
+        # A sizing_clock_instant well within the frozen 10-minute
+        # currentness band (never real wall-clock `now`, which would be
+        # years past this fixture's own AS_OF and always report STALE
+        # before ever reaching the policy-availability gate this test
+        # exercises) -- mirrors the existing `persist_time` pattern this
+        # file already established for ID-6D.1.
+        clock_instant = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(seconds=3)
+        pipe = OwnerValidationPipeline(
+            repo, config_dir, persistence_clock=lambda: clock_instant,
+        )  # no capital_policy injected
         ingestion = IngestionResult(
             as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
             quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
@@ -3999,7 +4019,13 @@ class TestOwnerValidationPipeline:
             total_deployable_capital=Decimal("100000"), risk_budget_per_trade_pct=Decimal("1.0"),
             max_position_value_pct=Decimal("10.0"), policy_version="test-policy-v1",
         )
-        pipe = OwnerValidationPipeline(repo, config_dir, capital_policy=policy)
+        # Within the frozen 10-minute currentness band -- see the sibling
+        # no-policy test's own comment for why real wall-clock `now`
+        # cannot be used here.
+        clock_instant = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(seconds=3)
+        pipe = OwnerValidationPipeline(
+            repo, config_dir, capital_policy=policy, persistence_clock=lambda: clock_instant,
+        )
         ingestion = IngestionResult(
             as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
             quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
@@ -4055,3 +4081,201 @@ class TestOwnerValidationPipeline:
         assert "latest_entry_actionability_for_entry_qualification" not in stage_body
         assert "latest_entry_actionability_for_instrument_session" not in stage_body
         assert 'ctx.get("entry_actionability")' in stage_body
+
+    def test_id9_stale_evidence_does_not_size(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """Owner correction, 2026-09-07, issue 1: even a real, same-cycle,
+        genuinely ACTIONABLE + a real supplied CapitalPolicy must NOT
+        reach SIZED once the sizing-stage's own wall clock is beyond the
+        frozen 10-minute currentness band from `evidence_as_of` -- proves
+        same-cycle synchronous production does not waive the frozen ID-7
+        currentness contract."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.decision import TradePlan
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.intraday import (
+            CapitalPolicy,
+            EntryQualificationEngine,
+            EntryQualificationState,
+            PositionSizingReasonCode,
+            PositionSizingState,
+        )
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.TRADE, direction=Dir.LONG, gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"), risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_qualified(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            return dataclasses.replace(eq, state=EntryQualificationState.QUALIFIED, reason_codes=())
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_qualified)
+
+        results: list[object] = []
+        real_evaluate = PositionSizingV0Engine.evaluate
+
+        def spy_evaluate(self, *args, **kwargs):
+            result = real_evaluate(self, *args, **kwargs)
+            results.append(result)
+            return result
+
+        monkeypatch.setattr(PositionSizingV0Engine, "evaluate", spy_evaluate)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        # 11 minutes past AS_OF's own evidence_as_of -- beyond the frozen
+        # 600-second (10-minute) currentness band.
+        stale_clock_instant = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(minutes=11)
+        policy = CapitalPolicy(
+            total_deployable_capital=Decimal("100000"), risk_budget_per_trade_pct=Decimal("1.0"),
+            max_position_value_pct=Decimal("10.0"), policy_version="test-policy-v1",
+        )
+        pipe = OwnerValidationPipeline(
+            repo, config_dir, capital_policy=policy, persistence_clock=lambda: stale_clock_instant,
+        )
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ps-stale")
+
+        assert len(results) == 1
+        sizing = results[0]
+        assert sizing.state is PositionSizingState.NOT_SIZED
+        assert sizing.reason_codes == (PositionSizingReasonCode.UPSTREAM_NOT_CURRENT,)
+        assert sizing.policy_version is None
+        # Geometry is still real and echoed even though sizing is refused.
+        assert sizing.entry_reference_price == Decimal("102")
+
+    def test_id9_sizing_clock_instant_reused_for_currentness_and_evaluated_at(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """Owner correction, 2026-09-07, issue 7: one explicitly captured
+        wall-clock instant must serve BOTH the currentness `now` and this
+        artifact's own `evaluated_at` -- never two independent clock
+        reads for one sizing decision."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.decision import TradePlan
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.intraday import CapitalPolicy, EntryQualificationEngine, EntryQualificationState
+        from athena.intraday.entry_actionability_currentness import is_currently_usable
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.TRADE, direction=Dir.LONG, gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"), risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_qualified(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            return dataclasses.replace(eq, state=EntryQualificationState.QUALIFIED, reason_codes=())
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_qualified)
+
+        captured_now: list[object] = []
+        import athena.intraday.entry_actionability_currentness as currentness_module
+
+        real_is_currently_usable = is_currently_usable
+
+        def spy_is_currently_usable(*args, **kwargs):
+            captured_now.append(kwargs["now"])
+            return real_is_currently_usable(*args, **kwargs)
+
+        # `position_sizing_stage` does its own deferred `from
+        # athena.intraday.entry_actionability_currentness import
+        # is_currently_usable` inside `_scan_eligible`'s body, re-resolved
+        # fresh on every call -- patching the SOURCE module's own
+        # attribute (not `owner_validation`'s namespace, which never
+        # imports this name at module level) is what that fresh import
+        # actually picks up.
+        monkeypatch.setattr(currentness_module, "is_currently_usable", spy_is_currently_usable)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        clock_instant = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(seconds=3)
+        policy = CapitalPolicy(
+            total_deployable_capital=Decimal("100000"), risk_budget_per_trade_pct=Decimal("1.0"),
+            max_position_value_pct=Decimal("10.0"), policy_version="test-policy-v1",
+        )
+        pipe = OwnerValidationPipeline(
+            repo, config_dir, capital_policy=policy, persistence_clock=lambda: clock_instant,
+        )
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ps-clock-reuse")
+
+        assert len(captured_now) == 1
+        assert captured_now[0] == clock_instant
+
+        history = repo.list_entry_actionabilities_for_instrument_session(iid, AS_OF.date())
+        assert len(history) == 1
+
+    def test_id9_no_silent_lot_size_fallback_in_stage(self) -> None:
+        """Owner correction, 2026-09-07, issue 3: `position_sizing_stage`
+        must never silently default `lot_size` to 1 when canonical
+        `Instrument` metadata is absent -- proven directly by source
+        scan that the old `else 1` fallback pattern is gone and an
+        explicit raise exists instead."""
+        import inspect
+
+        import athena.ops.owner_validation as ov
+
+        source = inspect.getsource(ov.OwnerValidationPipeline._scan_eligible)
+        stage_start = source.index("def position_sizing_stage")
+        stage_body = source[stage_start:source.index("defn = build_definition")]
+        assert "lot_size = instrument.lot_size if instrument is not None else 1" not in stage_body
+        assert "instrument.lot_size\n" in stage_body or "lot_size = instrument.lot_size" in stage_body
+        assert "raise ValueError" in stage_body
+        assert "if instrument is None:" in stage_body
