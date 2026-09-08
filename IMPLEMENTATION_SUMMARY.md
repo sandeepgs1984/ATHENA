@@ -6,6 +6,47 @@ status updated on approval.
 
 ---
 
+## MP-NX4 — Portfolio Heatmap
+
+**Summary.** Added a presentation-only Portfolio heatmap between Risk
+Concentration and Current Holdings so the owner can see where capital and
+attention sit without a new risk score. MP-NX3 was Owner/Chief Architect
+approved and closed the same day before this work started.
+
+**What changed.** Tiles use the latest snapshot rows. Size is Current value
+or Investment. Color is an existing field: P&L %, Status, Daily Review,
+Trend, or Next Action. Clicking a tile opens the existing detail overlay.
+Privacy mode uses equal tile sizes, hides money in titles, and mutes P&L %
+color so relative size and P&L shade cannot leak private values. Size/color
+choices persist in localStorage only. Risk Concentration and the heatmap
+have Hide/Show controls, default expanded, so Current Holdings can move
+back up the page when those briefing panels are collapsed. Inline Mini
+Sparklines were not shipped: snapshot rows have no D1 close series, and
+this milestone does not authorize a new history fetch. Dashboard assets
+advanced to `9.191.0`.
+
+**Tests.** Dashboard hosting / release-gate contracts lock the heatmap
+panel placement, size/color controls, privacy equal-size copy, default-
+expanded Hide/Show toggles, localStorage keys, and cache-busted
+`9.191.0` assets.
+
+**Files created:** none.
+
+**Files modified:** `src/athena/api/static/index.html`,
+`src/athena/api/static/dashboard.css`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
+
+**Status:** Implementation complete 2026-09-08; ready for Owner / Chief
+Architect review. Not marked approved. Do not start MP-NX5 until authorized.
+
+---
+
 ## MP-NX3 — Column Profiles, Pinned Rows, and Export Profiles
 
 **Summary.** Replaced the Compact/Full density toggle with purposeful table
@@ -47,9 +88,8 @@ header row, localStorage keys, and cache-busted `9.189.0` assets.
 `docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
 `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
 
-**Status:** Implementation complete 2026-09-07; screenshot width/scroll
-correction 2026-09-08; ready for Owner / Chief Architect review. Not
-marked approved. Do not start MP-NX4 until authorized.
+**Status:** Owner/Chief Architect approved and closed 2026-09-08. MP-NX4
+authorized and implemented the same day.
 
 ---
 

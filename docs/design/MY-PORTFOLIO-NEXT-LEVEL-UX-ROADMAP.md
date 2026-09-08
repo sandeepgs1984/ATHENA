@@ -51,11 +51,11 @@ This roadmap covers the full 14-item next-level UX inventory:
 | Smart Filters | MP-NX1 | Implemented 2026-09-07: filter chips for review, trend, status, P&L state, evidence availability, and currentness. |
 | Change Since Last Sync | MP-NX2 | Owner/Chief Architect approved and closed 2026-09-07. |
 | Risk Concentration Panel | MP-NX2 | Owner/Chief Architect approved and closed 2026-09-07. |
-| Column Profiles | MP-NX3 | Implemented 2026-09-07: Compact Scan / P&L Review / Technical Review / Risk Review / Full Audit. |
-| Pinned Rows | MP-NX3 | Implemented 2026-09-07: owner-pinned rows stay visible across sort/filter. |
-| Export Profiles | MP-NX3 | Implemented 2026-09-07: Daily Review / Full Audit / Private Sharing on the selected-column export contract. |
-| Portfolio Heatmap | MP-NX4 | Visual capital/performance/attention concentration map. |
-| Inline Mini Sparklines | MP-NX4 | Compact row-level D1 visual context, subject to performance and data availability. |
+| Column Profiles | MP-NX3 | Owner/Chief Architect approved and closed 2026-09-08. |
+| Pinned Rows | MP-NX3 | Owner/Chief Architect approved and closed 2026-09-08. |
+| Export Profiles | MP-NX3 | Owner/Chief Architect approved and closed 2026-09-08. |
+| Portfolio Heatmap | MP-NX4 | Implemented 2026-09-08: snapshot tiles sized by value, colored by existing fields. |
+| Inline Mini Sparklines | MP-NX4 | Not shipped: snapshot rows have no D1 close series; no new history fetch. |
 | Symbol Detail Review Timeline | MP-NX5 | Per-symbol evolution across prior snapshots. |
 | Watchlist / Opportunity Bridge | MP-NX5 | Contextual bridge to watchlist/opportunity surfaces if stable contracts exist. |
 | Notes / Owner Override Layer | MP-NX6 | Owner-authored thesis, reminder, watch condition, and follow-up state. |
@@ -194,6 +194,8 @@ Primary UX outcome:
 - Owner can switch from scanning to review to audit without fighting the table.
 
 ### MP-NX4 — Portfolio Heatmap
+
+Implemented 2026-09-08. Ready for Owner / Chief Architect review.
 
 Objective: add an at-a-glance concentration and performance surface.
 

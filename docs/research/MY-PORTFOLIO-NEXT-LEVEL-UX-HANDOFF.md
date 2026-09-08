@@ -70,18 +70,18 @@ The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 
 - Portfolio Command Dashboard: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Action Queue View: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
-- Column Profiles: MP-NX3 — implemented 2026-09-07, pending owner review.
-- Portfolio Heatmap: MP-NX4.
+- Column Profiles: MP-NX3 — Owner/Chief Architect approved and closed 2026-09-08.
+- Portfolio Heatmap: MP-NX4 — implemented 2026-09-08, pending owner review.
 - Symbol Detail Review Timeline: MP-NX5.
 - Change Since Last Sync: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
 - Risk Concentration Panel: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
 - Watchlist / Opportunity Bridge: MP-NX5.
 - Notes / Owner Override Layer: MP-NX6.
 - Review Session Mode: MP-NX6.
-- Pinned Rows: MP-NX3 — implemented 2026-09-07, pending owner review.
+- Pinned Rows: MP-NX3 — Owner/Chief Architect approved and closed 2026-09-08.
 - Smart Filters: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
-- Inline Mini Sparklines: MP-NX4.
-- Export Profiles: MP-NX3 — implemented 2026-09-07, pending owner review.
+- Inline Mini Sparklines: MP-NX4 — not shipped; snapshot rows have no D1 close series.
+- Export Profiles: MP-NX3 — Owner/Chief Architect approved and closed 2026-09-08.
 
 ## Recommended Implementation Order
 
@@ -148,7 +148,7 @@ Suggested tests:
 
 ### 3. MP-NX3 Column Profiles
 
-Implemented 2026-09-07. Ready for Owner / Chief Architect review.
+Owner/Chief Architect approved and closed 2026-09-08.
 
 What shipped:
 
@@ -193,6 +193,20 @@ Suggested tests:
 - release-gate asset version bump.
 
 ### 4. MP-NX4 Portfolio Heatmap
+
+Implemented 2026-09-08. Ready for Owner / Chief Architect review.
+
+What shipped:
+
+- Heatmap panel between Risk Concentration and Current Holdings.
+- Size by Current value or Investment over latest snapshot rows.
+- Color by existing P&L %, Status, Daily Review, Trend, or Next Action.
+- Tile click opens the existing detail overlay.
+- Privacy: equal tile size, no money labels, P&L % color muted.
+- Inline Mini Sparklines not shipped: snapshot rows have no D1 close series
+  and this milestone does not authorize a new history fetch.
+- Dashboard asset version `9.191.0`.
+- Risk Concentration and Heatmap have Hide/Show toggles, default expanded.
 
 Implementation approach:
 
@@ -279,7 +293,8 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-Review and approve MP-NX3.
+Review and approve MP-NX4.
 
-If accepted, authorize MP-NX4 only: Portfolio Heatmap and optional Inline
-Mini Sparklines. Do not start MP-NX4 until MP-NX3 is approved.
+If accepted, authorize MP-NX5 only: Symbol Detail Review Timeline and
+Watchlist / Opportunity Bridge if a stable contract already exists. Do
+not start MP-NX5 until MP-NX4 is approved.

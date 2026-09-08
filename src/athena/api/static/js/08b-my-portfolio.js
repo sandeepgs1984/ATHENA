@@ -31,8 +31,10 @@
     const myPortfolioTriageLead = document.getElementById("my-portfolio-triage-lead");
     const myPortfolioHoldingsScopeBadge = document.getElementById("my-portfolio-holdings-scope-badge");
     const myPortfolioCommandDashboard = document.querySelector(".my-portfolio-command-dashboard");
+    const myPortfolioRiskPanel = document.querySelector(".my-portfolio-risk-panel");
     const myPortfolioRiskBody = document.getElementById("my-portfolio-risk-body");
     const myPortfolioRiskLead = document.getElementById("my-portfolio-risk-lead");
+    const myPortfolioRiskToggle = document.getElementById("my-portfolio-risk-toggle");
     const myPortfolioExportToggle = document.getElementById("my-portfolio-export-toggle");
     const myPortfolioExportPanel = document.getElementById("my-portfolio-export-panel");
     const myPortfolioExportScope = document.getElementById("my-portfolio-export-scope");
@@ -72,6 +74,12 @@
     const myPortfolioSortSummary = document.getElementById("my-portfolio-sort-summary");
     const myPortfolioTableProfile = document.getElementById("my-portfolio-table-profile");
     const myPortfolioMiniProfile = document.getElementById("my-portfolio-mini-profile");
+    const myPortfolioHeatmapPanel = document.querySelector(".my-portfolio-heatmap-panel");
+    const myPortfolioHeatmapLead = document.getElementById("my-portfolio-heatmap-lead");
+    const myPortfolioHeatmapBody = document.getElementById("my-portfolio-heatmap-body");
+    const myPortfolioHeatmapSize = document.getElementById("my-portfolio-heatmap-size");
+    const myPortfolioHeatmapColor = document.getElementById("my-portfolio-heatmap-color");
+    const myPortfolioHeatmapToggle = document.getElementById("my-portfolio-heatmap-toggle");
     const myPortfolioExportPresetDailyReview = document.getElementById("my-portfolio-export-preset-daily-review");
     const myPortfolioExportPresetFullAudit = document.getElementById("my-portfolio-export-preset-full-audit");
     const myPortfolioExportPresetPrivate = document.getElementById("my-portfolio-export-preset-private");
@@ -121,6 +129,12 @@
         density: "compact",
         tableProfile: "compact_scan",
         pinnedInstrumentIds: [],
+        heatmap: {
+            size: "current_value",
+            color: "pnl_pct",
+        },
+        riskExpanded: true,
+        heatmapExpanded: true,
         historyExpanded: false,
         valuesHidden: (() => {
             try {
@@ -315,6 +329,17 @@
     MY_PORTFOLIO_EXPORT_PRESETS.holdings.daily_review = MY_PORTFOLIO_EXPORT_PRESETS.holdings.review;
     MY_PORTFOLIO_EXPORT_PRESETS.holdings.private_sharing = ["no", "symbol", "imported_at", "updated_at"];
 
+    const MY_PORTFOLIO_HEATMAP_SIZES = {
+        current_value: { id: "current_value", label: "Current value" },
+        investment: { id: "investment", label: "Investment" },
+    };
+    const MY_PORTFOLIO_HEATMAP_COLORS = {
+        pnl_pct: { id: "pnl_pct", label: "P&L %" },
+        status: { id: "status", label: "Status" },
+        daily_review: { id: "daily_review", label: "Daily Review" },
+        trend: { id: "trend", label: "Trend" },
+        next_action: { id: "next_action", label: "Next Action" },
+    };
     const MY_PORTFOLIO_TABLE_PROFILES = {
         compact_scan: {
             id: "compact_scan",
@@ -777,6 +802,55 @@
         const icon = myPortfolioHistoryToggle.querySelector("i");
         if (label) label.textContent = expanded ? "Hide" : "Show";
         if (icon) icon.className = expanded ? "fa-solid fa-chevron-up" : "fa-solid fa-chevron-down";
+    }
+
+    function applyMyPortfolioSectionDisclosure(panel, body, toggle, expanded) {
+        if (panel) panel.classList.toggle("collapsed", !expanded);
+        if (body) body.hidden = !expanded;
+        if (!toggle) return;
+        toggle.setAttribute("aria-expanded", String(expanded));
+        const label = toggle.querySelector("span");
+        const icon = toggle.querySelector("i");
+        if (label) label.textContent = expanded ? "Hide" : "Show";
+        if (icon) icon.className = expanded ? "fa-solid fa-chevron-up" : "fa-solid fa-chevron-down";
+    }
+
+    function persistMyPortfolioSectionExpanded(key, expanded) {
+        try {
+            window.localStorage.setItem(key, String(expanded));
+        } catch (err) {
+            // Browser privacy/storage restrictions should not break rendering.
+        }
+    }
+
+    function renderMyPortfolioRiskDisclosure() {
+        applyMyPortfolioSectionDisclosure(
+            myPortfolioRiskPanel,
+            myPortfolioRiskBody,
+            myPortfolioRiskToggle,
+            Boolean(myPortfolioState.riskExpanded)
+        );
+    }
+
+    function renderMyPortfolioHeatmapDisclosure() {
+        applyMyPortfolioSectionDisclosure(
+            myPortfolioHeatmapPanel,
+            myPortfolioHeatmapBody,
+            myPortfolioHeatmapToggle,
+            Boolean(myPortfolioState.heatmapExpanded)
+        );
+    }
+
+    function setMyPortfolioRiskExpanded(expanded) {
+        myPortfolioState.riskExpanded = Boolean(expanded);
+        persistMyPortfolioSectionExpanded("athena.myPortfolio.riskExpanded", myPortfolioState.riskExpanded);
+        renderMyPortfolioRiskDisclosure();
+    }
+
+    function setMyPortfolioHeatmapExpanded(expanded) {
+        myPortfolioState.heatmapExpanded = Boolean(expanded);
+        persistMyPortfolioSectionExpanded("athena.myPortfolio.heatmapExpanded", myPortfolioState.heatmapExpanded);
+        renderMyPortfolioHeatmapDisclosure();
     }
 
     function myPortfolioRowStateClass(row) {
@@ -1287,6 +1361,143 @@
                 ${removedHtml}
             </div>
         `;
+    }
+
+    function myPortfolioHeatmapSizeValue(row, sizeId) {
+        if (sizeId === "investment") {
+            const investment = Number(row?.investment);
+            return Number.isFinite(investment) && investment > 0 ? investment : NaN;
+        }
+        return myPortfolioExposureValue(row);
+    }
+
+    function myPortfolioHeatmapColorTone(row, colorId, privateMode) {
+        if (colorId === "pnl_pct") {
+            if (privateMode) return "muted";
+            const pct = Number(row?.pnl_pct);
+            if (!Number.isFinite(pct)) return "muted";
+            if (pct > 0) return "positive";
+            if (pct < 0) return "negative";
+            return "muted";
+        }
+        if (colorId === "status") {
+            const status = myPortfolioRowStatus(row);
+            if (status === "HEALTHY" || status === "STRONG") return "good";
+            if (status === "CAUTION") return "warning";
+            if (status === "AT_RISK") return "danger";
+            return "muted";
+        }
+        if (colorId === "daily_review") {
+            const status = myPortfolioDailyStatus(row);
+            if (status === "HOLD_STRONG") return "good";
+            if (status === "HOLD") return "neutral";
+            if (status === "REVIEW_HOLD_TIGHT") return "warning";
+            return "muted";
+        }
+        if (colorId === "trend") {
+            const trend = myPortfolioTrendLabelOnly(row?.trend_or_setup || row?.trend_setup);
+            if (trend === "UPTREND") return "up";
+            if (trend === "DOWNTREND") return "down";
+            if (trend === "MIXED") return "mixed";
+            return "muted";
+        }
+        const action = myPortfolioRowAction(row);
+        if (action === "ADD") return "good";
+        if (action === "WATCH") return "warning";
+        if (action === "EXIT") return "danger";
+        if (action === "HOLD") return "neutral";
+        return "muted";
+    }
+
+    function myPortfolioHeatmapColorLabel(row, colorId, privateMode) {
+        if (colorId === "pnl_pct") {
+            if (privateMode) return "P&L hidden";
+            const pct = Number(row?.pnl_pct);
+            return Number.isFinite(pct) ? formatMyPortfolioPct(pct) : "P&L unavailable";
+        }
+        if (colorId === "status") return myPortfolioRiskLabel(myPortfolioRowStatus(row));
+        if (colorId === "daily_review") {
+            return myPortfolioRiskLabel(myPortfolioDailyStatus(row) || "UNAVAILABLE");
+        }
+        if (colorId === "trend") {
+            return myPortfolioRiskLabel(
+                myPortfolioTrendLabelOnly(row?.trend_or_setup || row?.trend_setup) || "UNAVAILABLE"
+            );
+        }
+        return myPortfolioRiskLabel(myPortfolioRowAction(row));
+    }
+
+    function persistMyPortfolioHeatmap() {
+        try {
+            window.localStorage.setItem("athena.myPortfolio.heatmapSize", myPortfolioState.heatmap.size);
+            window.localStorage.setItem("athena.myPortfolio.heatmapColor", myPortfolioState.heatmap.color);
+        } catch (err) {
+            // Browser privacy/storage restrictions should not break rendering.
+        }
+    }
+
+    function setMyPortfolioHeatmapSize(sizeId) {
+        myPortfolioState.heatmap.size = MY_PORTFOLIO_HEATMAP_SIZES[sizeId]?.id || "current_value";
+        persistMyPortfolioHeatmap();
+        renderMyPortfolioHeatmap();
+    }
+
+    function setMyPortfolioHeatmapColor(colorId) {
+        myPortfolioState.heatmap.color = MY_PORTFOLIO_HEATMAP_COLORS[colorId]?.id || "pnl_pct";
+        persistMyPortfolioHeatmap();
+        renderMyPortfolioHeatmap();
+    }
+
+    function renderMyPortfolioHeatmap() {
+        if (!myPortfolioHeatmapBody) return;
+        const rows = myPortfolioState.snapshot?.rows || [];
+        const sizeId = MY_PORTFOLIO_HEATMAP_SIZES[myPortfolioState.heatmap.size]?.id || "current_value";
+        const colorId = MY_PORTFOLIO_HEATMAP_COLORS[myPortfolioState.heatmap.color]?.id || "pnl_pct";
+        const privateMode = Boolean(myPortfolioState.valuesHidden);
+        if (myPortfolioHeatmapSize) myPortfolioHeatmapSize.value = sizeId;
+        if (myPortfolioHeatmapColor) myPortfolioHeatmapColor.value = colorId;
+        if (myPortfolioHeatmapLead) {
+            myPortfolioHeatmapLead.textContent = privateMode
+                ? "Private values hidden. Tiles are equal size. Color uses the selected existing field except P&L %, which stays muted."
+                : "Latest snapshot tiles. Size is current value or investment. Color is an existing field. Click a tile for detail. No new risk score.";
+        }
+        if (!rows.length) {
+            myPortfolioHeatmapBody.innerHTML = `<p class="metric-desc">Unavailable until Portfolio Sync.</p>`;
+            return;
+        }
+        const sized = rows.map(row => ({ row, value: myPortfolioHeatmapSizeValue(row, sizeId) }));
+        const max = sized.reduce((acc, item) => (
+            Number.isFinite(item.value) && item.value > acc ? item.value : acc
+        ), 0);
+        const tiles = sized
+            .slice()
+            .sort((left, right) => {
+                const leftValue = Number.isFinite(left.value) ? left.value : -1;
+                const rightValue = Number.isFinite(right.value) ? right.value : -1;
+                if (rightValue !== leftValue) return rightValue - leftValue;
+                return String(left.row.symbol || "").localeCompare(String(right.row.symbol || ""), "en", {
+                    numeric: true,
+                    sensitivity: "base",
+                });
+            })
+            .map(item => {
+                const key = myPortfolioRowKey(item.row);
+                const weight = privateMode || !Number.isFinite(item.value) || !max
+                    ? 1
+                    : Math.max(1, Math.round((item.value / max) * 8));
+                const tone = myPortfolioHeatmapColorTone(item.row, colorId, privateMode);
+                const colorLabel = myPortfolioHeatmapColorLabel(item.row, colorId, privateMode);
+                const sizeLabel = privateMode || !Number.isFinite(item.value)
+                    ? ""
+                    : formatMyPortfolioMoney(item.value);
+                const title = [item.row.symbol, sizeLabel, colorLabel].filter(Boolean).join(" · ");
+                return `<button type="button" class="my-portfolio-heatmap-tile tone-${escapeMyPortfolioHtml(tone)}" data-instrument-id="${escapeMyPortfolioHtml(key)}" style="flex-grow: ${weight}" title="${escapeMyPortfolioHtml(title)}" aria-label="Open detail for ${escapeMyPortfolioHtml(item.row.symbol)}">
+                    <strong>${escapeMyPortfolioHtml(item.row.symbol)}</strong>
+                    <span>${escapeMyPortfolioHtml(colorLabel)}</span>
+                </button>`;
+            })
+            .join("");
+        myPortfolioHeatmapBody.innerHTML = `<div class="my-portfolio-heatmap-grid">${tiles}</div>`;
     }
 
     function myPortfolioTriageCounts(rows = myPortfolioSourceRows()) {
@@ -2000,6 +2211,7 @@
 
     function renderMyPortfolioHoldings(holdings) {
         renderMyPortfolioRiskPanel();
+        renderMyPortfolioHeatmap();
         if (myPortfolioState.snapshot?.rows?.length) {
             renderMyPortfolioSnapshotRows(myPortfolioState.snapshot.rows);
             return;
@@ -3008,6 +3220,23 @@
     myPortfolioTableProfile?.addEventListener("change", event => {
         setMyPortfolioTableProfile(event.target.value);
     });
+    myPortfolioHeatmapSize?.addEventListener("change", event => {
+        setMyPortfolioHeatmapSize(event.target.value);
+    });
+    myPortfolioHeatmapColor?.addEventListener("change", event => {
+        setMyPortfolioHeatmapColor(event.target.value);
+    });
+    myPortfolioRiskToggle?.addEventListener("click", () => {
+        setMyPortfolioRiskExpanded(!myPortfolioState.riskExpanded);
+    });
+    myPortfolioHeatmapToggle?.addEventListener("click", () => {
+        setMyPortfolioHeatmapExpanded(!myPortfolioState.heatmapExpanded);
+    });
+    myPortfolioHeatmapBody?.addEventListener("click", event => {
+        const tile = event.target.closest(".my-portfolio-heatmap-tile[data-instrument-id]");
+        if (!tile) return;
+        openMyPortfolioDetail(tile.getAttribute("data-instrument-id"));
+    });
     myPortfolioPrivacyToggle?.addEventListener("click", () => {
         setMyPortfolioValuesHidden(!myPortfolioState.valuesHidden);
     });
@@ -3079,6 +3308,20 @@
             if (Array.isArray(savedPins)) {
                 myPortfolioState.pinnedInstrumentIds = savedPins.filter(id => typeof id === "string" && id);
             }
+            const savedHeatmapSize = window.localStorage.getItem("athena.myPortfolio.heatmapSize");
+            if (savedHeatmapSize && MY_PORTFOLIO_HEATMAP_SIZES[savedHeatmapSize]) {
+                myPortfolioState.heatmap.size = savedHeatmapSize;
+            }
+            const savedHeatmapColor = window.localStorage.getItem("athena.myPortfolio.heatmapColor");
+            if (savedHeatmapColor && MY_PORTFOLIO_HEATMAP_COLORS[savedHeatmapColor]) {
+                myPortfolioState.heatmap.color = savedHeatmapColor;
+            }
+            const savedRiskExpanded = window.localStorage.getItem("athena.myPortfolio.riskExpanded");
+            if (savedRiskExpanded === "false") myPortfolioState.riskExpanded = false;
+            if (savedRiskExpanded === "true") myPortfolioState.riskExpanded = true;
+            const savedHeatmapExpanded = window.localStorage.getItem("athena.myPortfolio.heatmapExpanded");
+            if (savedHeatmapExpanded === "false") myPortfolioState.heatmapExpanded = false;
+            if (savedHeatmapExpanded === "true") myPortfolioState.heatmapExpanded = true;
         } catch (err) {
             // Browser privacy/storage restrictions should not break rendering.
         }
@@ -3086,6 +3329,8 @@
     renderMyPortfolioPrivacyToggle();
     renderMyPortfolioExportPanel();
     renderMyPortfolioDensityControls();
+    renderMyPortfolioRiskDisclosure();
+    renderMyPortfolioHeatmapDisclosure();
     renderMyPortfolioExportColumns();
     syncMyPortfolioStickyHeaderState();
     window.addEventListener("scroll", syncMyPortfolioStickyHeaderState, { passive: true });

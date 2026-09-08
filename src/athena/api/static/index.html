@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.189.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.191.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -710,8 +710,45 @@
                                     <h3 id="my-portfolio-risk-heading">Risk concentration</h3>
                                     <p id="my-portfolio-risk-lead" class="metric-desc">Factual counts and ranks from the latest snapshot. No new risk score.</p>
                                 </div>
+                                <button id="my-portfolio-risk-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="true" aria-controls="my-portfolio-risk-body">
+                                    <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
+                                    <span>Hide</span>
+                                </button>
                             </div>
                             <div id="my-portfolio-risk-body" class="my-portfolio-risk-body">
+                                <p class="metric-desc">Unavailable until Portfolio Sync.</p>
+                            </div>
+                        </section>
+
+                        <section class="my-portfolio-heatmap-panel" aria-labelledby="my-portfolio-heatmap-heading">
+                            <div class="my-portfolio-heatmap-header">
+                                <div>
+                                    <h3 id="my-portfolio-heatmap-heading">Portfolio heatmap</h3>
+                                    <p id="my-portfolio-heatmap-lead" class="metric-desc">Latest snapshot tiles. Size is current value or investment. Color is an existing field. Click a tile for detail. No new risk score.</p>
+                                </div>
+                                <div class="my-portfolio-heatmap-toolbar">
+                                <div class="my-portfolio-heatmap-controls" aria-label="Heatmap size and color">
+                                    <label for="my-portfolio-heatmap-size">Size</label>
+                                    <select id="my-portfolio-heatmap-size" class="my-portfolio-sort-select" aria-label="Heatmap tile size">
+                                        <option value="current_value">Current value</option>
+                                        <option value="investment">Investment</option>
+                                    </select>
+                                    <label for="my-portfolio-heatmap-color">Color</label>
+                                    <select id="my-portfolio-heatmap-color" class="my-portfolio-sort-select" aria-label="Heatmap tile color">
+                                        <option value="pnl_pct">P&amp;L %</option>
+                                        <option value="status">Status</option>
+                                        <option value="daily_review">Daily Review</option>
+                                        <option value="trend">Trend</option>
+                                        <option value="next_action">Next Action</option>
+                                    </select>
+                                </div>
+                                <button id="my-portfolio-heatmap-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="true" aria-controls="my-portfolio-heatmap-body">
+                                    <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
+                                    <span>Hide</span>
+                                </button>
+                                </div>
+                            </div>
+                            <div id="my-portfolio-heatmap-body" class="my-portfolio-heatmap-body">
                                 <p class="metric-desc">Unavailable until Portfolio Sync.</p>
                             </div>
                         </section>
@@ -2347,7 +2384,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.189.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.191.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by
