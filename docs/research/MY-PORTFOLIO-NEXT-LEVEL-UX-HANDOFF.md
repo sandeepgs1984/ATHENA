@@ -77,6 +77,13 @@ header and aborting Portfolio Sync refresh.
 - Kite `kite.json` stays `exchange: NSE`. If a holding is missing on NSE
   but present on BSE (HFCL), remap `NSE:SYMBOL` → `BSE:SYMBOL` and ingest
   BSE. Timeline/history will treat the two ids as different keys.
+- Holdings upload preview: when the local index has exactly NSE + BSE for
+  the same tradingsymbol, resolve to BSE (`BSE_EXCHANGE_FALLBACK`) instead
+  of `AMBIGUOUS_SYMBOL`. Broker `RAJESHEXPO` maps to `NSE:RAJESHEXPO-BZ`
+  (`SERIES_SUFFIX_FALLBACK`) when that is the only equity-series listing.
+  Three-or-more listings stay ambiguous. Names that are not in the local
+  index at all stay UNRESOLVED at preview and still use the BSE catalog
+  fallback at confirm.
 - Live LTP on this page still needs a separate ADR. Do not add it here.
 - Dashboard assets: `9.193.0`. This is not MP-NX6.
 

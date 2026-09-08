@@ -150,14 +150,15 @@ def test_xlsx_parser_reports_malformed_and_empty_workbook() -> None:
 def test_symbol_resolution_reports_resolved_unresolved_ambiguous_and_duplicate() -> None:
     parsed = parse_holdings_file(
         "holdings.csv",
-        b"Symbol,Qty,Avg Price\nINFY,10,1500\nMISSING,1,1\nABC,1,1\nINFY,2,1600\n",
+        b"Symbol,Qty,Avg Price\nINFY,10,1500\nMISSING,1,1\nTRIPLE,1,1\nINFY,2,1600\n",
     )
     index = build_symbol_resolver_index(
         (),
         (
             _instrument("NSE:INFY", "INFY"),
-            _instrument("NSE:ABC", "ABC", exchange="NSE"),
-            _instrument("BSE:ABC", "ABC", exchange="BSE"),
+            _instrument("NSE:TRIPLE", "TRIPLE", exchange="NSE"),
+            _instrument("BSE:TRIPLE", "TRIPLE", exchange="BSE"),
+            _instrument("MSE:TRIPLE", "TRIPLE", exchange="MSE"),
         ),
     )
 
@@ -168,3 +169,41 @@ def test_symbol_resolution_reports_resolved_unresolved_ambiguous_and_duplicate()
     assert rows[2].mapping_state is SymbolMappingState.AMBIGUOUS
     assert "DUPLICATE_CANONICAL_INSTRUMENT" in rows[0].errors
     assert "DUPLICATE_CANONICAL_INSTRUMENT" in rows[3].errors
+
+
+def test_symbol_resolution_matches_equity_series_suffix() -> None:
+    parsed = parse_holdings_file(
+        "holdings.csv",
+        b"Symbol,Qty,Avg Price\nRAJESHEXPO,10,200\n",
+    )
+    master = _instrument("NSE:RAJESHEXPO-BZ", "RAJESHEXPO-BZ", exchange="NSE")
+    index = build_symbol_resolver_index((master,), ())
+
+    rows = resolve_preview_rows(parsed.rows, index)
+
+    assert rows[0].mapping_state is SymbolMappingState.RESOLVED
+    assert rows[0].resolved_instrument_id == "NSE:RAJESHEXPO-BZ"
+    assert "SERIES_SUFFIX_FALLBACK" in rows[0].warnings
+
+
+def test_symbol_resolution_prefers_bse_when_nse_and_bse_both_match() -> None:
+    parsed = parse_holdings_file(
+        "holdings.csv",
+        b"Symbol,Qty,Avg Price\nHFCL,10,226\nABC,1,1\n",
+    )
+    index = build_symbol_resolver_index(
+        (),
+        (
+            _instrument("NSE:HFCL", "HFCL", exchange="NSE"),
+            _instrument("BSE:HFCL", "HFCL", exchange="BSE"),
+            _instrument("NSE:ABC", "ABC", exchange="NSE"),
+            _instrument("BSE:ABC", "ABC", exchange="BSE"),
+        ),
+    )
+
+    rows = resolve_preview_rows(parsed.rows, index)
+
+    assert rows[0].mapping_state is SymbolMappingState.RESOLVED
+    assert rows[0].resolved_instrument_id == "BSE:HFCL"
+    assert rows[0].warnings == ("BSE_EXCHANGE_FALLBACK",)
+    assert rows[1].resolved_instrument_id == "BSE:ABC"

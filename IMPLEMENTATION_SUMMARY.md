@@ -23,13 +23,20 @@ instead of aborting the batch. Misses and existing BSE holdings are
 resolved against the BSE catalog; an NSE holding that only exists on BSE
 is remapped (`NSE:HFCL` → `BSE:HFCL`) with `provenance.exchange_remaps`
 and ingested on BSE. Sync re-reads holdings after refresh so the new id
-is analyzed. Import auto-resolve uses the same runner. Dashboard assets
-advanced to `9.193.0`. No live LTP, no schema migration, no NX6 work.
+is analyzed. Import auto-resolve uses the same runner. Holdings upload
+preview prefers BSE when the only clash is leftover NSE + BSE for the
+same tradingsymbol (HFCL `AMBIGUOUS_SYMBOL`), with warning
+`BSE_EXCHANGE_FALLBACK`. Broker exports that omit an NSE equity series
+suffix (`RAJESHEXPO` vs `RAJESHEXPO-BZ`) resolve to that listing with
+`SERIES_SUFFIX_FALLBACK`. Three-or-more listings stay ambiguous.
+Dashboard assets advanced to `9.193.0`. No live LTP, no schema
+migration, no NX6 work.
 
 **Tests.** Repository remap + conflict. `validate_symbols` skip vs
 fail-loud. Validation-runner NSE miss → BSE remap. Import fakes accept
-the new kwargs. Hosting/release-gate lock the mixed-session header helper
-and `9.193.0` assets.
+the new kwargs. Resolver/API tests lock NSE+BSE → BSE on upload and
+keep genuine 3-exchange clashes ambiguous. Hosting/release-gate lock
+the mixed-session header helper and `9.193.0` assets.
 
 **Files created:** `tests/api/v1/test_my_portfolio_refresh_catalog.py`.
 
@@ -39,6 +46,8 @@ and `9.193.0` assets.
 `src/athena/data/store/repository.py`,
 `src/athena/api/v1/services/my_portfolio_service.py`,
 `src/athena/portfolio/sync.py`,
+`src/athena/portfolio/imports.py`,
+`tests/runtime/test_my_portfolio_imports.py`,
 `src/athena/api/static/js/08b-my-portfolio.js`,
 `src/athena/api/static/index.html`,
 `src/athena/api/static/dashboard.css`,

@@ -23,6 +23,9 @@ MAX_IMPORT_ROWS = 2_000
 _SYMBOL_ALIASES = frozenset(
     {"symbol", "ticker", "trading symbol", "tradingsymbol", "instrument"}
 )
+# Broker exports use the plain EQ name (RAJESHEXPO). NSE may only list the
+# surveillance / T2T / SME form (RAJESHEXPO-BZ). Debt suffixes are excluded.
+_EQUITY_SERIES_SUFFIXES = frozenset({"BE", "BZ", "SM"})
 _QTY_ALIASES = frozenset({"qty", "quantity", "shares"})
 _AVG_PRICE_ALIASES = frozenset(
     {"avg price", "average price", "avg_price", "average_price", "buy price", "avg cost"}
@@ -127,6 +130,7 @@ class SymbolResolverIndex:
 
     by_instrument_id: Mapping[str, tuple[SymbolResolutionCandidate, ...]]
     by_symbol: Mapping[str, tuple[SymbolResolutionCandidate, ...]]
+    by_base_symbol: Mapping[str, tuple[SymbolResolutionCandidate, ...]]
 
 
 def parse_holdings_file(filename: str, content: bytes) -> ParsedHoldingsFile:
@@ -207,13 +211,16 @@ def build_symbol_resolver_index(records: Iterable[object], instruments: Iterable
 
     by_instrument_id: dict[str, list[SymbolResolutionCandidate]] = {}
     by_symbol: dict[str, list[SymbolResolutionCandidate]] = {}
+    by_base_symbol: dict[str, list[SymbolResolutionCandidate]] = {}
     for candidate in candidates_by_id.values():
         by_instrument_id.setdefault(candidate.instrument_id.upper(), []).append(candidate)
         by_symbol.setdefault(candidate.symbol.upper(), []).append(candidate)
+        by_base_symbol.setdefault(_equity_series_base(candidate.symbol), []).append(candidate)
 
     return SymbolResolverIndex(
         by_instrument_id=MappingProxyType({k: tuple(v) for k, v in by_instrument_id.items()}),
         by_symbol=MappingProxyType({k: tuple(v) for k, v in by_symbol.items()}),
+        by_base_symbol=MappingProxyType({k: tuple(v) for k, v in by_base_symbol.items()}),
     )
 
 
@@ -346,17 +353,27 @@ def _resolve_one(row: ParsedHoldingRow, index: SymbolResolverIndex) -> ResolvedH
     candidates = index.by_instrument_id.get(lookup, ())
     if not candidates and ":" in lookup:
         candidates = index.by_instrument_id.get(lookup.replace(" ", ""), ())
+    used_series_fallback = False
     if not candidates:
         bare = lookup.split(":", 1)[1] if ":" in lookup else lookup
         candidates = index.by_symbol.get(bare, ())
-    if len(candidates) == 1:
+        if not candidates:
+            candidates = index.by_base_symbol.get(_equity_series_base(bare), ())
+            used_series_fallback = bool(candidates)
+    chosen, warnings = _choose_import_candidate(candidates)
+    if chosen is not None and used_series_fallback and chosen.symbol.upper() != (
+        lookup.split(":", 1)[1] if ":" in lookup else lookup
+    ):
+        warnings = (*warnings, "SERIES_SUFFIX_FALLBACK")
+    if chosen is not None:
         return ResolvedHoldingPreviewRow(
             parsed=row,
             mapping_state=SymbolMappingState.RESOLVED,
-            resolved_instrument_id=candidates[0].instrument_id,
+            resolved_instrument_id=chosen.instrument_id,
             candidates=candidates,
+            warnings=warnings,
         )
-    if len(candidates) > 1:
+    if candidates:
         return ResolvedHoldingPreviewRow(
             parsed=row,
             mapping_state=SymbolMappingState.AMBIGUOUS,
@@ -368,6 +385,41 @@ def _resolve_one(row: ParsedHoldingRow, index: SymbolResolverIndex) -> ResolvedH
         mapping_state=SymbolMappingState.UNRESOLVED,
         errors=("UNRESOLVED_SYMBOL",),
     )
+
+
+def _equity_series_base(symbol: str) -> str:
+    text = str(symbol).strip().upper()
+    if "-" not in text:
+        return text
+    head, suffix = text.rsplit("-", 1)
+    if head and suffix in _EQUITY_SERIES_SUFFIXES:
+        return head
+    return text
+
+
+def _choose_import_candidate(
+    candidates: tuple[SymbolResolutionCandidate, ...],
+) -> tuple[SymbolResolutionCandidate | None, tuple[str, ...]]:
+    """Pick one listing, or None when the clash is still genuine.
+
+    Owner rule (2026-09-08): Kite default catalog is NSE. A leftover NSE
+    row plus a BSE row for the same tradingsymbol (HFCL left NSE) must
+    resolve to BSE on upload, not stay AMBIGUOUS. Three-or-more listings,
+    or two listings that are not exactly NSE+BSE, stay ambiguous.
+    """
+
+    unique: dict[str, SymbolResolutionCandidate] = {}
+    for candidate in candidates:
+        unique.setdefault(candidate.instrument_id.upper(), candidate)
+    chosen = tuple(unique.values())
+    if len(chosen) == 1:
+        return chosen[0], ()
+    if len(chosen) == 2:
+        exchanges = {item.exchange.upper() for item in chosen}
+        if exchanges == {"NSE", "BSE"}:
+            bse = next(item for item in chosen if item.exchange.upper() == "BSE")
+            return bse, ("BSE_EXCHANGE_FALLBACK",)
+    return None, ()
 
 
 def _normalize_header(value: str) -> str:

@@ -373,8 +373,12 @@ class MyPortfolioService:
                 and resolved_instrument_id
                 and self._repo.get_instrument(str(resolved_instrument_id)) is None
             )
-            if genuinely_unresolved or resolved_but_not_ingested:
+            if genuinely_unresolved:
                 symbols.add(str(row["normalized_symbol"]))
+            elif resolved_but_not_ingested:
+                from athena.ops.owner_candidates import display_symbol
+
+                symbols.add(display_symbol(str(resolved_instrument_id)))
         for symbol in sorted(symbols):
             try:
                 self._auto_resolve_one_symbol(symbol)

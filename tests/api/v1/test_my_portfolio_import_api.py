@@ -272,6 +272,12 @@ def my_portfolio_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Test
     repo.upsert_instrument(_instrument("NSE:TCS", "TCS"))
     repo.upsert_instrument(_instrument("NSE:ABC", "ABC", exchange="NSE"))
     repo.upsert_instrument(_instrument("BSE:ABC", "ABC", exchange="BSE"))
+    repo.upsert_instrument(_instrument("NSE:HFCL", "HFCL", exchange="NSE"))
+    repo.upsert_instrument(_instrument("BSE:HFCL", "HFCL", exchange="BSE"))
+    repo.upsert_instrument(_instrument("NSE:TRIPLE", "TRIPLE", exchange="NSE"))
+    repo.upsert_instrument(_instrument("BSE:TRIPLE", "TRIPLE", exchange="BSE"))
+    repo.upsert_instrument(_instrument("MSE:TRIPLE", "TRIPLE", exchange="MSE"))
+    repo.upsert_instrument(_instrument("NSE:RAJESHEXPO-BZ", "RAJESHEXPO-BZ", exchange="NSE"))
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -333,7 +339,7 @@ def _run_portfolio_sync(
 def test_import_preview_persists_rows_and_does_not_mutate_holdings(my_portfolio_client: TestClient) -> None:
     data = _preview(
         my_portfolio_client,
-        b"Symbol,Qty,Avg Price\nINFY,10,1500\nUNKNOWN,2,3\nABC,1,1\n",
+        b"Symbol,Qty,Avg Price\nINFY,10,1500\nUNKNOWN,2,3\nTRIPLE,1,1\n",
     )
 
     assert data["status"] == "PREVIEWED"
@@ -466,8 +472,8 @@ def test_confirm_skips_ambiguous_row_without_attempting_auto_resolve(
         raise AssertionError("validate_symbols must never be called for an ambiguous row")
 
     monkeypatch.setattr("athena.ops.symbol_validate.validate_symbols", fail_if_called)
-    # ABC matches both NSE:ABC and BSE:ABC per the my_portfolio_client fixture.
-    data = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\nABC,1,1\n")
+    # TRIPLE matches NSE + BSE + MSE; NSE+BSE fallback must not guess that.
+    data = _preview(my_portfolio_client, b"Symbol,Qty,Avg Price\nINFY,10,1500\nTRIPLE,1,1\n")
     headers = get_auth_headers(my_portfolio_client, Role.OPERATOR)
 
     response = my_portfolio_client.post(
@@ -481,8 +487,38 @@ def test_confirm_skips_ambiguous_row_without_attempting_auto_resolve(
     holding_ids = {h["instrument_id"] for h in result["holdings"]}
     assert holding_ids == {"NSE:INFY"}
     assert len(result["skipped_rows"]) == 1
-    assert result["skipped_rows"][0]["raw_symbol"] == "ABC"
+    assert result["skipped_rows"][0]["raw_symbol"] == "TRIPLE"
     assert result["skipped_rows"][0]["reason"] == "AMBIGUOUS_SYMBOL"
+
+
+def test_import_preview_prefers_bse_when_nse_and_bse_both_match(
+    my_portfolio_client: TestClient,
+) -> None:
+    data = _preview(
+        my_portfolio_client,
+        b"Symbol,Qty,Avg Price\nINFY,10,1500\nHFCL,20,226\nABC,1,1\n",
+    )
+    by_symbol = {row["raw_symbol"]: row for row in data["rows"]}
+    assert by_symbol["HFCL"]["mapping_state"] == "RESOLVED"
+    assert by_symbol["HFCL"]["resolved_instrument_id"] == "BSE:HFCL"
+    assert "BSE_EXCHANGE_FALLBACK" in by_symbol["HFCL"]["warnings"]
+    assert by_symbol["ABC"]["resolved_instrument_id"] == "BSE:ABC"
+    assert data["accepted_rows"] == 3
+    assert data["ambiguous_rows"] == 0
+
+
+def test_import_preview_resolves_nse_series_suffix(
+    my_portfolio_client: TestClient,
+) -> None:
+    data = _preview(
+        my_portfolio_client,
+        b"Symbol,Qty,Avg Price\nINFY,10,1500\nRAJESHEXPO,50,200\n",
+    )
+    by_symbol = {row["raw_symbol"]: row for row in data["rows"]}
+    assert by_symbol["RAJESHEXPO"]["mapping_state"] == "RESOLVED"
+    assert by_symbol["RAJESHEXPO"]["resolved_instrument_id"] == "NSE:RAJESHEXPO-BZ"
+    assert "SERIES_SUFFIX_FALLBACK" in by_symbol["RAJESHEXPO"]["warnings"]
+    assert data["unresolved_rows"] == 0
 
 
 def test_confirm_is_blocked_when_no_row_is_confirmable(
