@@ -724,7 +724,24 @@
 .my-portfolio-change-delta-stack {
     display: flex;
     flex-direction: column;
-    gap: var(--space-6);
+    gap: var(--space-8);
+}
+
+.my-portfolio-change-from,
+.my-portfolio-change-to {
+    display: block;
+    padding: var(--space-8) var(--space-10);
+    border-radius: 6px;
+    line-height: 1.45;
+}
+
+.my-portfolio-change-from {
+    color: var(--text-muted);
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.my-portfolio-change-to {
+    background: rgba(15, 23, 42, 0.55);
 }
 
 .my-portfolio-change-arrow {
@@ -2251,9 +2268,20 @@
     gap: var(--space-18);
 }
 
+.modal-container.my-portfolio-detail-modal-container {
+    overflow: hidden;
+}
+
+.modal-container.my-portfolio-detail-modal-container .my-portfolio-detail-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: var(--space-32);
+}
+
 .my-portfolio-detail-hero {
     display: grid;
-    grid-template-columns: minmax(220px, 0.9fr) minmax(0, 2fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-16);
     align-items: center;
     padding: var(--space-16) var(--space-18);
@@ -2440,7 +2468,7 @@
 }
 
 .my-portfolio-review-timeline-event:last-child {
-    padding-bottom: 0;
+    padding-bottom: var(--space-8);
     border-bottom: 0;
 }
 
@@ -2457,6 +2485,11 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: var(--space-10);
+}
+
+.my-portfolio-detail-section[data-detail-section="since-last-sync"] .my-portfolio-detail-grid,
+.my-portfolio-detail-section[data-detail-section="review-timeline"] .my-portfolio-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .my-portfolio-detail-row {

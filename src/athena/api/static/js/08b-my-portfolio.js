@@ -1231,6 +1231,15 @@
         if (fieldId === "current_value" || fieldId === "last_price" || fieldId === "target_reached") {
             return escapeMyPortfolioHtml(formatMyPortfolioMoney(raw));
         }
+        if (
+            fieldId === "status"
+            || fieldId === "next_action"
+            || fieldId === "daily_review_status"
+            || fieldId === "trend"
+            || fieldId === "setup"
+        ) {
+            return escapeMyPortfolioHtml(myPortfolioRiskLabel(raw));
+        }
         return escapeMyPortfolioHtml(String(raw));
     }
 
@@ -1288,7 +1297,7 @@
         if (change.presence === "ADDED") {
             body = `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-plus" aria-hidden="true"></i><span>This holding was not in the previous snapshot.</span></p>`;
         } else if (!(change.fields || []).length) {
-            body = `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>No tracked fields changed since the previous snapshot.</span></p>`;
+            body = `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Latest snapshot matches the previous one. Earlier moves are in Review timeline below.</span></p>`;
         } else {
             body = `<div class="my-portfolio-detail-grid">${change.fields.map(field =>
                 myPortfolioDetailRowHtml(
@@ -1381,6 +1390,7 @@
         }
         return `<div class="my-portfolio-detail-section" data-detail-section="review-timeline">
             <h4>Review timeline</h4>
+            <p class="metric-desc">Earlier snapshot history. The latest pair is in Since last sync.</p>
             ${note}
             <div class="my-portfolio-review-timeline">${timeline.events.map(myPortfolioReviewTimelineEventHtml).join("")}</div>
         </div>`;
@@ -2560,10 +2570,6 @@
             ? "neutral"
             : myPortfolioToneFromNumber(Number(row.last_price) - Number(row.avg_price));
         return `<div class="my-portfolio-detail-hero" aria-label="Holding quick summary">
-            <div class="my-portfolio-detail-hero-primary">
-                <span class="my-portfolio-detail-symbol">${escapeMyPortfolioHtml(row?.symbol || "Holding")}</span>
-                <span class="my-portfolio-detail-subline">Qty ${myPortfolioPrivateHtml(row?.qty ?? row?.quantity, formatMyPortfolioNumber, "Quantity masked")} @ ${myPortfolioPrivateHtml(row?.avg_price, formatMyPortfolioMoney, "Average price masked")} avg</span>
-            </div>
             <div class="my-portfolio-detail-hero-grid">
                 <span class="my-portfolio-detail-hero-metric tone-${escapeMyPortfolioHtml(priceTone)}">
                     <i class="fa-solid fa-indian-rupee-sign" aria-hidden="true"></i>
@@ -2571,8 +2577,8 @@
                     <strong>${row?.last_price == null ? "Not available" : myPortfolioPrivateHtml(row.last_price, formatMyPortfolioMoney, "Last price masked")}</strong>
                 </span>
                 <span class="my-portfolio-detail-hero-metric tone-${escapeMyPortfolioHtml(pnlTone)}">
-                    <i class="fa-solid fa-percent" aria-hidden="true"></i>
-                    <span>P&L %</span>
+                    <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
+                    <span>P&L</span>
                     <strong>${row?.pnl_pct == null ? "Not available" : myPortfolioPrivateHtml(row.pnl_pct, formatMyPortfolioPct, "P and L percent masked")}</strong>
                 </span>
                 <span class="my-portfolio-detail-hero-chip">${myPortfolioStatusPill(row?.status, row)}</span>

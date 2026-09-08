@@ -29,9 +29,9 @@ same tradingsymbol (HFCL `AMBIGUOUS_SYMBOL`), with warning
 `BSE_EXCHANGE_FALLBACK`. Broker exports that omit an NSE equity series
 suffix (`RAJESHEXPO` vs `RAJESHEXPO-BZ`) resolve to that listing with
 `SERIES_SUFFIX_FALLBACK`. Three-or-more listings stay ambiguous.
-Dashboard assets advanced to `9.195.0` after Risk concentration
-overlap and Review timeline formatting fixes. Same-symbol NSE→BSE
-remaps are a listing change, not REMOVED.
+Dashboard assets advanced to `9.196.0` after holding-detail overlay
+cleanup (no duplicate header, human Status labels, 2-column timeline
+cards, scrollable modal so last cards are not clipped).
 No live LTP, no schema migration, no NX6 work.
 
 **Tests.** Repository remap + conflict. `validate_symbols` skip vs
