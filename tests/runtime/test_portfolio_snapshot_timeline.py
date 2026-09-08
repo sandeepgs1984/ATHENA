@@ -123,3 +123,21 @@ def test_added_and_removed_presence_events() -> None:
     assert [event.presence for event in events] == ["REMOVED", "ADDED"]
     assert events[0].badges == ("Removed holding",)
     assert events[1].badges == ("New holding",)
+
+
+def test_same_symbol_exchange_remap_is_changed_not_added() -> None:
+    events = build_symbol_timeline(
+        (
+            _point("sync-1", FIRST, _row(instrument_id="NSE:HFCL", symbol="HFCL")),
+            _point(
+                "sync-2",
+                SECOND,
+                _row(instrument_id="BSE:HFCL", symbol="HFCL", status="AT_RISK"),
+            ),
+        )
+    )
+    assert len(events) == 1
+    assert events[0].presence == "CHANGED"
+    assert events[0].badges[0] == "Listing remapped"
+    assert events[0].fields[0].previous == "NSE:HFCL"
+    assert events[0].fields[0].current == "BSE:HFCL"

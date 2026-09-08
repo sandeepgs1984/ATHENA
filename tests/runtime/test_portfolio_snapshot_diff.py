@@ -94,3 +94,17 @@ def test_added_and_removed_holdings_are_presence_only() -> None:
     assert changes["NSE:SBIN"].presence == "REMOVED"
     assert changes["NSE:SBIN"].badges == ("Removed holding",)
     assert changes["NSE:INFY"].presence == "UNCHANGED"
+
+
+def test_same_symbol_exchange_remap_is_listing_change_not_removed() -> None:
+    previous = _row(instrument_id="NSE:HFCL", symbol="HFCL", pnl_pct=Decimal("4.0"))
+    current = _row(instrument_id="BSE:HFCL", symbol="HFCL", pnl_pct=Decimal("5.0"))
+    changes = diff_snapshot_rows((previous,), (current,))
+    assert len(changes) == 1
+    assert changes[0].presence == "CHANGED"
+    assert changes[0].instrument_id == "BSE:HFCL"
+    assert changes[0].badges[0] == "Listing remapped"
+    assert changes[0].fields[0].field_id == "instrument_id"
+    assert changes[0].fields[0].previous == "NSE:HFCL"
+    assert changes[0].fields[0].current == "BSE:HFCL"
+    assert "P&L moved +1.0%" in changes[0].badges

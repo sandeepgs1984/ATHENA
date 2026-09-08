@@ -159,7 +159,71 @@ def diff_snapshot_rows(
                 fields=fields,
             )
         )
-    return tuple(changes)
+    return _merge_same_symbol_remaps(tuple(changes), previous_by_key, current_by_key)
+
+
+def _change_symbol(item: SnapshotRowChange) -> str:
+    return (item.symbol or item.instrument_id.split(":", 1)[-1]).upper()
+
+
+def _merge_same_symbol_remaps(
+    changes: tuple[SnapshotRowChange, ...],
+    previous_by_key: dict[str, SnapshotCompareRow],
+    current_by_key: dict[str, SnapshotCompareRow],
+) -> tuple[SnapshotRowChange, ...]:
+    """Treat NSE→BSE (same tradingsymbol) as a listing change, not a remove.
+
+    Snapshot rows are keyed by instrument_id. A remap leaves the old id
+    absent and the new id present, which would otherwise look like a sale.
+    """
+
+    removed = [item for item in changes if item.presence == "REMOVED"]
+    added = [item for item in changes if item.presence == "ADDED"]
+    kept = [item for item in changes if item.presence not in {"REMOVED", "ADDED"}]
+    removed_by_symbol: dict[str, list[SnapshotRowChange]] = {}
+    added_by_symbol: dict[str, list[SnapshotRowChange]] = {}
+    for item in removed:
+        removed_by_symbol.setdefault(_change_symbol(item), []).append(item)
+    for item in added:
+        added_by_symbol.setdefault(_change_symbol(item), []).append(item)
+
+    consumed: set[str] = set()
+    remapped: list[SnapshotRowChange] = []
+    for symbol, removed_items in removed_by_symbol.items():
+        added_items = added_by_symbol.get(symbol, [])
+        if len(removed_items) != 1 or len(added_items) != 1:
+            continue
+        previous = previous_by_key.get(removed_items[0].instrument_id)
+        current = current_by_key.get(added_items[0].instrument_id)
+        if previous is None or current is None:
+            continue
+        if previous.instrument_id == current.instrument_id:
+            continue
+        fields, badges = _diff_pair(previous, current)
+        listing = SnapshotFieldChange(
+            "instrument_id",
+            "Listing",
+            previous.instrument_id,
+            current.instrument_id,
+        )
+        remapped.append(
+            SnapshotRowChange(
+                instrument_id=current.instrument_id,
+                symbol=current.symbol,
+                presence="CHANGED",
+                badges=("Listing remapped",) + badges,
+                fields=(listing,) + fields,
+            )
+        )
+        consumed.add(removed_items[0].instrument_id)
+        consumed.add(added_items[0].instrument_id)
+
+    leftover = [
+        item
+        for item in (*removed, *added)
+        if item.instrument_id not in consumed
+    ]
+    return tuple(sorted((*kept, *remapped, *leftover), key=lambda item: item.instrument_id))
 
 
 def _diff_pair(

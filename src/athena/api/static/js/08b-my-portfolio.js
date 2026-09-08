@@ -1222,11 +1222,33 @@
     function myPortfolioChangeFieldValueHtml(field, side) {
         const raw = field?.[side];
         if (raw == null || raw === "") return "—";
+        const fieldId = field.field_id;
         const privateIds = new Set(["current_value", "pnl_pct", "target_reached", "last_price"]);
-        if (myPortfolioState.valuesHidden && privateIds.has(field.field_id)) {
+        if (myPortfolioState.valuesHidden && privateIds.has(fieldId)) {
             return myPortfolioMaskedValue(`${field.label} masked`);
         }
+        if (fieldId === "pnl_pct") return escapeMyPortfolioHtml(formatMyPortfolioPct(raw));
+        if (fieldId === "current_value" || fieldId === "last_price" || fieldId === "target_reached") {
+            return escapeMyPortfolioHtml(formatMyPortfolioMoney(raw));
+        }
         return escapeMyPortfolioHtml(String(raw));
+    }
+
+    function myPortfolioChangeFieldIsGuidance(field) {
+        return field?.field_id === "daily_guidance" || field?.field_id === "structural_guidance";
+    }
+
+    function myPortfolioChangeFieldDeltaHtml(field) {
+        const previous = myPortfolioChangeFieldValueHtml(field, "previous");
+        const current = myPortfolioChangeFieldValueHtml(field, "current");
+        if (myPortfolioChangeFieldIsGuidance(field)) {
+            return `<span class="my-portfolio-change-delta my-portfolio-change-delta-stack">
+                <span class="my-portfolio-change-from">${previous}</span>
+                <span class="my-portfolio-change-arrow" aria-hidden="true">↓</span>
+                <span class="my-portfolio-change-to">${current}</span>
+            </span>`;
+        }
+        return `<span class="my-portfolio-change-delta">${previous} → ${current}</span>`;
     }
 
     function myPortfolioSinceLastSyncSection(row) {
@@ -1271,8 +1293,8 @@
             body = `<div class="my-portfolio-detail-grid">${change.fields.map(field =>
                 myPortfolioDetailRowHtml(
                     field.label,
-                    `<span class="my-portfolio-change-delta">${myPortfolioChangeFieldValueHtml(field, "previous")} → ${myPortfolioChangeFieldValueHtml(field, "current")}</span>`,
-                    { icon: "fa-code-compare" }
+                    myPortfolioChangeFieldDeltaHtml(field),
+                    { icon: "fa-code-compare", wide: myPortfolioChangeFieldIsGuidance(field) }
                 )
             ).join("")}</div>`;
         }
@@ -1308,8 +1330,8 @@
             body = `<div class="my-portfolio-detail-grid">${event.fields.map(field =>
                 myPortfolioDetailRowHtml(
                     field.label,
-                    `<span class="my-portfolio-change-delta">${myPortfolioChangeFieldValueHtml(field, "previous")} → ${myPortfolioChangeFieldValueHtml(field, "current")}</span>`,
-                    { icon: "fa-code-compare" }
+                    myPortfolioChangeFieldDeltaHtml(field),
+                    { icon: "fa-code-compare", wide: myPortfolioChangeFieldIsGuidance(field) }
                 )
             ).join("")}</div>`;
         }
@@ -1440,7 +1462,7 @@
         if (!ranked.length) return `<p class="metric-desc">None.</p>`;
         const toneClass = tone ? ` class="tone-${escapeMyPortfolioHtml(tone)}"` : "";
         return `<ol class="my-portfolio-risk-rank">${ranked.map(item =>
-            `<li${toneClass}><span>${escapeMyPortfolioHtml(item.row.symbol || "—")}</span><strong>${myPortfolioPrivateHtml(item.value, formatMyPortfolioMoney, "Private portfolio value masked")}</strong></li>`
+            `<li${toneClass}><span title="${escapeMyPortfolioHtml(item.row.symbol || "—")}">${escapeMyPortfolioHtml(item.row.symbol || "—")}</span><strong>${myPortfolioPrivateHtml(item.value, formatMyPortfolioMoney, "Private portfolio value masked")}</strong></li>`
         ).join("")}</ol>`;
     }
 
@@ -1479,7 +1501,7 @@
             ? `<div class="my-portfolio-risk-group">
                     <h4>Removed since previous snapshot</h4>
                     <ul class="my-portfolio-risk-list">${removed.map(item =>
-                        `<li><span>${escapeMyPortfolioHtml(item.symbol)}</span><strong>Removed</strong></li>`
+                        `<li><span title="${escapeMyPortfolioHtml(item.symbol)}">${escapeMyPortfolioHtml(item.symbol)}</span><strong>Removed</strong></li>`
                     ).join("")}</ul>
                 </div>`
             : "";
@@ -2469,10 +2491,11 @@
 
     function myPortfolioDetailRowHtml(label, valueHtml, options = {}) {
         const tone = options.tone ? ` tone-${escapeMyPortfolioHtml(options.tone)}` : "";
+        const wide = options.wide ? " my-portfolio-detail-row-wide" : "";
         const icon = options.icon
             ? `<i class="fa-solid ${escapeMyPortfolioHtml(options.icon)}" aria-hidden="true"></i>`
             : "";
-        return `<div class="my-portfolio-detail-row${tone}">
+        return `<div class="my-portfolio-detail-row${tone}${wide}">
             <span class="my-portfolio-detail-label">${icon}${escapeMyPortfolioHtml(label)}</span>
             <span class="my-portfolio-detail-value">${valueHtml}</span>
         </div>`;

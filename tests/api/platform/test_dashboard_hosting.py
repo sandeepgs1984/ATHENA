@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.193.0" in html
-    assert "dashboard.js?v=9.193.0" in html
+    assert "dashboard.css?v=9.195.0" in html
+    assert "dashboard.js?v=9.195.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -552,7 +552,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css?v=9.193.0");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.195.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
@@ -862,6 +862,10 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Two completed snapshots are required to build a review timeline." in js
     assert "Partial sync" in js
     assert "data-detail-section=\"review-timeline\"" in js
+    assert "function myPortfolioChangeFieldDeltaHtml" in js
+    assert "formatMyPortfolioPct(raw)" in js
+    assert "my-portfolio-change-delta-stack" in js
+    assert "my-portfolio-detail-row-wide" in js
     assert "P&L moved" in js
     assert "No previous completed snapshot to compare." in js
     assert "Unavailable until Portfolio Sync." in js
@@ -873,6 +877,10 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'myPortfolioRankedHoldings(rows.filter(row => myPortfolioPnlValue(row) < 0), myPortfolioPnlValue, "asc", 3, "negative")' in js
     assert ".my-portfolio-risk-rank li.tone-positive strong" in my_portfolio_css
     assert ".my-portfolio-risk-rank li.tone-negative strong" in my_portfolio_css
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in my_portfolio_css
+    assert "text-overflow: ellipsis" in my_portfolio_css
+    assert ".my-portfolio-risk-list strong" in my_portfolio_css
+    assert "white-space: nowrap" in my_portfolio_css
     assert ".my-portfolio-heatmap-panel" in my_portfolio_css
     assert ".my-portfolio-heatmap-tile" in my_portfolio_css
     assert "function renderMyPortfolioHeatmap" in js

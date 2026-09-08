@@ -85,7 +85,11 @@ header and aborting Portfolio Sync refresh.
   index at all stay UNRESOLVED at preview and still use the BSE catalog
   fallback at confirm.
 - Live LTP on this page still needs a separate ADR. Do not add it here.
-- Dashboard assets: `9.193.0`. This is not MP-NX6.
+- Dashboard assets: `9.195.0`. This is not MP-NX6.
+- Risk concentration: 4-column grid; rank values nowrap; long symbols
+  ellipsize instead of wrapping into the next column.
+- Same-symbol NSE→BSE remaps are `Listing remapped`, not REMOVED.
+- Review timeline formats P&L % / money and stacks long guidance.
 
 ## Complete 14-Feature Coverage Checklist
 

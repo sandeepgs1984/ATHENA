@@ -721,6 +721,21 @@
     font-variant-numeric: tabular-nums;
 }
 
+.my-portfolio-change-delta-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.my-portfolio-change-arrow {
+    color: var(--text-muted);
+    font-size: var(--text-0-75);
+}
+
+.my-portfolio-detail-row-wide {
+    grid-column: 1 / -1;
+}
+
 .my-portfolio-risk-panel {
     display: grid;
     gap: var(--space-12);
@@ -760,12 +775,13 @@
 
 .my-portfolio-risk-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--space-12);
 }
 
 .my-portfolio-risk-group {
     min-width: 0;
+    overflow: hidden;
     padding: var(--space-10) var(--space-12);
     border: 1px solid rgba(148, 163, 184, 0.12);
     border-radius: 8px;
@@ -793,15 +809,27 @@
 .my-portfolio-risk-list li,
 .my-portfolio-risk-rank li {
     display: flex;
+    flex-wrap: nowrap;
     align-items: baseline;
     justify-content: space-between;
     gap: var(--space-8);
+    min-width: 0;
     color: var(--text-primary);
     font-size: var(--text-0-8);
 }
 
+.my-portfolio-risk-list li span,
+.my-portfolio-risk-rank li span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .my-portfolio-risk-list strong,
 .my-portfolio-risk-rank strong {
+    flex: 0 0 auto;
+    white-space: nowrap;
     font-variant-numeric: tabular-nums;
     font-weight: 800;
 }
@@ -2625,6 +2653,10 @@
 }
 
 @media (max-width: 920px) {
+    .my-portfolio-risk-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .my-portfolio-kpi-strip,
     .my-portfolio-secondary-grid {
         grid-template-columns: 1fr;
@@ -2699,6 +2731,10 @@
 }
 
 @media (max-width: 640px) {
+    .my-portfolio-risk-grid {
+        grid-template-columns: 1fr;
+    }
+
     .my-portfolio-preview-counts {
         grid-template-columns: 1fr;
     }

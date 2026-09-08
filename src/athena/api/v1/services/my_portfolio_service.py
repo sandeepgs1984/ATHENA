@@ -669,15 +669,7 @@ class MyPortfolioService:
                 )
             ]
             match = next(
-                (
-                    row
-                    for row in rows
-                    if requested
-                    in {
-                        row.provenance.instrument_id,
-                        row.symbol,
-                    }
-                ),
+                (row for row in rows if self._snapshot_row_matches(row, requested)),
                 None,
             )
             if match is not None:
@@ -736,6 +728,22 @@ class MyPortfolioService:
                 for event in events
             ],
         )
+
+    def _snapshot_row_matches(self, row: PortfolioSnapshotRowDTO, requested: str) -> bool:
+        """Match a snapshot row by canonical id or the same tradingsymbol.
+
+        After an NSE→BSE remap the current holding is BSE:HFCL while older
+        snapshots still store NSE:HFCL. Symbol equality keeps the timeline
+        continuous instead of treating the remap as a gap.
+        """
+
+        want = requested.strip().upper()
+        if not want:
+            return False
+        instrument_id = str(row.provenance.instrument_id).upper()
+        symbol = str(row.symbol).upper()
+        bare = want.split(":", 1)[-1]
+        return want in {instrument_id, symbol} or bare == symbol or bare == instrument_id.split(":", 1)[-1]
 
     def _snapshot_compare_row(self, row: PortfolioSnapshotRowDTO) -> SnapshotCompareRow:
         structural = row.structural_review
