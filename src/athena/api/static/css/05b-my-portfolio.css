@@ -1643,6 +1643,33 @@
    Current Holdings section is below the fold. */
 .my-portfolio-holdings-card-body {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+    min-height: 0;
+}
+
+.my-portfolio-holdings-thead-dock {
+    position: sticky;
+    top: var(--my-portfolio-holdings-thead-top, 12.5rem);
+    z-index: 36;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    background: var(--bg-sidebar);
+}
+
+.my-portfolio-holdings-thead-dock-scroller {
+    overflow: hidden;
+}
+
+.my-portfolio-holdings-thead-dock .my-portfolio-table {
+    margin: 0;
+}
+
+#my-portfolio-holdings-table > thead {
+    display: none;
 }
 
 .my-portfolio-sync-blocked,
@@ -1948,10 +1975,15 @@
    scoped to the non-sticky columns (4th onward) only — the first three
    are position:sticky and already pinned, not real scroll targets. */
 .my-portfolio-holdings-scroll {
-    /* Vertical scroll lives here so thead can stick. overflow:auto without
-       a height lets the table grow and the page scroll, which traps sticky
-       headers in a scroller that never moves vertically. */
-    max-height: min(72vh, calc(100dvh - 13.5rem));
+    /* One page scroll: the table grows with every holding. Do not cap
+       height or keep a nested Y scroller — that is what pulled Update
+       Holdings into view mid-list. Horizontal overflow stays here so
+       wide profiles can still pan columns. */
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
     scroll-snap-type: x mandatory;
     /* Full sticky region width (No. 64 + Symbol 170 + Qty 90 + Avg Price
        150 = 474px) — snap points are measured from where non-sticky content

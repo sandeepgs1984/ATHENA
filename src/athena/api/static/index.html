@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.196.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.199.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -803,8 +803,33 @@
                                 </div>
                             </div>
                             <div class="card-body my-portfolio-holdings-card-body">
+                                <div id="my-portfolio-holdings-thead-dock" class="my-portfolio-holdings-thead-dock">
+                                    <div class="my-portfolio-holdings-thead-dock-scroller">
+                                        <table id="my-portfolio-holdings-thead-clone" class="data-table my-portfolio-table my-portfolio-wide-table compact-density" data-table-profile="compact_scan">
+                                            <thead>
+                                                <tr>
+                                                    <th>No.</th>
+                                                    <th data-sort-key="symbol">Symbol</th>
+                                                    <th data-sort-key="quantity">Qty</th>
+                                                    <th data-sort-key="avg_price">Avg Price</th>
+                                                    <th data-sort-key="last_price">Last Price</th>
+                                                    <th data-sort-key="pnl">P&amp;L</th>
+                                                    <th data-sort-key="pnl_pct">P&amp;L %</th>
+                                                    <th data-sort-key="status">Status</th>
+                                                    <th data-sort-key="conviction">Conviction</th>
+                                                    <th data-sort-key="trend">Trend / Setup</th>
+                                                    <th data-sort-key="daily_review">Daily Review</th>
+                                                    <th data-sort-key="next_action">Next Action</th>
+                                                    <th>Plan Levels</th>
+                                                    <th>Freshness</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                        </table>
+                                    </div>
+                                </div>
                                 <div class="my-portfolio-table-scroll my-portfolio-holdings-scroll compact-density" data-table-profile="compact_scan">
-                                    <table class="data-table my-portfolio-table my-portfolio-wide-table compact-density" data-table-profile="compact_scan">
+                                    <table id="my-portfolio-holdings-table" class="data-table my-portfolio-table my-portfolio-wide-table compact-density" data-table-profile="compact_scan">
                                         <colgroup>
                                             <col class="my-portfolio-col-index">
                                             <col class="my-portfolio-col-symbol">
@@ -2384,7 +2409,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.196.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.199.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

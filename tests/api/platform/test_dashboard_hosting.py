@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.196.0" in html
-    assert "dashboard.js?v=9.196.0" in html
+    assert "dashboard.css?v=9.199.0" in html
+    assert "dashboard.js?v=9.199.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -552,7 +552,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css?v=9.196.0");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.199.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
@@ -762,7 +762,14 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     # columns at an unconstrained scroll offset).
     assert "padding: var(--space-10) var(--space-12);" in my_portfolio_css
     assert ".my-portfolio-holdings-scroll" in my_portfolio_css
-    assert "max-height: min(72vh, calc(100dvh - 13.5rem));" in my_portfolio_css
+    assert "max-height: none;" in my_portfolio_css
+    assert "overflow-y: hidden;" in my_portfolio_css
+    assert ".my-portfolio-holdings-thead-dock" in my_portfolio_css
+    assert 'id="my-portfolio-holdings-thead-dock"' in html
+    assert 'id="my-portfolio-holdings-table"' in html
+    assert "#my-portfolio-holdings-table > thead" in my_portfolio_css
+    assert "--my-portfolio-holdings-thead-top" in my_portfolio_css
+    assert "max-height: min(72vh, calc(100dvh - 13.5rem));" not in my_portfolio_css
     assert "border-collapse: separate;" in my_portfolio_css
     assert "border-spacing: 0;" in my_portfolio_css
     assert ".my-portfolio-table thead th" in my_portfolio_css
@@ -818,9 +825,17 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "myPortfolioPrivacyToggle?.addEventListener" in js
     assert 'document.querySelector(".my-portfolio-holdings-scroll")' in js
     assert 'document.querySelector(".my-portfolio-holdings-card")' in js
+    assert 'document.getElementById("my-portfolio-holdings-table")' in js
+    assert 'document.querySelector(".my-portfolio-wide-table")' not in js
+    assert "function applyMyPortfolioTableChrome" in js
     assert "function syncMyPortfolioStickyHeaderState" in js
+    assert "function syncMyPortfolioTheadDock" in js
+    assert "function syncMyPortfolioTheadClone" in js
+    assert "function scheduleMyPortfolioHoldingsScrollChrome" in js
+    assert "function routeMyPortfolioHoldingsWheel" not in js
+    assert "--my-portfolio-holdings-pane-max" not in js
     assert 'classList.toggle("sticky-engaged", engaged)' in js
-    assert 'myPortfolioWorkspaceViewport?.addEventListener("scroll", syncMyPortfolioStickyHeaderState' in js
+    assert 'myPortfolioWorkspaceViewport?.addEventListener("scroll", scheduleMyPortfolioHoldingsScrollChrome' in js
     assert 'classList.toggle("compact-density", !comfortable)' in js
     assert "function renderMyPortfolioHistoryDisclosure()" in js
     assert "function myPortfolioRowStateClass(row)" in js

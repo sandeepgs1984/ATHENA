@@ -85,7 +85,11 @@ header and aborting Portfolio Sync refresh.
   index at all stay UNRESOLVED at preview and still use the BSE catalog
   fallback at confirm.
 - Live LTP on this page still needs a separate ADR. Do not add it here.
-- Dashboard assets: `9.196.0`. This is not MP-NX6.
+- Dashboard assets: `9.199.0`. This is not MP-NX6.
+- Current Holdings scroll: the table grows with every symbol. Update
+  Holdings / Recent Imports come after the last row. No inner vertical
+  scroller. Bind `#my-portfolio-holdings-table` for profile chrome.
+  Column headers live in a sticky dock under the card header.
 - Risk concentration: 4-column grid; rank values nowrap; long symbols
   ellipsize instead of wrapping into the next column.
 - Same-symbol NSE→BSE remaps are `Listing remapped`, not REMOVED.

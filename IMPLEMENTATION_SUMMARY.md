@@ -204,6 +204,30 @@ pending genuine post-activation REFRESH evidence, which still requires
 production to actually be running with `--with-cycles` (or an
 equivalent scheduler) again.
 
+## My Portfolio — Current Holdings grows with the book
+
+**Summary.** Operational UX fix, not an MP-NX milestone. Nested
+holdings scroll (first `72vh`, then a fill-viewport pane) let Update
+Holdings appear mid-list and hid the column header.
+
+**What changed.** The holdings table now grows with every symbol. There
+is no inner vertical scroller. Update Holdings / Recent Imports sit
+after the last row. Profile chrome binds `#my-portfolio-holdings-table`
+so column filters apply to the live table, not the header clone. The
+column header is a sticky dock under Current Holdings. Dashboard assets
+advanced to `9.199.0`.
+
+**Tests.** Hosting/release-gate lock `max-height: none`, the thead dock,
+the live-table id binding, and `9.199.0` assets.
+
+**Files modified:** `src/athena/api/static/css/05b-my-portfolio.css`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/index.html`,
+`src/athena/api/static/dashboard.css`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`.
+
 ---
 
 ## My Portfolio — honest session header and BSE catalog fallback

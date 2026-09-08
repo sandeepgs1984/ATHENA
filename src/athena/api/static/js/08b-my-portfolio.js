@@ -83,10 +83,13 @@
     const myPortfolioExportPresetDailyReview = document.getElementById("my-portfolio-export-preset-daily-review");
     const myPortfolioExportPresetFullAudit = document.getElementById("my-portfolio-export-preset-full-audit");
     const myPortfolioExportPresetPrivate = document.getElementById("my-portfolio-export-preset-private");
-    const myPortfolioHoldingsTable = document.querySelector(".my-portfolio-wide-table");
+    const myPortfolioHoldingsTable = document.getElementById("my-portfolio-holdings-table");
     const myPortfolioHoldingsCard = document.querySelector(".my-portfolio-holdings-card");
     const myPortfolioHoldingsHeader = document.querySelector(".my-portfolio-holdings-card > .card-header");
     const myPortfolioHoldingsScroll = document.querySelector(".my-portfolio-holdings-scroll");
+    const myPortfolioTheadDock = document.getElementById("my-portfolio-holdings-thead-dock");
+    const myPortfolioTheadDockScroller = document.querySelector(".my-portfolio-holdings-thead-dock-scroller");
+    const myPortfolioTheadClone = document.getElementById("my-portfolio-holdings-thead-clone");
     const myPortfolioWorkspaceViewport = document.querySelector(".workspace-viewport");
     const myPortfolioHistoryPanel = document.querySelector(".my-portfolio-history-panel");
     const myPortfolioHistoryBody = document.getElementById("my-portfolio-history-body");
@@ -768,17 +771,25 @@
         return MY_PORTFOLIO_TABLE_PROFILES[myPortfolioState.tableProfile] || MY_PORTFOLIO_TABLE_PROFILES.compact_scan;
     }
 
-    function renderMyPortfolioDensityControls() {
+    function applyMyPortfolioTableChrome(table) {
+        if (!table) return;
         const comfortable = myPortfolioState.density === "comfortable";
         const profileId = currentMyPortfolioTableProfile().id;
-        myPortfolioHoldingsTable?.classList.toggle("comfortable-density", comfortable);
-        myPortfolioHoldingsTable?.classList.toggle("compact-density", !comfortable);
-        myPortfolioHoldingsScroll?.classList.toggle("comfortable-density", comfortable);
-        myPortfolioHoldingsScroll?.classList.toggle("compact-density", !comfortable);
-        myPortfolioHoldingsTable?.setAttribute("data-table-profile", profileId);
+        table.classList.toggle("comfortable-density", comfortable);
+        table.classList.toggle("compact-density", !comfortable);
+        table.setAttribute("data-table-profile", profileId);
+    }
+
+    function renderMyPortfolioDensityControls() {
+        const profileId = currentMyPortfolioTableProfile().id;
+        applyMyPortfolioTableChrome(myPortfolioHoldingsTable);
+        applyMyPortfolioTableChrome(myPortfolioTheadClone);
+        myPortfolioHoldingsScroll?.classList.toggle("comfortable-density", myPortfolioState.density === "comfortable");
+        myPortfolioHoldingsScroll?.classList.toggle("compact-density", myPortfolioState.density !== "comfortable");
         myPortfolioHoldingsScroll?.setAttribute("data-table-profile", profileId);
         if (myPortfolioTableProfile) myPortfolioTableProfile.value = profileId;
         if (myPortfolioMiniProfile) myPortfolioMiniProfile.textContent = currentMyPortfolioTableProfile().label;
+        scheduleMyPortfolioHoldingsScrollChrome();
     }
 
     function persistMyPortfolioTableProfile(profileId) {
@@ -826,6 +837,40 @@
         const headerRect = myPortfolioHoldingsHeader.getBoundingClientRect();
         const engaged = cardRect.top < headerRect.top - 1;
         myPortfolioHoldingsCard.classList.toggle("sticky-engaged", engaged);
+    }
+
+    function syncMyPortfolioTheadClone() {
+        if (!myPortfolioHoldingsTable || !myPortfolioTheadClone || !myPortfolioHoldingsTable.tHead) return;
+        const colgroup = myPortfolioHoldingsTable.querySelector("colgroup");
+        applyMyPortfolioTableChrome(myPortfolioTheadClone);
+        myPortfolioTheadClone.innerHTML = `${colgroup ? colgroup.outerHTML : ""}${myPortfolioHoldingsTable.tHead.outerHTML}`;
+        myPortfolioTheadClone.style.width = `${myPortfolioHoldingsTable.scrollWidth}px`;
+        myPortfolioTheadClone.style.minWidth = window.getComputedStyle(myPortfolioHoldingsTable).minWidth;
+    }
+
+    function syncMyPortfolioTheadDock() {
+        if (!myPortfolioTheadDock || !myPortfolioHoldingsHeader || !myPortfolioHoldingsScroll || !myPortfolioHoldingsTable) {
+            return;
+        }
+        const headerHeight = Math.round(myPortfolioHoldingsHeader.getBoundingClientRect().height);
+        myPortfolioHoldingsCard?.style.setProperty("--my-portfolio-holdings-thead-top", `${headerHeight}px`);
+        myPortfolioTheadDock.hidden = false;
+        myPortfolioTheadDock.setAttribute("aria-hidden", "false");
+        syncMyPortfolioTheadClone();
+        if (myPortfolioTheadDockScroller) {
+            myPortfolioTheadDockScroller.scrollLeft = myPortfolioHoldingsScroll.scrollLeft;
+        }
+    }
+
+    let myPortfolioHoldingsChromeFrame = 0;
+
+    function scheduleMyPortfolioHoldingsScrollChrome() {
+        if (myPortfolioHoldingsChromeFrame) return;
+        myPortfolioHoldingsChromeFrame = window.requestAnimationFrame(() => {
+            myPortfolioHoldingsChromeFrame = 0;
+            syncMyPortfolioStickyHeaderState();
+            syncMyPortfolioTheadDock();
+        });
     }
 
     function setMyPortfolioDensity(density) {
@@ -2420,6 +2465,7 @@
             renderMyPortfolioSortControls();
             renderMyPortfolioDensityControls();
             renderMyPortfolioTriage(sourceRows.length, visibleRows.length);
+            scheduleMyPortfolioHoldingsScrollChrome();
             return;
         }
         const rows = sortedMyPortfolioRows(visibleRows);
@@ -2449,6 +2495,7 @@
         renderMyPortfolioSortControls();
         renderMyPortfolioDensityControls();
         renderMyPortfolioTriage(sourceRows.length, rows.length);
+        scheduleMyPortfolioHoldingsScrollChrome();
     }
 
     function renderMyPortfolioSnapshotRows(rows) {
@@ -2462,6 +2509,7 @@
             renderMyPortfolioSortControls();
             renderMyPortfolioDensityControls();
             renderMyPortfolioTriage(rows.length, 0);
+            scheduleMyPortfolioHoldingsScrollChrome();
             return;
         }
         const sortedRows = sortedMyPortfolioRows(visibleRows);
@@ -2487,6 +2535,7 @@
         renderMyPortfolioSortControls();
         renderMyPortfolioDensityControls();
         renderMyPortfolioTriage(rows.length, sortedRows.length);
+        scheduleMyPortfolioHoldingsScrollChrome();
     }
 
     // MY-PORTFOLIO-V1-FINAL-UX-CLOSURE holding-detail drawer. Every value
@@ -3475,7 +3524,7 @@
         myPortfolioState.historyExpanded = !myPortfolioState.historyExpanded;
         renderMyPortfolioHistoryDisclosure();
     });
-    document.querySelector(".my-portfolio-wide-table thead")?.addEventListener("click", event => {
+    myPortfolioHoldingsCard?.addEventListener("click", event => {
         const th = event.target.closest("th[data-sort-key]");
         if (!th) return;
         const key = th.getAttribute("data-sort-key");
@@ -3531,10 +3580,11 @@
     renderMyPortfolioRiskDisclosure();
     renderMyPortfolioHeatmapDisclosure();
     renderMyPortfolioExportColumns();
-    syncMyPortfolioStickyHeaderState();
-    window.addEventListener("scroll", syncMyPortfolioStickyHeaderState, { passive: true });
-    window.addEventListener("resize", syncMyPortfolioStickyHeaderState);
-    myPortfolioWorkspaceViewport?.addEventListener("scroll", syncMyPortfolioStickyHeaderState, { passive: true });
+    scheduleMyPortfolioHoldingsScrollChrome();
+    window.addEventListener("scroll", scheduleMyPortfolioHoldingsScrollChrome, { passive: true });
+    window.addEventListener("resize", scheduleMyPortfolioHoldingsScrollChrome);
+    myPortfolioWorkspaceViewport?.addEventListener("scroll", scheduleMyPortfolioHoldingsScrollChrome, { passive: true });
+    myPortfolioHoldingsScroll?.addEventListener("scroll", syncMyPortfolioTheadDock, { passive: true });
     window.addEventListener("click", event => {
         if (myPortfolioExportPanel && !myPortfolioExportPanel.hidden) {
             myPortfolioExportPanel.hidden = true;
