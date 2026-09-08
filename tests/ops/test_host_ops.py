@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import datetime
 from pathlib import Path
@@ -204,6 +205,509 @@ def test_host_due_runner_due_tick_builds_ingest_engine_exactly_once():
         # the real scheduled path.
         enable_timing=True,
     )
+
+
+# 2026-09-08 scheduler correctness correction: `latest_run()` never filters
+# by status, so a `RUNNING` row left behind by a process that died mid-cycle
+# (a genuine, observed production occurrence -- not hypothetical) kept
+# `last_refresh_ts` pinned to a dead attempt's `started_ts`, delaying the
+# next due REFRESH by up to a full `refresh_interval_minutes` for no
+# reason. `HostDueRunner._reconcile_if_orphaned` reconciles such a row to
+# `FAILED` for durable audit truth (proven dead by cycle-runner lock
+# ownership, never a guessed timeout) but treats it as absent for *this*
+# invocation's own cadence inputs only -- an already-terminal FAILED/
+# COMPLETED run is completely unaffected, preserving today's existing
+# (separate, unresolved) policy of letting FAILED participate in cadence
+# exactly like COMPLETED.
+def _orphaned_run_record(trigger: RunTrigger, *, started_ts: datetime) -> RunRecord:
+    return RunRecord(
+        run_id=f"run-{trigger.value.lower()}-orphan",
+        cycle_id="c-orphan",
+        trigger=trigger,
+        started_ts=started_ts,
+        status=RunStatus.RUNNING,
+        software_version="0.1.0",
+        blueprint_version="ATHENA-002",
+        strategy_profile="p",
+        strategy_profile_version="1",
+        indicator_versions={},
+        config_snapshot_id="cfg-host-ops",
+        input_digest="digest-1",
+    )
+
+
+def test_orphaned_refresh_run_is_reconciled_to_failed():
+    """A: latest RUNNING REFRESH is reconciled to FAILED."""
+    orphan = _orphaned_run_record(RunTrigger.REFRESH, started_ts=datetime(2026, 9, 8, 10, 24, tzinfo=IST))
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, orphan, None, None]  # PREMARKET, REFRESH, CLOSING, FAST
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    as_of = datetime(2026, 9, 8, 10, 48, tzinfo=IST)
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()):
+        runner.run(as_of=as_of, alert=True)
+
+    repo.save_run.assert_called_once()
+    reconciled, kwargs = repo.save_run.call_args.args[0], repo.save_run.call_args.kwargs
+    assert reconciled.status is RunStatus.FAILED
+    assert reconciled.finished_ts == as_of
+    assert kwargs["detail"]["phase"] == "reconciled_orphan"
+
+
+def test_orphan_reconciliation_preserves_identity_and_audit_fields():
+    """B: reconciliation preserves original run identity/audit fields."""
+    orphan = _orphaned_run_record(RunTrigger.REFRESH, started_ts=datetime(2026, 9, 8, 10, 24, tzinfo=IST))
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, orphan, None, None]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()):
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+
+    reconciled = repo.save_run.call_args.args[0]
+    for field in (
+        "run_id", "cycle_id", "trigger", "started_ts", "software_version",
+        "blueprint_version", "strategy_profile", "strategy_profile_version",
+        "indicator_versions", "config_snapshot_id", "input_digest",
+    ):
+        assert getattr(reconciled, field) == getattr(orphan, field), field
+
+
+def test_orphan_reconciliation_detail_is_machine_readable():
+    """C: reconciliation supplies a terminal finished_ts and explicit detail_json."""
+    orphan = _orphaned_run_record(RunTrigger.REFRESH, started_ts=datetime(2026, 9, 8, 10, 24, tzinfo=IST))
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, orphan, None, None]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    as_of = datetime(2026, 9, 8, 10, 48, tzinfo=IST)
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()):
+        runner.run(as_of=as_of, alert=True)
+
+    reconciled = repo.save_run.call_args.args[0]
+    detail = repo.save_run.call_args.kwargs["detail"]
+    assert reconciled.finished_ts == as_of
+    assert reconciled.status is RunStatus.FAILED
+    assert detail["phase"] == "reconciled_orphan"
+    assert "cycle-runner lock" in detail["reason"]
+
+
+def test_orphaned_refresh_does_not_advance_last_refresh_ts_this_invocation():
+    """D: newly reconciled REFRESH orphan does NOT advance the current
+    invocation's last_refresh_ts."""
+    orphan = _orphaned_run_record(RunTrigger.REFRESH, started_ts=datetime(2026, 9, 8, 10, 24, tzinfo=IST))
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, orphan, None, None]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()) as mock_due:
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+    assert mock_due.call_args.kwargs["last_refresh_ts"] is None
+
+
+def test_orphaned_refresh_allows_immediate_real_retry():
+    """E: an otherwise-due REFRESH can retry immediately -- real,
+    unmocked due_triggers/is_refresh_due, one minute after the orphan's
+    own started_ts (well inside the 15-minute interval that would
+    otherwise still be blocking a retry)."""
+    started = datetime(2026, 9, 8, 10, 24, tzinfo=IST)
+    as_of = datetime(2026, 9, 8, 10, 25, tzinfo=IST)
+    orphan = _orphaned_run_record(RunTrigger.REFRESH, started_ts=started)
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, orphan, None, None]
+    cfg, sched = _cfg_and_sched_for_due_at_daytime()
+
+    cycle = DryRunCycleResult(
+        run=_run_record(), ingestion=None,
+        pipeline_detail={"mode": "ingest_only"}, duration_seconds=0.1,
+    )
+    orchestrator = MagicMock()
+    orchestrator.run_cycle.return_value = cycle
+
+    runner = HostDueRunner(
+        cfg=cfg, sched=sched, host_ops=HostOpsConfig(brief_after_cycles=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator):
+        result = runner.run(as_of=as_of, alert=True)
+    assert result.idle is False
+    assert RunTrigger.REFRESH in result.due
+    orchestrator.run_cycle.assert_called_once_with(RunTrigger.REFRESH, as_of=as_of)
+
+
+def test_existing_failed_refresh_keeps_existing_cadence_behavior():
+    """F: an already-terminal FAILED REFRESH is untouched and continues to
+    participate in cadence exactly as it does today -- this correction
+    makes no policy decision about FAILED."""
+    failed = _orphaned_run_record(RunTrigger.REFRESH, started_ts=datetime(2026, 9, 8, 10, 24, tzinfo=IST))
+    failed = dataclasses.replace(failed, status=RunStatus.FAILED, finished_ts=datetime(2026, 9, 8, 10, 26, tzinfo=IST))
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, failed, None, None]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()) as mock_due:
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+    assert mock_due.call_args.kwargs["last_refresh_ts"] == failed.started_ts
+    repo.save_run.assert_not_called()
+
+
+def test_completed_refresh_keeps_existing_cadence_behavior():
+    """G: COMPLETED REFRESH continues existing cadence behavior."""
+    completed = _run_record(status=RunStatus.COMPLETED)
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, completed, None, None]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()) as mock_due:
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+    assert mock_due.call_args.kwargs["last_refresh_ts"] == completed.started_ts
+    repo.save_run.assert_not_called()
+
+
+def test_orphaned_premarket_reconciliation_lets_due_logic_decide():
+    """H: PREMARKET orphan reconciliation excludes the dead attempt from
+    this invocation's cadence input; existing_due_triggers() (real,
+    unmocked) then decides retry eligibility on its own -- same-day
+    07:00, before the configured 08:15 premarket run_at, so PREMARKET is
+    correctly still NOT due yet regardless of the orphan (proving this
+    fix defers to, rather than overrides, existing cadence logic)."""
+    orphan = _orphaned_run_record(RunTrigger.PREMARKET, started_ts=datetime(2026, 9, 8, 6, 0, tzinfo=IST))
+    repo = MagicMock()
+    repo.latest_run.side_effect = [orphan, None, None, None]
+    cfg, sched = _cfg_and_sched_for_due_at_daytime()
+
+    runner = HostDueRunner(
+        cfg=cfg, sched=sched, host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    result = runner.run(as_of=datetime(2026, 9, 8, 7, 0, tzinfo=IST), alert=True)
+    assert RunTrigger.PREMARKET not in result.due
+    reconciled = repo.save_run.call_args.args[0]
+    assert reconciled.status is RunStatus.FAILED
+    assert reconciled.trigger is RunTrigger.PREMARKET
+
+
+def test_orphaned_closing_reconciliation_lets_due_logic_decide():
+    """I: CLOSING orphan reconciliation behaves equivalently to PREMARKET/REFRESH."""
+    orphan = _orphaned_run_record(RunTrigger.CLOSING, started_ts=datetime(2026, 9, 8, 15, 45, tzinfo=IST))
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, None, orphan, None]
+    cfg, sched = _cfg_and_sched_for_due_at_daytime()
+    sched.closing.enabled = True
+    sched.closing.run_at = __import__("datetime").time(15, 45)
+    cycle = DryRunCycleResult(
+        run=_run_record(), ingestion=None,
+        pipeline_detail={"mode": "ingest_only"}, duration_seconds=0.1,
+    )
+    orchestrator = MagicMock()
+    orchestrator.run_cycle.return_value = cycle
+
+    runner = HostDueRunner(
+        cfg=cfg, sched=sched, host_ops=HostOpsConfig(brief_when_idle=False, brief_after_cycles=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator):
+        result = runner.run(as_of=datetime(2026, 9, 8, 15, 46, tzinfo=IST), alert=True)
+    assert RunTrigger.CLOSING in result.due
+    reconciled = repo.save_run.call_args.args[0]
+    assert reconciled.status is RunStatus.FAILED
+    assert reconciled.trigger is RunTrigger.CLOSING
+
+
+def test_orphaned_fast_reconciliation_lets_due_logic_decide():
+    """J: FAST orphan reconciliation behaves equivalently."""
+    orphan = _orphaned_run_record(RunTrigger.FAST, started_ts=datetime(2026, 9, 8, 10, 24, tzinfo=IST))
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, None, None, orphan]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()) as mock_due:
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+    assert mock_due.call_args.kwargs["last_fast_ts"] is None
+    reconciled = repo.save_run.call_args.args[0]
+    assert reconciled.status is RunStatus.FAILED
+    assert reconciled.trigger is RunTrigger.FAST
+
+
+def test_orphan_reconciliation_is_independent_per_trigger():
+    """K: trigger reconciliation is independent -- only the orphaned
+    REFRESH row is touched; healthy PREMARKET/CLOSING/FAST latest-run
+    rows are left completely alone."""
+    refresh_orphan = _orphaned_run_record(RunTrigger.REFRESH, started_ts=datetime(2026, 9, 8, 10, 24, tzinfo=IST))
+    premarket_completed = dataclasses.replace(_run_record(status=RunStatus.COMPLETED), trigger=RunTrigger.PREMARKET)
+    closing_completed = dataclasses.replace(_run_record(status=RunStatus.COMPLETED), trigger=RunTrigger.CLOSING)
+    fast_completed = dataclasses.replace(_run_record(status=RunStatus.COMPLETED), trigger=RunTrigger.FAST)
+    repo = MagicMock()
+    repo.latest_run.side_effect = [premarket_completed, refresh_orphan, closing_completed, fast_completed]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()) as mock_due:
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+
+    repo.save_run.assert_called_once()
+    assert repo.save_run.call_args.args[0].trigger is RunTrigger.REFRESH
+    assert mock_due.call_args.kwargs["last_premarket_date"] == premarket_completed.started_ts.date()
+    assert mock_due.call_args.kwargs["last_closing_date"] == closing_completed.started_ts.date()
+    assert mock_due.call_args.kwargs["last_fast_ts"] == fast_completed.started_ts
+
+
+def test_orphan_reconciliation_runs_the_due_trigger_exactly_once():
+    """L: no duplicate/overlapping execution -- reconciling the dead
+    REFRESH attempt and then running the now-eligible real REFRESH within
+    the SAME invocation results in exactly one `run_cycle` call, never two."""
+    orphan = _orphaned_run_record(RunTrigger.REFRESH, started_ts=datetime(2026, 9, 8, 10, 24, tzinfo=IST))
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, orphan, None, None]
+    cycle = DryRunCycleResult(
+        run=_run_record(), ingestion=None,
+        pipeline_detail={"mode": "ingest_only"}, duration_seconds=0.1,
+    )
+    orchestrator = MagicMock()
+    orchestrator.run_cycle.return_value = cycle
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_after_cycles=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with (
+        patch("athena.ops.scheduled_run.due_triggers", return_value=(RunTrigger.REFRESH,)),
+        patch("athena.ops.scheduled_run.DryRunCycleOrchestrator", return_value=orchestrator),
+    ):
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+    orchestrator.run_cycle.assert_called_once()
+
+
+def test_orphan_reconciliation_never_touches_unlocked_provenance_refresh():
+    """Mandatory false-reconciliation regression (Owner source review,
+    2026-09-08): a `cfg-symbol-validate` REFRESH row -- the dashboard's
+    on-demand single-symbol "Validate", which never acquires
+    CycleRunnerLock -- can be genuinely, legitimately RUNNING at the exact
+    moment a lock-holding HostDueRunner invocation checks `latest_run`.
+    That row must NEVER be reconciled to FAILED, and must continue to
+    participate in cadence exactly as before this correction (unchanged
+    pre-existing behavior, not a new provenance filter on cadence
+    itself)."""
+    live_symbol_validate_run = dataclasses.replace(
+        _orphaned_run_record(RunTrigger.REFRESH, started_ts=datetime(2026, 9, 8, 10, 47, tzinfo=IST)),
+        config_snapshot_id="cfg-symbol-validate",
+    )
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, live_symbol_validate_run, None, None]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()) as mock_due:
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+
+    repo.save_run.assert_not_called()
+    assert mock_due.call_args.kwargs["last_refresh_ts"] == live_symbol_validate_run.started_ts
+
+
+def test_orphan_reconciliation_never_touches_cfg_cli_provenance():
+    """Same danger, `athena cycle` (`cfg-cli`) provenance -- also never
+    acquires CycleRunnerLock."""
+    live_cli_run = dataclasses.replace(
+        _orphaned_run_record(RunTrigger.CLOSING, started_ts=datetime(2026, 9, 8, 15, 45, tzinfo=IST)),
+        config_snapshot_id="cfg-cli",
+    )
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, None, live_cli_run, None]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()) as mock_due:
+        runner.run(as_of=datetime(2026, 9, 8, 15, 46, tzinfo=IST), alert=True)
+
+    repo.save_run.assert_not_called()
+    assert mock_due.call_args.kwargs["last_closing_date"] == live_cli_run.started_ts.date()
+
+
+def test_orphan_reconciliation_does_touch_full_validation_provenance():
+    """The mirror-image proof: a genuinely dead `cfg-full-validation`
+    (owner-triggered "Validate All") REFRESH row IS reconciled, since that
+    path explicitly acquires the same CycleRunnerLock before running."""
+    orphan = dataclasses.replace(
+        _orphaned_run_record(RunTrigger.REFRESH, started_ts=datetime(2026, 9, 8, 10, 0, tzinfo=IST)),
+        config_snapshot_id="cfg-full-validation",
+    )
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, orphan, None, None]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()) as mock_due:
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+
+    repo.save_run.assert_called_once()
+    assert mock_due.call_args.kwargs["last_refresh_ts"] is None
+
+
+def test_orphan_reconciliation_does_touch_fast_revalidation_provenance():
+    """Same mirror-image proof for the FAST tier's own lock-transitive
+    provenance."""
+    orphan = dataclasses.replace(
+        _orphaned_run_record(RunTrigger.FAST, started_ts=datetime(2026, 9, 8, 10, 0, tzinfo=IST)),
+        config_snapshot_id="cfg-fast-revalidation",
+    )
+    repo = MagicMock()
+    repo.latest_run.side_effect = [None, None, None, orphan]
+
+    runner = HostDueRunner(
+        cfg=MagicMock(), sched=MagicMock(), host_ops=HostOpsConfig(brief_when_idle=False),
+        notify_cfg=MagicMock(), repo=repo, ingest_engine=MagicMock(), repo_root=Path("/tmp"),
+        tzinfo=IST, strategy_profile="p", alert_dispatcher=MagicMock(),
+    )
+    with patch("athena.ops.scheduled_run.due_triggers", return_value=()) as mock_due:
+        runner.run(as_of=datetime(2026, 9, 8, 10, 48, tzinfo=IST), alert=True)
+
+    repo.save_run.assert_called_once()
+    assert mock_due.call_args.kwargs["last_fast_ts"] is None
+
+
+def test_orphan_reconciliation_producer_inventory_is_complete_and_correctly_scoped():
+    """Architecture contract (replaces the narrower, now-insufficient
+    'HostDueRunner construction sites are lock-guarded' check): this test
+    fails if a future producer of a `RUNNING` PREMARKET/REFRESH/CLOSING/
+    FAST row is added without a conscious decision about whether it
+    belongs in `_LOCK_PROTECTED_CONFIG_SNAPSHOT_IDS`.
+
+    Enumerates every real `DryRunCycleOrchestrator(` construction site in
+    the repository (there are exactly five today) and proves, by source
+    scan, which ones actually acquire `CycleRunnerLock` -- then cross-
+    checks that set against the reconciliation allowlist exactly, in both
+    directions: every lock-protected provenance is allow-listed, and
+    every allow-listed provenance is genuinely lock-protected."""
+    import ast
+    import inspect
+    import pathlib
+
+    import athena.cli as cli_module
+    import athena.ops.full_validation as full_validation_module
+    import athena.ops.scheduled_run as scheduled_run_module
+    import athena.ops.serve_runtime as serve_runtime_module
+    from athena.ops.scheduled_run import _LOCK_PROTECTED_CONFIG_SNAPSHOT_IDS
+
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    src_root = repo_root / "src" / "athena"
+    construction_sites: list[tuple[str, str]] = []  # (file, config_snapshot_id)
+    for path in src_root.rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "DryRunCycleOrchestrator(" not in text:
+            continue
+        tree = ast.parse(text)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "DryRunCycleOrchestrator"
+            ):
+                snapshot_id = None
+                for kw in node.keywords:
+                    if kw.arg == "config_snapshot_id" and isinstance(kw.value, ast.Constant):
+                        snapshot_id = kw.value.value
+                construction_sites.append((str(path.relative_to(repo_root)), snapshot_id))
+
+    # Exactly five known construction sites today -- a new one changes
+    # this count, forcing a conscious update of this test (and, before
+    # that, of the allowlist above) rather than silently inheriting an
+    # unreviewed lock assumption.
+    assert len(construction_sites) == 5, construction_sites
+    snapshot_ids = {sid for _, sid in construction_sites}
+    assert snapshot_ids == {
+        "cfg-host-ops", "cfg-fast-revalidation", "cfg-full-validation",
+        "cfg-cli", "cfg-symbol-validate",
+    }
+
+    # `HostDueRunner` ("cfg-host-ops") is reachable only through its two
+    # known, lock-guarded callers.
+    cli_source = inspect.getsource(cli_module)
+    assert cli_source.count("HostDueRunner(") == 1
+    assert "CycleRunnerLock" in inspect.getsource(cli_module._cmd_run_due)
+    assert "self._lock.acquire()" in inspect.getsource(serve_runtime_module.CycleWorker._safe_tick)
+
+    # "cfg-fast-revalidation" has exactly one CALL site anywhere (its own
+    # `def` doesn't count), inside HostDueRunner.run() itself --
+    # transitively lock-protected by the same two callers above.
+    run_fast_call_sites = 0
+    for path in src_root.rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "run_fast_revalidation_cycle(" not in text:
+            continue
+        tree = ast.parse(text)
+        run_fast_call_sites += sum(
+            1 for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "run_fast_revalidation_cycle"
+        )
+    assert run_fast_call_sites == 1
+    assert "run_fast_revalidation_cycle(" in inspect.getsource(scheduled_run_module.HostDueRunner.run)
+
+    # "cfg-full-validation" explicitly acquires CycleRunnerLock in its own
+    # background job function before ever calling run_cycle.
+    assert "lock.acquire()" in inspect.getsource(full_validation_module._run_job)
+
+    # "cfg-cli" and "cfg-symbol-validate" must remain provably lock-free --
+    # if either ever gains CycleRunnerLock usage, this assertion (not the
+    # allowlist) is the thing that should force a reconsideration of
+    # whether it now belongs in `_LOCK_PROTECTED_CONFIG_SNAPSHOT_IDS`.
+    assert "CycleRunnerLock" not in inspect.getsource(cli_module._cmd_cycle)
+    import athena.ops.symbol_validate as symbol_validate_module
+    assert "CycleRunnerLock" not in inspect.getsource(symbol_validate_module)
+
+    lock_protected_provenances = {"cfg-host-ops", "cfg-fast-revalidation", "cfg-full-validation"}
+    assert _LOCK_PROTECTED_CONFIG_SNAPSHOT_IDS == lock_protected_provenances
+    assert lock_protected_provenances <= snapshot_ids
+    assert snapshot_ids - lock_protected_provenances == {"cfg-cli", "cfg-symbol-validate"}
 
 
 # Owner-reported (2026-08-01): on a weekend/holiday, Kite's quotes are

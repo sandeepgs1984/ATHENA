@@ -152,7 +152,81 @@ Keep `"provider": "file"` as default unless you intentionally run live.
 
 ---
 
-## 7. Related
+## 7. Orphaned RUNNING-row scheduler correction (2026-09-08)
+
+**Defect found:** `repository.latest_run()`/`list_runs()` never filter by
+`status` — they return whichever row has the newest `started_ts`,
+`RUNNING` included. If the process running a cycle dies mid-execution
+(observed twice in production on 2026-09-08: a `serve --with-cycles`
+process killed mid-tick by a port-bind failure, and a separate,
+unidentified process that also died mid-`run-due`), its `RUNNING` row is
+never converted to a terminal status — the in-process `try/except` in
+`DryRunCycleOrchestrator.run_cycle` (`scheduling/dry_run.py`) can only
+fire on a normal Python exception, not on the whole process exiting.
+`HostDueRunner.run()` (`ops/scheduled_run.py`) then computed
+`last_refresh_ts` (etc.) straight from that dead attempt's `started_ts`,
+delaying the next due REFRESH by up to a full `refresh_interval_minutes`
+for no reason — classified `ORPHAN_RUN_CAN_DELAY_DUE_CALCULATION_BUT_
+SELF_RECOVERS` (real, source-proven, bounded impact; never permanently
+suppressed a trigger, never caused overlapping execution, never touched
+business data).
+
+**Fix:** `HostDueRunner._reconcile_if_orphaned` (new, `ops/scheduled_run.py`).
+**Owner/Chief Architect source review (2026-09-08) found the first version
+of this fix over-claimed its own safety** — "any `RUNNING` row `run()`
+observes is provably dead" is true only for the subset of run producers
+that actually contend for `CycleRunnerLock`, not for every producer of a
+`RUNNING` PREMARKET/REFRESH/CLOSING/FAST row. A full repository audit of
+every `DryRunCycleOrchestrator(` construction site (exactly five) found:
+
+| `config_snapshot_id` | Producer | Acquires `CycleRunnerLock`? |
+|---|---|---|
+| `cfg-host-ops` | `HostDueRunner.run()` itself | Yes — via its own two callers, `_cmd_run_due` and `CycleWorker._safe_tick` (the only two places `HostDueRunner` is ever constructed) |
+| `cfg-fast-revalidation` | `fast_revalidation.run_fast_revalidation_cycle` | Yes, transitively — its one and only call site anywhere is inside `HostDueRunner.run()`'s own FAST branch |
+| `cfg-full-validation` | The owner-triggered "Validate All" job (`full_validation._run_job`) | Yes — explicitly calls `lock.acquire()` on the same lock before running |
+| `cfg-cli` | `athena cycle` (`cli._cmd_cycle`) | **No** — never references `CycleRunnerLock` |
+| `cfg-symbol-validate` | The dashboard's on-demand single-symbol "Validate" (`symbol_validate.validate_symbols`) | **No** — never references `CycleRunnerLock` |
+
+A `RUNNING` `cfg-cli`/`cfg-symbol-validate` row can therefore be
+genuinely, legitimately live at the exact moment a lock-holding
+`HostDueRunner` invocation checks `latest_run` — reconciling it would
+falsely mark a live, unrelated run as `FAILED`. The corrected
+implementation reconciles a `RUNNING` row **only when its
+`config_snapshot_id` is one of the three proven lock-protected values**
+(`_LOCK_PROTECTED_CONFIG_SNAPSHOT_IDS`); any other `RUNNING` row (a
+known-unlocked provenance, or an unrecognized future one) is passed
+through completely unchanged — exactly its pre-this-correction
+behavior. Reconciliation itself is otherwise unchanged: a durable
+`FAILED` via the existing `save_run` upsert (no schema change), treated
+as *absent* only for that one invocation's own due-calculation inputs
+so the now-eligible trigger can retry immediately. An **already-terminal**
+`FAILED` run (of any provenance) is completely untouched and continues
+to participate in cadence exactly as it does today — this fix takes no
+position on whether a genuine FAILED run should or shouldn't advance the
+clock; that remains a separate, still-open policy question, and this fix
+adds no provenance filter to ordinary (non-`RUNNING`) cadence inputs
+either — a `COMPLETED`/`FAILED` row of *any* provenance, including
+`cfg-full-validation`/`cfg-symbol-validate`, already could and still can
+advance/suppress the due-clock by simply having the newest `started_ts`
+for its trigger; this is a pre-existing characteristic of `latest_run()`
+this correction does not touch. Schema stays 18; no migration. 20 new
+tests in `tests/ops/test_host_ops.py`, including a mandatory regression
+proving a live `cfg-symbol-validate`/`cfg-cli` `RUNNING` row is never
+reconciled, mirror-image proofs that genuinely dead `cfg-host-ops`/
+`cfg-fast-revalidation`/`cfg-full-validation` rows still are, and a
+producer-inventory architecture test that fails if a sixth
+`DryRunCycleOrchestrator(` construction site is ever added without a
+conscious decision about its lock status.
+
+**Not fixed by this change, and not required for correctness:** the two
+specific orphaned rows already in the real `db/athena.db`
+(`run-refresh-20260908T102426-9a5f5a4e`, `run-refresh-20260908T104809-
+73e6fd88`) remain as historical `RUNNING` rows unless/until a future
+`HostDueRunner.run()` call for REFRESH happens to see one of them as
+`latest_run('REFRESH')` and reconciles it in the course of normal
+operation — no backfill/migration/cleanup script was written or run.
+
+## 8. Related
 
 - Cadence: `config/scheduling.json` + `athena due`
 - Kite daily auth: `docs/ops/KITE_LIVE_DATA.md` + `./kite-auth`

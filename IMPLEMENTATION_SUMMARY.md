@@ -6,6 +6,89 @@ status updated on approval.
 
 ---
 
+## Scheduler — orphaned RUNNING-row due-calculation correction
+
+**Summary.** Real production evidence (2026-09-08, while verifying ID-9's
+newly-activated capital policy against a genuine post-activation cycle)
+surfaced a separate, pre-existing scheduler correctness defect: two
+processes died mid-cycle in production that day, each leaving a `runs`
+row permanently stuck at `RUNNING`. `repository.latest_run()`/`list_runs()`
+never filter by `status`, so `HostDueRunner.run()` fed a dead attempt's
+`started_ts` straight into `due_triggers()`, delaying the next due
+REFRESH by up to a full `refresh_interval_minutes` for no reason.
+Classified `ORPHAN_RUN_CAN_DELAY_DUE_CALCULATION_BUT_SELF_RECOVERS` —
+real and source-proven, but bounded (self-recovers after one interval,
+never permanently suppresses a trigger, never causes overlapping
+execution via the real `fcntl`-based `CycleRunnerLock`, never touches
+business data).
+
+**Fix.** New `HostDueRunner._reconcile_if_orphaned` (`ops/scheduled_run.py`).
+**Owner/Chief Architect source review found the first version over-claimed
+its own safety**: "any `RUNNING` row `run()` observes is provably dead"
+holds only for producers that actually contend for `CycleRunnerLock`, not
+for all five real `DryRunCycleOrchestrator(` construction sites in the
+repository. Audited each by source: `cfg-host-ops` (`HostDueRunner.run()`
+itself) and `cfg-fast-revalidation` (`run_fast_revalidation_cycle`, whose
+one and only call site is inside that same `run()`) are lock-protected
+via `run()`'s own two callers (`_cmd_run_due`, `CycleWorker._safe_tick`);
+`cfg-full-validation` (the owner-triggered "Validate All" job) explicitly
+acquires the same lock itself; but `cfg-cli` (`athena cycle`) and
+`cfg-symbol-validate` (the dashboard's on-demand single-symbol "Validate")
+**never reference `CycleRunnerLock` at all** — a `RUNNING` row from
+either can be genuinely live at the exact moment a lock-holding
+`HostDueRunner` invocation checks `latest_run`. The corrected
+implementation reconciles a `RUNNING` row only when its
+`config_snapshot_id` is one of the three proven lock-protected values
+(`_LOCK_PROTECTED_CONFIG_SNAPSHOT_IDS`); any other `RUNNING` row is
+passed through unchanged. Reconciliation is otherwise unchanged: a
+durable `FAILED` via the existing `save_run` upsert (no new repository
+method, no schema change), treated as absent only for that one
+invocation's own due-calculation inputs. An already-terminal `FAILED`
+run of any provenance is untouched and keeps participating in cadence
+exactly as it does today — this deliberately does not resolve the
+separate, still-open question of whether FAILED *should* advance the
+clock, nor does it add a provenance filter to ordinary (non-`RUNNING`)
+cadence inputs (a `COMPLETED`/`FAILED` row of any provenance already
+could, and still can, advance/suppress the due-clock by simply having
+the newest `started_ts` — a pre-existing `latest_run()` characteristic,
+unrelated to and unchanged by this fix).
+
+**Tests.** 20 new tests in `tests/ops/test_host_ops.py`: reconciliation
+to FAILED, identity/audit-field preservation, machine-readable
+`detail_json`, exclusion from the current invocation's cadence marker,
+a real (unmocked) immediate-retry proof, existing FAILED/COMPLETED rows
+left untouched, PREMARKET/CLOSING/FAST equivalents, per-trigger
+independence, no duplicate cycle execution, a mandatory regression
+proving a live `cfg-symbol-validate`/`cfg-cli` `RUNNING` row is never
+reconciled, mirror-image proofs that genuinely dead `cfg-host-ops`/
+`cfg-fast-revalidation`/`cfg-full-validation` rows still are, and a
+producer-inventory architecture test enumerating all five real
+`DryRunCycleOrchestrator(` construction sites by AST scan and
+cross-checking the lock-protected allowlist against them exactly in
+both directions (fails if a sixth producer, or a change to any
+existing producer's lock status, is ever introduced without updating
+this test). Full repository suite: **3927 passed, 1 pre-existing
+unrelated skip, 0 failures**. `git diff --check` clean, diff scoped to
+exactly `src/athena/ops/scheduled_run.py` and its test file.
+
+**Not done, deliberately.** No backfill/migration/cleanup of the two
+real orphaned rows already in `db/athena.db` — the next genuine
+`HostDueRunner.run()` call for REFRESH will reconcile whichever one is
+then `latest_run('REFRESH')` in the ordinary course of operation. No
+production restart, no `run-due` invocation, no change to
+`--with-cycles` availability (production remained on a plain
+`athena-serve` process throughout, unrelated to this code fix). Schema
+unchanged at 18.
+
+**Status:** `SCHEDULER_ORPHAN_RUN_DUE_CALCULATION_CORRECTED`, ready for
+Owner/Chief Architect source review. ID-9 methodology and capital-policy
+activation are unaffected and remain frozen; ID-9 final closure remains
+pending genuine post-activation REFRESH evidence, which still requires
+production to actually be running with `--with-cycles` (or an
+equivalent scheduler) again.
+
+---
+
 ## My Portfolio — honest session header and BSE catalog fallback
 
 **Summary.** Operational fix, not an MP-NX milestone. One stale holding

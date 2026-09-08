@@ -6,6 +6,7 @@ Invoked by external launchd/cron via ``athena run-due``. No embedded scheduler.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,7 +17,8 @@ from athena.calendar.engine import CalendarEngine
 from athena.config.models import AthenaConfig, HostOpsConfig, NotificationsConfig, SchedulingConfig
 from athena.data.ingestion.engine import LiveIngestionEngine
 from athena.data.store.repository import SqliteRepository
-from athena.domain.enums import RunTrigger, SessionType
+from athena.domain.enums import RunStatus, RunTrigger, SessionType
+from athena.domain.run import RunRecord
 from athena.errors import AthenaError
 from athena.notifications import BriefingDispatcher
 from athena.notifications.decision_source import SqliteDecisionSummarySource
@@ -30,6 +32,25 @@ from athena.scheduling.dry_run import DryRunCycleResult, DryRunPipeline
 # ever be "fresh" on these days, so no PREMARKET/REFRESH/CLOSING trigger
 # should ever fire regardless of configured session hours.
 _NON_TRADING_SESSION_TYPES = frozenset({SessionType.WEEKEND, SessionType.HOLIDAY})
+
+# 2026-09-08 scheduler correctness correction: `DryRunCycleOrchestrator`
+# (the only writer of a `RUNNING` run row) has five real construction
+# sites in this repository -- `HostDueRunner.run()` itself
+# ("cfg-host-ops"), `fast_revalidation.run_fast_revalidation_cycle`
+# ("cfg-fast-revalidation", one call site, only reachable from inside
+# `run()`), the owner-triggered "Validate All" job
+# (`full_validation._run_job`, "cfg-full-validation", which explicitly
+# acquires the same `CycleRunnerLock` before running), `athena cycle`
+# (`cli._cmd_cycle`, "cfg-cli"), and the dashboard's on-demand
+# single-symbol "Validate" (`symbol_validate.validate_symbols`,
+# "cfg-symbol-validate"). Only the first three ever contend for
+# `CycleRunnerLock` -- `_reconcile_if_orphaned` below may reconcile a
+# `RUNNING` row ONLY when its `config_snapshot_id` is one of these three;
+# a "cfg-cli"/"cfg-symbol-validate" (or any unrecognized) `RUNNING` row
+# could be a genuinely live, unrelated run and must never be touched.
+_LOCK_PROTECTED_CONFIG_SNAPSHOT_IDS = frozenset(
+    {"cfg-host-ops", "cfg-fast-revalidation", "cfg-full-validation"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +132,82 @@ class HostDueRunner:
         context = calendar.context_for(as_of.date())
         return context.session_type not in _NON_TRADING_SESSION_TYPES
 
+    def _reconcile_if_orphaned(self, trigger: RunTrigger, *, as_of: datetime) -> RunRecord | None:
+        """Resolve the latest run of ``trigger``, reconciling it first if it
+        is a *provably* dead orphan.
+
+        **The lock-ownership proof is scope-limited, not universal.**
+        `DryRunCycleOrchestrator.run_cycle` -- the only place a `RUNNING`
+        row for PREMARKET/REFRESH/CLOSING/FAST is ever written -- has five
+        real construction sites in this repository, and only three of them
+        acquire the same `CycleRunnerLock` (`artifacts/locks/cycle-runner.lock`)
+        this invocation holds while `run()` executes:
+
+        - `config_snapshot_id="cfg-host-ops"` (`HostDueRunner.run()` itself,
+          `ops/scheduled_run.py`) -- locked, via its own two callers
+          (`_cmd_run_due`, `CycleWorker._safe_tick`, the only two places
+          `HostDueRunner` is ever constructed).
+        - `config_snapshot_id="cfg-fast-revalidation"` (`run_fast_revalidation_cycle`,
+          `ops/fast_revalidation.py`) -- locked transitively: it has exactly
+          one call site anywhere in the repo, inside `run()`'s own FAST
+          branch, so it can only ever run while `run()`'s own caller
+          already holds the lock.
+        - `config_snapshot_id="cfg-full-validation"` (the owner-triggered
+          "Validate All" background job, `ops/full_validation.py`) --
+          explicitly acquires the *same* `CycleRunnerLock`
+          (`_run_job`'s own `lock.acquire()`) before calling `run_cycle`.
+
+        Two more construction sites exist and are **not** lock-protected at
+        all: `config_snapshot_id="cfg-cli"` (`athena cycle`, `_cmd_cycle` in
+        `cli.py`) and `config_snapshot_id="cfg-symbol-validate"` (the
+        dashboard's on-demand single-symbol "Validate", `ops/symbol_validate.py`)
+        -- neither references `CycleRunnerLock` anywhere in its source, so
+        either can be genuinely, legitimately `RUNNING` at the exact moment
+        this invocation holds the lock (they simply don't contend for it).
+        A `RUNNING` row from either of those must **never** be reconciled --
+        doing so would falsely mark a live, unrelated run as `FAILED`.
+
+        So: a `RUNNING` row is reconciled to `FAILED` for durable audit
+        truth (never deleted, never silently reinterpreted as `COMPLETED`)
+        -- and, only for *this invocation's own* due-calculation inputs,
+        treated as absent so the now-eligible trigger can retry immediately
+        instead of waiting out a full interval again -- **only when its
+        `config_snapshot_id` is one of the three proven lock-protected
+        values.** Any other `RUNNING` row (a known-unlocked provenance, or
+        an unrecognized future one) is passed through completely unchanged
+        -- exactly the pre-existing, pre-this-correction behavior for that
+        row, since this correction has no basis to reason about it either
+        way.
+
+        A subsequent invocation always sees the durable result of whatever
+        happened (a reconciled `FAILED`, or the row's own real outcome) and
+        that row then participates in cadence exactly as any other
+        `FAILED`/`COMPLETED` run already does today -- this method makes no
+        change to that pre-existing, separate policy question, and it does
+        not add a provenance filter to ordinary (non-`RUNNING`) cadence
+        inputs, which continue to come from whichever run has the newest
+        `started_ts` for that trigger regardless of `config_snapshot_id`
+        (a pre-existing characteristic of `latest_run()`, unrelated to and
+        unchanged by this correction).
+        """
+        row = self._repo.latest_run(trigger.value)
+        if row is None:
+            return None
+        if row.status is not RunStatus.RUNNING:
+            return row
+        if row.config_snapshot_id not in _LOCK_PROTECTED_CONFIG_SNAPSHOT_IDS:
+            return row
+        reconciled = dataclasses.replace(row, status=RunStatus.FAILED, finished_ts=as_of)
+        self._repo.save_run(
+            reconciled,
+            detail={
+                "phase": "reconciled_orphan",
+                "reason": "previous RUNNING run cannot still own the cycle-runner lock "
+                "while this invocation holds it",
+            },
+        )
+        return None
+
     def run(self, *, as_of: datetime, send_brief: bool | None = None, alert: bool = True) -> HostDueRunResult:
         if as_of.tzinfo is None:
             raise ValueError("as_of must be timezone-aware")
@@ -119,16 +216,16 @@ class HostDueRunner:
         last_refresh_ts = None
         last_closing_date = None
         last_fast_ts = None
-        pre = self._repo.latest_run(RunTrigger.PREMARKET.value)
+        pre = self._reconcile_if_orphaned(RunTrigger.PREMARKET, as_of=as_of)
         if pre is not None:
             last_premarket_date = pre.started_ts.astimezone(self._tzinfo).date()
-        ref = self._repo.latest_run(RunTrigger.REFRESH.value)
+        ref = self._reconcile_if_orphaned(RunTrigger.REFRESH, as_of=as_of)
         if ref is not None:
             last_refresh_ts = ref.started_ts
-        closing = self._repo.latest_run(RunTrigger.CLOSING.value)
+        closing = self._reconcile_if_orphaned(RunTrigger.CLOSING, as_of=as_of)
         if closing is not None:
             last_closing_date = closing.started_ts.astimezone(self._tzinfo).date()
-        fast = self._repo.latest_run(RunTrigger.FAST.value)
+        fast = self._reconcile_if_orphaned(RunTrigger.FAST, as_of=as_of)
         if fast is not None:
             last_fast_ts = fast.started_ts
 
