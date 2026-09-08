@@ -119,6 +119,10 @@
         holdingActionPending: false,
         snapshot: null,
         changes: null,
+        timeline: null,
+        timelineKey: null,
+        timelineLoading: false,
+        timelineError: false,
         holdings: [],
         imports: [],
         snapshotRowsByKey: {},
@@ -1163,7 +1167,7 @@
     function myPortfolioChangeFieldValueHtml(field, side) {
         const raw = field?.[side];
         if (raw == null || raw === "") return "—";
-        const privateIds = new Set(["current_value", "pnl_pct", "target_reached"]);
+        const privateIds = new Set(["current_value", "pnl_pct", "target_reached", "last_price"]);
         if (myPortfolioState.valuesHidden && privateIds.has(field.field_id)) {
             return myPortfolioMaskedValue(`${field.label} masked`);
         }
@@ -1221,6 +1225,113 @@
             <h4>Since last sync</h4>
             ${note}${compared}${badgeHtml}${body}
         </div>`;
+    }
+
+    function myPortfolioReviewTimelinePresence(presence) {
+        if (presence === "ADDED") return "New in this snapshot";
+        if (presence === "REMOVED") return "Missing from this snapshot";
+        return "Changed";
+    }
+
+    function myPortfolioReviewTimelineEventHtml(event) {
+        const badges = [...(event.badges || [])];
+        if (event.sync_status === "PARTIAL") badges.unshift("Partial sync");
+        const badgeHtml = badges.length
+            ? `<div class="my-portfolio-change-badges">${badges.map(badge =>
+                `<span class="my-portfolio-change-badge">${escapeMyPortfolioHtml(myPortfolioDisplayChangeBadge(badge))}</span>`
+            ).join("")}</div>`
+            : "";
+        const when = event.generated_at
+            ? escapeMyPortfolioHtml(formatMyPortfolioTime(event.generated_at))
+            : "Snapshot time unavailable";
+        let body = "";
+        if (event.presence === "ADDED") {
+            body = `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-plus" aria-hidden="true"></i><span>This holding was not in the previous snapshot.</span></p>`;
+        } else if (event.presence === "REMOVED") {
+            body = `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-minus" aria-hidden="true"></i><span>This holding is missing from this snapshot.</span></p>`;
+        } else if ((event.fields || []).length) {
+            body = `<div class="my-portfolio-detail-grid">${event.fields.map(field =>
+                myPortfolioDetailRowHtml(
+                    field.label,
+                    `<span class="my-portfolio-change-delta">${myPortfolioChangeFieldValueHtml(field, "previous")} → ${myPortfolioChangeFieldValueHtml(field, "current")}</span>`,
+                    { icon: "fa-code-compare" }
+                )
+            ).join("")}</div>`;
+        }
+        return `<article class="my-portfolio-review-timeline-event">
+            <p class="my-portfolio-review-timeline-meta">
+                <span>${when}</span>
+                <span>${escapeMyPortfolioHtml(myPortfolioReviewTimelinePresence(event.presence))}</span>
+            </p>
+            ${badgeHtml}${body}
+        </article>`;
+    }
+
+    function myPortfolioReviewTimelineSection() {
+        if (myPortfolioState.timelineLoading) {
+            return `<div class="my-portfolio-detail-section" data-detail-section="review-timeline">
+                <h4>Review timeline</h4>
+                <p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Loading review timeline…</span></p>
+            </div>`;
+        }
+        if (myPortfolioState.timelineError) {
+            return `<div class="my-portfolio-detail-section" data-detail-section="review-timeline">
+                <h4>Review timeline</h4>
+                <p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Review timeline is unavailable.</span></p>
+            </div>`;
+        }
+        const timeline = myPortfolioState.timeline;
+        if (!timeline) {
+            return `<div class="my-portfolio-detail-section" data-detail-section="review-timeline">
+                <h4>Review timeline</h4>
+                <p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Unavailable until Portfolio Sync.</span></p>
+            </div>`;
+        }
+        const note = timeline.note
+            ? `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>${escapeMyPortfolioHtml(timeline.note)}</span></p>`
+            : "";
+        if (!timeline.comparison_available) {
+            return `<div class="my-portfolio-detail-section" data-detail-section="review-timeline">
+                <h4>Review timeline</h4>
+                ${note || `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Two completed snapshots are required to build a review timeline.</span></p>`}
+            </div>`;
+        }
+        if (!(timeline.events || []).length) {
+            return `<div class="my-portfolio-detail-section" data-detail-section="review-timeline">
+                <h4>Review timeline</h4>
+                ${note || `<p class="my-portfolio-detail-guidance muted"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>No tracked fields changed across recent snapshots.</span></p>`}
+            </div>`;
+        }
+        return `<div class="my-portfolio-detail-section" data-detail-section="review-timeline">
+            <h4>Review timeline</h4>
+            ${note}
+            <div class="my-portfolio-review-timeline">${timeline.events.map(myPortfolioReviewTimelineEventHtml).join("")}</div>
+        </div>`;
+    }
+
+    async function loadMyPortfolioReviewTimeline(key) {
+        myPortfolioState.timelineKey = key;
+        myPortfolioState.timeline = null;
+        myPortfolioState.timelineLoading = true;
+        myPortfolioState.timelineError = false;
+        try {
+            const response = await apiRequest(
+                `/api/v1/my-portfolio/snapshot/timeline?instrument_id=${encodeURIComponent(key)}`,
+                { skipToast: true }
+            );
+            if (myPortfolioState.timelineKey !== key) return;
+            myPortfolioState.timeline = response?.data || null;
+            myPortfolioState.timelineLoading = false;
+        } catch (err) {
+            if (myPortfolioState.timelineKey !== key) return;
+            myPortfolioState.timeline = null;
+            myPortfolioState.timelineLoading = false;
+            myPortfolioState.timelineError = true;
+        }
+        if (myPortfolioState.detailOpenKey === key) {
+            const row = myPortfolioState.snapshotRowsByKey[key];
+            if (row) renderMyPortfolioDetail(row);
+        }
     }
 
     function myPortfolioRiskLabel(value) {
@@ -2514,6 +2625,7 @@
         myPortfolioDetailBody.innerHTML = `
             ${myPortfolioDetailHero(row, review, trendLabel)}
             ${myPortfolioSinceLastSyncSection(row)}
+            ${myPortfolioReviewTimelineSection()}
             <div class="my-portfolio-detail-section" data-detail-section="position">
                 <h4>Position</h4>
                 <div class="my-portfolio-detail-grid">
@@ -2579,7 +2691,12 @@
             myPortfolioDetailSubtitle.textContent = `Qty ${formatMyPortfolioPrivateNumber(row.qty ?? row.quantity)} @ ${formatMyPortfolioPrivateMoney(row.avg_price)} avg`;
         }
         myPortfolioState.detailOpenKey = key;
+        myPortfolioState.timelineKey = key;
+        myPortfolioState.timeline = null;
+        myPortfolioState.timelineLoading = true;
+        myPortfolioState.timelineError = false;
         renderMyPortfolioDetail(row);
+        loadMyPortfolioReviewTimeline(key);
         resetMyPortfolioDetailScroll();
         openModal(myPortfolioDetailModal);
         window.requestAnimationFrame(resetMyPortfolioDetailScroll);

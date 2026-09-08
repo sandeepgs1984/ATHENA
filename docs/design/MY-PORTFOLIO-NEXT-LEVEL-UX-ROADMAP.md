@@ -54,10 +54,10 @@ This roadmap covers the full 14-item next-level UX inventory:
 | Column Profiles | MP-NX3 | Owner/Chief Architect approved and closed 2026-09-08. |
 | Pinned Rows | MP-NX3 | Owner/Chief Architect approved and closed 2026-09-08. |
 | Export Profiles | MP-NX3 | Owner/Chief Architect approved and closed 2026-09-08. |
-| Portfolio Heatmap | MP-NX4 | Implemented 2026-09-08: snapshot tiles sized by value, colored by existing fields. |
+| Portfolio Heatmap | MP-NX4 | Owner/Chief Architect approved and closed 2026-09-08. |
 | Inline Mini Sparklines | MP-NX4 | Not shipped: snapshot rows have no D1 close series; no new history fetch. |
-| Symbol Detail Review Timeline | MP-NX5 | Per-symbol evolution across prior snapshots. |
-| Watchlist / Opportunity Bridge | MP-NX5 | Contextual bridge to watchlist/opportunity surfaces if stable contracts exist. |
+| Symbol Detail Review Timeline | MP-NX5 | Implemented 2026-09-08: per-holding review timeline from recent snapshots. |
+| Watchlist / Opportunity Bridge | MP-NX5 | Skipped: no stable My Portfolio opportunity contract; no new ranking authorized. |
 | Notes / Owner Override Layer | MP-NX6 | Owner-authored thesis, reminder, watch condition, and follow-up state. |
 | Review Session Mode | MP-NX6 | Guided daily review workflow using queue/profile/filter inputs. |
 
@@ -195,6 +195,8 @@ Primary UX outcome:
 
 ### MP-NX4 — Portfolio Heatmap
 
+Owner/Chief Architect approved and closed 2026-09-08.
+
 Implemented 2026-09-08. Ready for Owner / Chief Architect review.
 
 Objective: add an at-a-glance concentration and performance surface.
@@ -222,6 +224,11 @@ Primary UX outcome:
 - Owner can see where capital, profit, loss, and attention are concentrated.
 
 ### MP-NX5 — Symbol Review Timeline
+
+Implemented 2026-09-08. Ready for Owner / Chief Architect review.
+
+Watchlist / Opportunity Bridge was skipped: no stable My Portfolio
+opportunity contract exists, and no new ranking methodology was authorized.
 
 Objective: make each holding's evolution inspectable.
 

@@ -45,6 +45,8 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioSnapshotRowChangeDTO,
     PortfolioSnapshotRowDTO,
     PortfolioSnapshotSummaryDTO,
+    PortfolioSnapshotTimelineDTO,
+    PortfolioSnapshotTimelineEventDTO,
     PortfolioStructuralReviewDTO,
     PortfolioSyncRunDTO,
     ResetMyPortfolioResultDTO,
@@ -76,6 +78,10 @@ from athena.portfolio.my_portfolio_contracts import (
 from athena.portfolio.snapshot_diff import (
     SnapshotCompareRow,
     diff_snapshot_rows,
+)
+from athena.portfolio.snapshot_timeline import (
+    TimelineSnapshotPoint,
+    build_symbol_timeline,
 )
 from athena.portfolio.sync import PortfolioSyncOrchestrator, utc_now
 
@@ -196,6 +202,8 @@ class MyPortfolioExportFile:
 
 class MyPortfolioService:
     """Coordinates My Portfolio import preview, confirmation, and audit reads."""
+
+    SNAPSHOT_TIMELINE_LIMIT = 8
 
     def __init__(
         self,
@@ -631,6 +639,98 @@ class MyPortfolioService:
                     ],
                 )
                 for change in changes
+            ],
+        )
+
+    def snapshot_review_timeline(self, instrument_id: str) -> PortfolioSnapshotTimelineDTO:
+        """Build a display-only review timeline for one holding.
+
+        Uses recent SUCCESS/PARTIAL snapshots that already have rows.
+        Never recalculates Portfolio Intelligence.
+        """
+
+        requested = instrument_id.strip()
+        if not requested:
+            raise MyPortfolioHoldingError("instrument_id is required")
+        current = self.latest_snapshot()
+        runs = self._repo.list_portfolio_snapshot_sync_runs(limit=self.SNAPSHOT_TIMELINE_LIMIT)
+        chronological = tuple(reversed(runs))
+        points: list[TimelineSnapshotPoint] = []
+        symbol = requested
+        appeared = False
+        for run in chronological:
+            rows = [
+                self._snapshot_row_to_dto(record)
+                for record in self._repo.list_portfolio_analysis_snapshots(
+                    str(run["sync_run_id"])
+                )
+            ]
+            match = next(
+                (
+                    row
+                    for row in rows
+                    if requested
+                    in {
+                        row.provenance.instrument_id,
+                        row.symbol,
+                    }
+                ),
+                None,
+            )
+            if match is not None:
+                appeared = True
+                symbol = match.symbol
+            points.append(
+                TimelineSnapshotPoint(
+                    snapshot_id=str(run["sync_run_id"]),
+                    generated_at=run["finished_at"] or run["started_at"],
+                    sync_status=str(run["status"]),
+                    row=self._snapshot_compare_row(match) if match is not None else None,
+                )
+            )
+        events = build_symbol_timeline(points)
+        latest_status = str(runs[0]["status"]) if runs else None
+        if len(runs) < 2:
+            note = "Two completed snapshots are required to build a review timeline."
+            comparison_available = False
+        elif not appeared:
+            note = "This holding is not in the recent snapshots."
+            comparison_available = True
+        elif not events:
+            note = "No tracked fields changed across recent snapshots."
+            comparison_available = True
+        else:
+            note = None
+            comparison_available = True
+        if latest_status == SyncRunStatus.PARTIAL.value:
+            extra = "Latest snapshot is a partial sync."
+            note = f"{note} {extra}" if note else extra
+        return PortfolioSnapshotTimelineDTO(
+            instrument_id=requested,
+            symbol=symbol,
+            current_snapshot_id=current.snapshot_id,
+            snapshot_count=len(runs),
+            comparison_available=comparison_available,
+            note=note,
+            events=[
+                PortfolioSnapshotTimelineEventDTO(
+                    snapshot_id=event.snapshot_id,
+                    previous_snapshot_id=event.previous_snapshot_id,
+                    generated_at=event.generated_at,
+                    sync_status=SyncRunStatus(event.sync_status),
+                    presence=event.presence,
+                    badges=list(event.badges),
+                    fields=[
+                        PortfolioSnapshotFieldChangeDTO(
+                            field_id=field.field_id,
+                            label=field.label,
+                            previous=field.previous,
+                            current=field.current,
+                        )
+                        for field in event.fields
+                    ],
+                )
+                for event in events
             ],
         )
 

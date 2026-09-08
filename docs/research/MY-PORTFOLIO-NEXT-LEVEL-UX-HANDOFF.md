@@ -71,11 +71,11 @@ The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 - Portfolio Command Dashboard: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Action Queue View: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Column Profiles: MP-NX3 — Owner/Chief Architect approved and closed 2026-09-08.
-- Portfolio Heatmap: MP-NX4 — implemented 2026-09-08, pending owner review.
-- Symbol Detail Review Timeline: MP-NX5.
+- Portfolio Heatmap: MP-NX4 — Owner/Chief Architect approved and closed 2026-09-08.
+- Symbol Detail Review Timeline: MP-NX5 — implemented 2026-09-08, pending owner review.
 - Change Since Last Sync: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
 - Risk Concentration Panel: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
-- Watchlist / Opportunity Bridge: MP-NX5.
+- Watchlist / Opportunity Bridge: MP-NX5 — skipped; no stable My Portfolio opportunity contract.
 - Notes / Owner Override Layer: MP-NX6.
 - Review Session Mode: MP-NX6.
 - Pinned Rows: MP-NX3 — Owner/Chief Architect approved and closed 2026-09-08.
@@ -194,7 +194,7 @@ Suggested tests:
 
 ### 4. MP-NX4 Portfolio Heatmap
 
-Implemented 2026-09-08. Ready for Owner / Chief Architect review.
+Owner/Chief Architect approved and closed 2026-09-08.
 
 What shipped:
 
@@ -231,6 +231,19 @@ Suggested tests:
 - browser or screenshot validation if the panel uses canvas/SVG.
 
 ### 5. MP-NX5 Symbol Review Timeline
+
+Implemented 2026-09-08. Ready for Owner / Chief Architect review.
+
+What shipped:
+
+- Review timeline inside the existing holding detail overlay, after Since last sync.
+- `GET /api/v1/my-portfolio/snapshot/timeline?instrument_id=…` over up to 8
+  recent SUCCESS/PARTIAL snapshots that already have rows.
+- Factual events from existing `snapshot_diff` fields plus timeline-only Last Price.
+- Partial syncs labeled honestly; privacy masking reused for money fields.
+- Watchlist / Opportunity Bridge skipped: `watchlist/` is strategy/scan
+  membership, not a My Portfolio opportunity contract. No new ranking.
+- Dashboard asset version `9.192.0`.
 
 Implementation approach:
 
@@ -293,8 +306,7 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-Review and approve MP-NX4.
+Review and approve MP-NX5.
 
-If accepted, authorize MP-NX5 only: Symbol Detail Review Timeline and
-Watchlist / Opportunity Bridge if a stable contract already exists. Do
-not start MP-NX5 until MP-NX4 is approved.
+If accepted, authorize MP-NX6 only: Owner Notes and Review Session Mode.
+Do not start MP-NX6 until MP-NX5 is approved.

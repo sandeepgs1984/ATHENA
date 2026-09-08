@@ -20,6 +20,7 @@ from athena.api.v1.dtos.portfolio import (
     PortfolioReconciliationChangeDTO,
     PortfolioSnapshotChangesDTO,
     PortfolioSnapshotDTO,
+    PortfolioSnapshotTimelineDTO,
     PortfolioSyncRunDTO,
     PortfolioSyncStartRequest,
     ResetMyPortfolioRequest,
@@ -343,5 +344,25 @@ def snapshot_changes(
     return AthenaResponse(
         status="success",
         data=service.snapshot_changes_since_previous(),
+        meta=_meta(request),
+    )
+
+
+@router.get(
+    "/snapshot/timeline",
+    response_model=AthenaResponse[PortfolioSnapshotTimelineDTO],
+    summary="Read a display-only review timeline for one My Portfolio holding",
+    status_code=status.HTTP_200_OK,
+    operation_id="getMyPortfolioSnapshotTimeline",
+)
+def snapshot_timeline(
+    request: Request,
+    instrument_id: str = Query(..., min_length=1),
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[PortfolioSnapshotTimelineDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.snapshot_review_timeline(instrument_id),
         meta=_meta(request),
     )

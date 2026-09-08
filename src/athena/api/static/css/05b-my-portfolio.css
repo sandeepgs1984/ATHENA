@@ -2349,6 +2349,10 @@
     background: rgba(56, 189, 248, 0.48);
 }
 
+.my-portfolio-detail-section[data-detail-section="review-timeline"]::before {
+    background: rgba(167, 139, 250, 0.48);
+}
+
 .my-portfolio-detail-section h4 {
     display: flex;
     align-items: center;
@@ -2390,6 +2394,35 @@
 
 .my-portfolio-detail-section[data-detail-section="since-last-sync"] h4::before {
     content: "\f362";
+}
+
+.my-portfolio-detail-section[data-detail-section="review-timeline"] h4::before {
+    content: "\f017";
+}
+
+.my-portfolio-review-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+}
+
+.my-portfolio-review-timeline-event {
+    padding-bottom: var(--space-12);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.my-portfolio-review-timeline-event:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.my-portfolio-review-timeline-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8) var(--space-12);
+    margin: 0 0 var(--space-8);
+    font-size: var(--text-0-78);
+    color: var(--text-muted);
 }
 
 .my-portfolio-detail-grid {

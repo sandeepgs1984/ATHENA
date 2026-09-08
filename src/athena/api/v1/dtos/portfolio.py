@@ -454,6 +454,34 @@ class PortfolioSnapshotChangesDTO(BaseModel):
     rows: list[PortfolioSnapshotRowChangeDTO] = Field(default_factory=list)
 
 
+class PortfolioSnapshotTimelineEventDTO(BaseModel):
+    """One factual older→newer comparison for a single holding."""
+
+    model_config = ConfigDict(frozen=True)
+
+    snapshot_id: str
+    previous_snapshot_id: str
+    generated_at: datetime | None = None
+    sync_status: SyncRunStatus
+    presence: str
+    badges: list[str] = Field(default_factory=list)
+    fields: list[PortfolioSnapshotFieldChangeDTO] = Field(default_factory=list)
+
+
+class PortfolioSnapshotTimelineDTO(BaseModel):
+    """Display-only review timeline for one holding across recent snapshots."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: str
+    symbol: str
+    current_snapshot_id: str
+    snapshot_count: int
+    comparison_available: bool
+    note: str | None = None
+    events: list[PortfolioSnapshotTimelineEventDTO] = Field(default_factory=list)
+
+
 class PortfolioSyncStartRequest(BaseModel):
     """Start a background Portfolio Sync run."""
 

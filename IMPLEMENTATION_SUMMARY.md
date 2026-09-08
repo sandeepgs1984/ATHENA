@@ -6,6 +6,56 @@ status updated on approval.
 
 ---
 
+## MP-NX5 — Symbol Review Timeline
+
+**Summary.** Added a display-only Review timeline inside the existing holding
+detail overlay so the owner can see what changed in one symbol across recent
+Portfolio Sync snapshots. MP-NX4 was Owner/Chief Architect approved and
+closed the same day before this work started.
+
+**What changed.** A new `GET /api/v1/my-portfolio/snapshot/timeline`
+endpoint walks up to eight recent SUCCESS/PARTIAL snapshot runs that
+already have rows, then uses the existing `snapshot_diff` fields plus a
+timeline-only Last Price delta. Events are newest-first and omit unchanged
+pairs. Partial syncs are labeled honestly. Privacy mode reuses the Since
+last sync masks for P&L %, current value, last price, and target-reached
+fields. Watchlist / Opportunity Bridge was not shipped: `watchlist/` is
+strategy/scan membership, not a My Portfolio opportunity contract, and no
+new ranking methodology was authorized. Dashboard assets advanced to
+`9.192.0`. No schema change and no NX2 badge-semantics change.
+
+**Tests.** Pure timeline tests cover one snapshot, unchanged pairs, newest-
+first Status/Action history, timeline-only Last Price, PARTIAL status, and
+added/removed presence. API/service tests cover missing snapshot 404, one
+snapshot empty state, multi-snapshot history, PARTIAL note, and a holding
+absent from recent snapshots. Dashboard hosting / release-gate contracts
+lock the Review timeline section, fetch URL, empty/partial copy, and
+cache-busted `9.192.0` assets.
+
+**Files created:** `src/athena/portfolio/snapshot_timeline.py`,
+`tests/runtime/test_portfolio_snapshot_timeline.py`,
+`tests/api/v1/test_my_portfolio_snapshot_timeline.py`.
+
+**Files modified:** `src/athena/data/store/repository.py`,
+`src/athena/api/v1/dtos/portfolio.py`,
+`src/athena/api/v1/dtos/__init__.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/api/v1/routers/my_portfolio.py`,
+`src/athena/api/static/index.html`,
+`src/athena/api/static/dashboard.css`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
+
+**Status:** Implementation complete 2026-09-08; ready for Owner / Chief
+Architect review. Not marked approved. Do not start MP-NX6 until authorized.
+
+---
+
 ## MP-NX4 — Portfolio Heatmap
 
 **Summary.** Added a presentation-only Portfolio heatmap between Risk
@@ -42,8 +92,8 @@ expanded Hide/Show toggles, localStorage keys, and cache-busted
 `docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
 `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
 
-**Status:** Implementation complete 2026-09-08; ready for Owner / Chief
-Architect review. Not marked approved. Do not start MP-NX5 until authorized.
+**Status:** Owner/Chief Architect approved and closed 2026-09-08. MP-NX5
+was authorized the same day.
 
 ---
 

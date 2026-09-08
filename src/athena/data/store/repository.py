@@ -2221,6 +2221,29 @@ class SqliteRepository:
         )
         return self._portfolio_sync_run_from_row(row) if row else None
 
+    def list_portfolio_snapshot_sync_runs(self, *, limit: int = 8) -> list[dict[str, object]]:
+        """Return recent SUCCESS/PARTIAL snapshot runs, newest first.
+
+        Uses the same snapshot-exists rule as
+        ``latest_portfolio_snapshot_sync_run``. No schema change.
+        """
+
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        rows = self._query_all(
+            "SELECT r.sync_run_id, r.started_at, r.finished_at, r.status, r.total_holdings, "
+            "r.succeeded_holdings, r.failed_holdings, r.market_data_through, "
+            "r.validation_run_id, r.analysis_version, r.progress_json, r.per_symbol_json, "
+            "r.error_json, r.provenance_json "
+            "FROM portfolio_sync_runs r "
+            "WHERE r.status IN (?,?) "
+            "AND EXISTS (SELECT 1 FROM portfolio_analysis_snapshots s "
+            "WHERE s.sync_run_id=r.sync_run_id) "
+            "ORDER BY r.finished_at DESC, r.started_at DESC, r.sync_run_id DESC LIMIT ?",
+            (SyncRunStatus.SUCCESS.value, SyncRunStatus.PARTIAL.value, limit),
+        )
+        return [self._portfolio_sync_run_from_row(row) for row in rows]
+
     def confirm_portfolio_import(
         self,
         *,
