@@ -16,9 +16,18 @@ from zoneinfo import ZoneInfo
 from athena.data.store.repository import SqliteRepository
 from athena.domain.enums import Timeframe
 from athena.domain.market import Candle, Instrument
-from athena.ops.symbol_validate import _index_instrument_needs_refresh, _indices_to_catch_up
+import pytest
+
+from athena.errors import DataValidationError
+from athena.ops.owner_candidates import SqliteCandidateStore
+from athena.ops.symbol_validate import (
+    _index_instrument_needs_refresh,
+    _indices_to_catch_up,
+    validate_symbols,
+)
 
 IST = ZoneInfo("Asia/Kolkata")
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 
 
 def _candle(iid: str, day: date, close: str = "100") -> Candle:
@@ -99,3 +108,30 @@ class TestIndicesToCatchUp:
 
     def test_empty_stale_list(self):
         assert _indices_to_catch_up([], max_to_catch_up=2) == []
+
+
+def test_validate_symbols_can_skip_unresolved_catalog_misses(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = SqliteRepository(tmp_path / "athena.db")
+    repo.initialize()
+    SqliteCandidateStore(repo).upsert_candidate(symbol="HFCL", notes="test", active=True)
+
+    def fake_resolve(config_dir, symbols, *, repo_root=None, exchange=None):
+        return object(), {}, [str(symbol).upper() for symbol in symbols]
+
+    monkeypatch.setattr("athena.ops.symbol_validate.resolve_against_catalog", fake_resolve)
+    as_of = datetime(2026, 9, 7, 15, 30, tzinfo=IST)
+    result = validate_symbols(
+        repo,
+        CONFIG_DIR,
+        symbols=["HFCL"],
+        as_of=as_of,
+        require_all_resolved=False,
+    )
+    assert result.status == "skipped"
+    assert result.skipped_symbols == ("HFCL",)
+    with pytest.raises(DataValidationError, match="symbols not in Kite catalog: HFCL"):
+        validate_symbols(repo, CONFIG_DIR, symbols=["HFCL"], as_of=as_of)
+    repo.close()

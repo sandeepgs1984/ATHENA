@@ -6,6 +6,53 @@ status updated on approval.
 
 ---
 
+## My Portfolio — honest session header and BSE catalog fallback
+
+**Summary.** Operational fix, not an MP-NX milestone. One stale holding
+(HFCL stored as `NSE:HFCL` after it left NSE) pinned
+`summary.market_data_through` to 2 Sept and aborted Portfolio Sync refresh
+for every other name because `validate_symbols` raised on a single Kite
+catalog miss. HFCL still trades on BSE.
+
+**What changed.** The header now groups `snapshot.rows[].price_as_of` by
+IST session date and names the lagging holdings instead of presenting the
+global min as the whole book. `summary.market_data_through` stays the min
+for NX2/import contracts. Portfolio Sync refresh calls
+`validate_symbols(..., require_all_resolved=False)` so NSE misses skip
+instead of aborting the batch. Misses and existing BSE holdings are
+resolved against the BSE catalog; an NSE holding that only exists on BSE
+is remapped (`NSE:HFCL` → `BSE:HFCL`) with `provenance.exchange_remaps`
+and ingested on BSE. Sync re-reads holdings after refresh so the new id
+is analyzed. Import auto-resolve uses the same runner. Dashboard assets
+advanced to `9.193.0`. No live LTP, no schema migration, no NX6 work.
+
+**Tests.** Repository remap + conflict. `validate_symbols` skip vs
+fail-loud. Validation-runner NSE miss → BSE remap. Import fakes accept
+the new kwargs. Hosting/release-gate lock the mixed-session header helper
+and `9.193.0` assets.
+
+**Files created:** `tests/api/v1/test_my_portfolio_refresh_catalog.py`.
+
+**Files modified:** `src/athena/ops/symbol_validate.py`,
+`src/athena/data/providers/factory.py`,
+`src/athena/data/providers/kite_provider.py`,
+`src/athena/data/store/repository.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/portfolio/sync.py`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/index.html`,
+`src/athena/api/static/dashboard.css`,
+`tests/ops/test_symbol_validate.py`,
+`tests/api/v1/test_my_portfolio_import_api.py`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`, this file.
+
+**Status:** Implementation complete 2026-09-08. MP-NX5 remains pending
+owner review. Do not start MP-NX6 until authorized.
+
+---
+
 ## MP-NX5 — Symbol Review Timeline
 
 **Summary.** Added a display-only Review timeline inside the existing holding

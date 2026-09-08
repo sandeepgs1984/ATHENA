@@ -160,6 +160,9 @@ class PortfolioSyncOrchestrator:
             refresh_required_symbols,
             refreshed_symbols,
         ) = self._refresh_stale_daily_data(sync_run_id, holdings)
+        # Re-read holdings after refresh so an NSE→BSE remap is analyzed
+        # against the new canonical instrument id.
+        holdings = self._repo.list_portfolio_holdings()
         # Re-read persisted decisions only after scoped validation has had a
         # chance to ingest candles and emit same-session decisions.
         decisions = self._latest_decisions_by_instrument()

@@ -17,6 +17,7 @@ def build_market_data_provider(
     base_dir: Path | None = None,
     provider_name: str | None = None,
     kite_symbols: list[str] | None = None,
+    kite_exchange: str | None = None,
 ) -> MarketDataProvider:
     """Select provider by ``ingestion.provider`` (or explicit ``provider_name``).
 
@@ -36,6 +37,7 @@ def build_market_data_provider(
             config_dir,
             symbols=kite_symbols,
             strict_symbol_filter=kite_symbols is None,
+            exchange=kite_exchange,
         )
     raise ConfigError(
         f"ingestion.provider '{name}' is not supported; allowed: 'file', 'kite'"

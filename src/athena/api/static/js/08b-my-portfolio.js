@@ -596,6 +596,61 @@
         return String(formatDecisionTime(value)).replace(/([ap]m)IST$/i, "$1 IST");
     }
 
+    function myPortfolioSessionDateKey(value) {
+        const dt = new Date(value);
+        if (Number.isNaN(dt.getTime())) return "";
+        return new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).format(dt);
+    }
+
+    function myPortfolioMarketSessionLabel(snapshot) {
+        const rows = snapshot?.rows || [];
+        if (!rows.length) {
+            const fallback = snapshot?.summary?.market_data_through;
+            return fallback
+                ? `Latest accepted market session through ${formatMyPortfolioTime(fallback)}`
+                : "Latest accepted market session unavailable";
+        }
+        const groups = new Map();
+        for (const row of rows) {
+            const raw = row.price_as_of;
+            const key = raw ? myPortfolioSessionDateKey(raw) : "unavailable";
+            const group = groups.get(key) || { count: 0, symbols: [], raw: raw || null };
+            group.count += 1;
+            group.symbols.push(row.symbol);
+            groups.set(key, group);
+        }
+        const dated = [...groups.entries()]
+            .filter(([key]) => key !== "unavailable")
+            .sort((left, right) => {
+                if (right[1].count !== left[1].count) return right[1].count - left[1].count;
+                return String(right[0]).localeCompare(String(left[0]));
+            });
+        if (!dated.length) return "Latest accepted market session unavailable";
+        const [majorityKey, majority] = dated[0];
+        const through = formatMyPortfolioTime(majority.raw);
+        const stale = dated.filter(([key]) => key !== majorityKey);
+        const missing = groups.get("unavailable");
+        if (!stale.length && !missing) {
+            return `Latest accepted market session through ${through}`;
+        }
+        const parts = [`${majority.count} holdings through ${through}`];
+        for (const [, group] of stale) {
+            const names = group.symbols.length <= 3
+                ? group.symbols.join(", ")
+                : `${group.symbols.length} holdings`;
+            parts.push(`${names} through ${formatMyPortfolioTime(group.raw)}`);
+        }
+        if (missing) {
+            parts.push(`${missing.count} holding${missing.count === 1 ? "" : "s"} have no accepted session`);
+        }
+        return parts.join("; ");
+    }
+
     const MY_PORTFOLIO_SORT_LABELS = {
         symbol: "Symbol",
         quantity: "Qty",
@@ -2259,9 +2314,7 @@
                 ? formatMyPortfolioTime(summary.last_synced_at)
                 : "—";
         }
-        myPortfolioMarketDataThrough.textContent = summary?.market_data_through
-            ? `Latest accepted market session through ${formatMyPortfolioTime(summary.market_data_through)}`
-            : "Latest accepted market session unavailable";
+        myPortfolioMarketDataThrough.textContent = myPortfolioMarketSessionLabel(snapshot);
         if (hasLegacyAnalysis) {
             showMyPortfolioAlert(
                 "Portfolio analysis is from a legacy interpretation version. Sync Portfolio to regenerate current Trend, Setup, and Daily Review evidence.",

@@ -120,6 +120,7 @@ class KiteProvider:
         symbols: list[str] | None = None,
         strict_symbol_filter: bool = True,
         allow_full_catalog: bool = False,
+        exchange: str | None = None,
     ) -> KiteProvider:
         from athena.config.loader import (
             load_index_intelligence_config,
@@ -136,8 +137,13 @@ class KiteProvider:
                 for item in index_config.tracked_indices
                 if item.enabled
             ]
+        updates: dict[str, object] = {}
         if symbols is not None:
-            config = config.model_copy(update={"symbols": list(symbols)})
+            updates["symbols"] = list(symbols)
+        if exchange is not None:
+            updates["exchange"] = exchange.strip().upper()
+        if updates:
+            config = config.model_copy(update=updates)
         if transport is None:
             transport = UrllibKiteTransport(
                 base_url=config.base_url,

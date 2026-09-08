@@ -386,14 +386,13 @@ class MyPortfolioService:
                 logger.warning("My Portfolio auto-resolve failed for %s", symbol, exc_info=True)
 
     def _auto_resolve_one_symbol(self, symbol: str) -> None:
-        from athena.ops.symbol_validate import validate_symbols
-
-        assert self._config_dir is not None  # narrowed by the caller
-        bare = self._ensure_candidates_registered([symbol])[0]
+        runner = self._validation_runner()
+        if runner is None:
+            return
         as_of, _tz = self._expected_analysis_session()
         if as_of is None:
             as_of = datetime.now(tz=timezone.utc)
-        validate_symbols(self._repo, self._config_dir, symbols=[bare], as_of=as_of, repo_root=self._repo_root)
+        runner([symbol], as_of)
 
     def _ensure_candidates_registered(self, symbols: list[str]) -> list[str]:
         """Register any of these symbols as an owner-candidate if it isn't
@@ -931,12 +930,22 @@ class MyPortfolioService:
             return
         self._repo.mark_interrupted_portfolio_sync_runs(interrupted_at=utc_now())
 
+    def _portfolio_holding_for_symbol(self, symbol: str):
+        from athena.ops.owner_candidates import normalize_candidate_symbol
+
+        bare = normalize_candidate_symbol(symbol)
+        for exchange in ("NSE", "BSE"):
+            holding = self._repo.get_portfolio_holding(f"{exchange}:{bare}")
+            if holding is not None:
+                return holding
+        return None
+
     def _validation_runner(self):
         if self._config_dir is None:
             return None
 
         def run(symbols, as_of: datetime) -> str | None:
-            from athena.ops.symbol_validate import validate_symbols
+            from athena.ops.symbol_validate import resolve_against_catalog, validate_symbols
 
             # A holding whose instrument only ever came from a `symbol_master`
             # catalog match (never "Add & validate", never a prior My
@@ -944,14 +953,88 @@ class MyPortfolioService:
             # candidate — validate_symbols hard-requires that, so register
             # first rather than let it raise on every refresh attempt.
             bare_symbols = self._ensure_candidates_registered(list(symbols))
-            result = validate_symbols(
+            nse_symbols: list[str] = []
+            bse_symbols: list[str] = []
+            for bare in bare_symbols:
+                holding = self._portfolio_holding_for_symbol(bare)
+                exchange = (
+                    holding.instrument_id.split(":", 1)[0].upper()
+                    if holding is not None
+                    else "NSE"
+                )
+                if exchange == "BSE":
+                    bse_symbols.append(bare)
+                else:
+                    nse_symbols.append(bare)
+
+            last_run_id: str | None = None
+            nse_unresolved: list[str] = []
+            if nse_symbols:
+                nse_result = validate_symbols(
+                    self._repo,
+                    self._config_dir,
+                    symbols=nse_symbols,
+                    as_of=as_of,
+                    repo_root=self._repo_root,
+                    require_all_resolved=False,
+                )
+                last_run_id = nse_result.run_id or last_run_id
+                nse_unresolved = list(nse_result.skipped_symbols)
+
+            bse_candidates = list(dict.fromkeys([*bse_symbols, *nse_unresolved]))
+            if not bse_candidates:
+                return last_run_id
+
+            try:
+                _provider, bse_map, _bse_miss = resolve_against_catalog(
+                    self._config_dir,
+                    bse_candidates,
+                    repo_root=self._repo_root,
+                    exchange="BSE",
+                )
+            except Exception:
+                logger.warning(
+                    "BSE catalog lookup failed for %s",
+                    bse_candidates,
+                    exc_info=True,
+                )
+                return last_run_id
+
+            for bare in bse_candidates:
+                target = bse_map.get(bare)
+                if not target:
+                    continue
+                holding = self._portfolio_holding_for_symbol(bare)
+                if holding is None or holding.instrument_id == target:
+                    continue
+                try:
+                    self._repo.remap_portfolio_holding_instrument_id(
+                        from_instrument_id=holding.instrument_id,
+                        to_instrument_id=target,
+                        updated_at=utc_now(),
+                        reason="NSE catalog miss; resolved on BSE",
+                    )
+                except RepositoryError:
+                    logger.warning(
+                        "Could not remap %s to %s",
+                        holding.instrument_id,
+                        target,
+                        exc_info=True,
+                    )
+
+            bse_refresh = [bare for bare in bse_candidates if bare in bse_map]
+            if not bse_refresh:
+                return last_run_id
+            bse_result = validate_symbols(
                 self._repo,
                 self._config_dir,
-                symbols=bare_symbols,
+                symbols=bse_refresh,
                 as_of=as_of,
                 repo_root=self._repo_root,
+                exchange="BSE",
+                require_all_resolved=False,
             )
-            return result.run_id
+            return bse_result.run_id or last_run_id
 
         return run
 

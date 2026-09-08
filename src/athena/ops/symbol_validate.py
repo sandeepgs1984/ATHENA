@@ -48,6 +48,7 @@ class SymbolValidateResult:
     detail: str = ""
     as_of: datetime | None = None
     as_of_mode: str | None = None
+    skipped_symbols: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -61,6 +62,7 @@ class SymbolValidateResult:
             "detail": self.detail,
             "as_of": self.as_of.isoformat() if self.as_of is not None else None,
             "as_of_mode": self.as_of_mode,
+            "skipped_symbols": list(self.skipped_symbols),
         }
 
 
@@ -69,6 +71,7 @@ def resolve_against_catalog(
     symbols: Sequence[str],
     *,
     repo_root: Path | None = None,
+    exchange: str | None = None,
 ) -> tuple[MarketDataProvider, dict[str, str], list[str]]:
     """Resolve bare symbols against the Kite catalog.
 
@@ -89,6 +92,7 @@ def resolve_against_catalog(
         base_dir=Path(repo_root) if repo_root else Path.cwd(),
         provider_name="kite",
         kite_symbols=bare,
+        kite_exchange=exchange,
     )
     catalog = provider.instruments()
     by_symbol = {display_symbol(i.instrument_id): i.instrument_id for i in catalog}
@@ -157,6 +161,8 @@ def validate_symbols(
     symbols: list[str],
     as_of: datetime,
     repo_root: Path | None = None,
+    exchange: str | None = None,
+    require_all_resolved: bool = True,
 ) -> SymbolValidateResult:
     """Ingest + UniverseEngine + scan for the given symbols only (must already be candidates)."""
     if as_of.tzinfo is None:
@@ -183,11 +189,26 @@ def validate_symbols(
         )
 
     provider, by_symbol, unresolved = resolve_against_catalog(
-        config_dir, bare, repo_root=root
+        config_dir, bare, repo_root=root, exchange=exchange
     )
-    if unresolved:
+    if unresolved and require_all_resolved:
         raise DataValidationError(
             "symbols not in Kite catalog: " + ", ".join(unresolved)
+        )
+    if unresolved:
+        bare = [sym for sym in bare if sym not in set(unresolved)]
+    if not bare:
+        return SymbolValidateResult(
+            run_id="",
+            status="skipped",
+            symbols=(),
+            eligible=0,
+            excluded=0,
+            decisions=0,
+            qualified=0,
+            detail="symbols not in Kite catalog: " + ", ".join(unresolved),
+            as_of=as_of,
+            skipped_symbols=tuple(unresolved),
         )
     resolved = [by_symbol[sym] for sym in bare]
     catalog = provider.instruments()
@@ -268,4 +289,5 @@ def validate_symbols(
         detail=str(pipe.get("mode") or ""),
         as_of=as_of,
         as_of_mode=None,
+        skipped_symbols=tuple(unresolved),
     )

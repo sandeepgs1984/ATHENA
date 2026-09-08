@@ -47,6 +47,7 @@ Likely files:
 - `src/athena/api/v1/dtos/portfolio.py`
 - `src/athena/portfolio/my_portfolio_contracts.py`
 - `src/athena/portfolio/sync.py`
+- `src/athena/ops/symbol_validate.py`
 - `src/athena/api/static/index.html`
 - `src/athena/api/static/css/05b-my-portfolio.css`
 - `src/athena/api/static/js/08b-my-portfolio.js`
@@ -63,6 +64,21 @@ Existing dashboard patterns to preserve:
 - compact/full holdings table modes;
 - modal/detail overlay scroll reset;
 - export popover with server-owned export behavior.
+
+## Operational note (2026-09-08) — session header and HFCL/BSE
+
+Not an MP-NX milestone. One stale name was pinning the market-session
+header and aborting Portfolio Sync refresh.
+
+- Header copy is presentation-only: group `price_as_of` by IST date and
+  name lagging holdings. `summary.market_data_through` remains the min.
+- Refresh must not raise on a single Kite catalog miss. Skip the miss,
+  ingest the rest.
+- Kite `kite.json` stays `exchange: NSE`. If a holding is missing on NSE
+  but present on BSE (HFCL), remap `NSE:SYMBOL` → `BSE:SYMBOL` and ingest
+  BSE. Timeline/history will treat the two ids as different keys.
+- Live LTP on this page still needs a separate ADR. Do not add it here.
+- Dashboard assets: `9.193.0`. This is not MP-NX6.
 
 ## Complete 14-Feature Coverage Checklist
 

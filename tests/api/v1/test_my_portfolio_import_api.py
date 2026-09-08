@@ -362,15 +362,15 @@ def _fake_validate_symbols_adds_instrument(*, exchange: str = "NSE"):
     ingestion path would do — never fabricates holdings data, only makes
     the symbol resolvable."""
 
-    def fake(repo, config_dir, *, symbols, as_of, repo_root=None):
+    def fake(repo, config_dir, *, symbols, as_of, repo_root=None, **_kwargs):
         for symbol in symbols:
             repo.upsert_instrument(_instrument(f"{exchange}:{symbol}", symbol, exchange=exchange))
-        return type("Result", (), {"run_id": "fake-validate-run"})()
+        return type("Result", (), {"run_id": "fake-validate-run", "skipped_symbols": ()})()
 
     return fake
 
 
-def _fake_validate_symbols_always_fails(repo, config_dir, *, symbols, as_of, repo_root=None):
+def _fake_validate_symbols_always_fails(repo, config_dir, *, symbols, as_of, repo_root=None, **_kwargs):
     raise RuntimeError("no Kite session configured (simulated)")
 
 
@@ -592,9 +592,9 @@ def test_validation_runner_registers_owner_candidate_before_validating(
 
     calls: list[list[str]] = []
 
-    def fake_validate_symbols(repo_arg, config_dir, *, symbols, as_of, repo_root=None):
+    def fake_validate_symbols(repo_arg, config_dir, *, symbols, as_of, repo_root=None, **_kwargs):
         calls.append(list(symbols))
-        return type("Result", (), {"run_id": "fake-validate-run"})()
+        return type("Result", (), {"run_id": "fake-validate-run", "skipped_symbols": ()})()
 
     monkeypatch.setattr("athena.ops.symbol_validate.validate_symbols", fake_validate_symbols)
 

@@ -1892,6 +1892,74 @@ class SqliteRepository:
             raise RepositoryError("HOLDING_NOT_FOUND")
         return refreshed
 
+    def remap_portfolio_holding_instrument_id(
+        self,
+        *,
+        from_instrument_id: str,
+        to_instrument_id: str,
+        updated_at: datetime,
+        reason: str,
+    ) -> CanonicalPortfolioHolding:
+        """Move one holding to a different canonical instrument id.
+
+        Used when the original exchange listing no longer resolves (for
+        example NSE:HFCL after the name left NSE) but the same symbol still
+        trades on another exchange. Quantity and avg price stay unchanged.
+        """
+
+        if from_instrument_id == to_instrument_id:
+            existing = self.get_portfolio_holding(from_instrument_id)
+            if existing is None:
+                raise RepositoryError("HOLDING_NOT_FOUND")
+            return existing
+        if ":" not in to_instrument_id:
+            raise RepositoryError("INVALID_CANONICAL_INSTRUMENT")
+        try:
+            with self._lock:
+                with self._conn:
+                    row = self._conn.execute(
+                        "SELECT instrument_id, quantity, avg_price, imported_at, updated_at, "
+                        "source_import_id, source_row_id, provenance_json "
+                        "FROM portfolio_holdings WHERE instrument_id=?",
+                        (from_instrument_id,),
+                    ).fetchone()
+                    if row is None:
+                        raise RepositoryError("HOLDING_NOT_FOUND")
+                    conflict = self._conn.execute(
+                        "SELECT instrument_id FROM portfolio_holdings WHERE instrument_id=?",
+                        (to_instrument_id,),
+                    ).fetchone()
+                    if conflict is not None:
+                        raise RepositoryError("HOLDING_ALREADY_EXISTS")
+                    existing = self._portfolio_holding_from_row(row)
+                    provenance = dict(existing.provenance)
+                    remaps = list(provenance.get("exchange_remaps", []))
+                    remaps.append(
+                        {
+                            "remapped_at": updated_at.isoformat(),
+                            "from_instrument_id": from_instrument_id,
+                            "to_instrument_id": to_instrument_id,
+                            "reason": reason,
+                        }
+                    )
+                    provenance["exchange_remaps"] = remaps
+                    self._conn.execute(
+                        "UPDATE portfolio_holdings SET instrument_id=?, updated_at=?, "
+                        "provenance_json=? WHERE instrument_id=?",
+                        (
+                            to_instrument_id,
+                            updated_at.isoformat(),
+                            json.dumps(provenance, sort_keys=True),
+                            from_instrument_id,
+                        ),
+                    )
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"remap portfolio holding failed: {exc}") from exc
+        refreshed = self.get_portfolio_holding(to_instrument_id)
+        if refreshed is None:
+            raise RepositoryError("HOLDING_NOT_FOUND")
+        return refreshed
+
     def delete_portfolio_holding(self, *, instrument_id: str) -> bool:
         """Owner-initiated removal of one holding. Returns False if it was absent."""
 

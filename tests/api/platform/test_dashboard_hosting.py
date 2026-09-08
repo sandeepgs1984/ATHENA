@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.192.0" in html
-    assert "dashboard.js?v=9.192.0" in html
+    assert "dashboard.css?v=9.193.0" in html
+    assert "dashboard.js?v=9.193.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -552,7 +552,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css?v=9.192.0");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.193.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
@@ -972,6 +972,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Portfolio analysis is from a legacy interpretation version" in js
     assert "Sync Portfolio to regenerate current Trend, Setup, and Daily Review evidence" in js
     assert "Latest accepted market session through" in js
+    assert "function myPortfolioMarketSessionLabel" in js
+    assert "holdings through ${through}" in js
     assert "myPortfolioConfirmActions.hidden = !myPortfolioState.preview" in js
     assert "formatMyPortfolioTime(row.price_as_of)" in js
     assert "myPortfolioPrivateHtml(row.current_value, formatMyPortfolioMoney" in js
