@@ -1115,6 +1115,7 @@
     border-color: rgba(0, 229, 255, 0.24);
     box-shadow: 0 14px 42px rgba(0, 0, 0, 0.16);
     overflow: visible;
+    scroll-margin-top: var(--space-16);
 }
 
 .my-portfolio-holdings-card > .card-header {

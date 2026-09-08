@@ -141,8 +141,8 @@
             size: "current_value",
             color: "pnl_pct",
         },
-        riskExpanded: true,
-        heatmapExpanded: true,
+        riskExpanded: false,
+        heatmapExpanded: false,
         historyExpanded: false,
         valuesHidden: (() => {
             try {
@@ -1779,9 +1779,17 @@
         return "No holdings match the current triage filters.";
     }
 
+    function scrollMyPortfolioHoldingsIntoView() {
+        window.requestAnimationFrame(() => {
+            myPortfolioHoldingsCard?.scrollIntoView({ block: "start", behavior: "smooth", inline: "nearest" });
+            scheduleMyPortfolioHoldingsScrollChrome();
+        });
+    }
+
     function setMyPortfolioQueueView(queueView) {
         myPortfolioState.triage.queueView = Boolean(queueView);
         renderMyPortfolioHoldings(myPortfolioSourceRows());
+        scrollMyPortfolioHoldingsIntoView();
     }
 
     function toggleMyPortfolioAttentionFilter(filterId) {
@@ -1797,6 +1805,7 @@
         else selected.add(filterId);
         myPortfolioState.triage.attention = MY_PORTFOLIO_ATTENTION_FILTERS.filter(id => selected.has(id));
         renderMyPortfolioHoldings(myPortfolioSourceRows());
+        scrollMyPortfolioHoldingsIntoView();
     }
 
     function toggleMyPortfolioSmartFilter(group, value) {
@@ -1805,11 +1814,13 @@
         else current.add(value);
         myPortfolioState.triage.smart[group] = [...current];
         renderMyPortfolioHoldings(myPortfolioSourceRows());
+        scrollMyPortfolioHoldingsIntoView();
     }
 
     function clearMyPortfolioTriage() {
         resetMyPortfolioTriageState();
         renderMyPortfolioHoldings(myPortfolioSourceRows());
+        scrollMyPortfolioHoldingsIntoView();
     }
 
     function renderMyPortfolioTriage(totalCount, visibleCount) {

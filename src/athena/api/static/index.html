@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.201.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.202.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -704,23 +704,23 @@
                             </div>
                         </section>
 
-                        <section class="my-portfolio-risk-panel" aria-labelledby="my-portfolio-risk-heading">
+                        <section class="my-portfolio-risk-panel collapsed" aria-labelledby="my-portfolio-risk-heading">
                             <div class="my-portfolio-risk-header">
                                 <div>
                                     <h3 id="my-portfolio-risk-heading">Risk concentration</h3>
                                     <p id="my-portfolio-risk-lead" class="metric-desc">Factual counts and ranks from the latest snapshot. No new risk score.</p>
                                 </div>
-                                <button id="my-portfolio-risk-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="true" aria-controls="my-portfolio-risk-body">
-                                    <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
-                                    <span>Hide</span>
+                                <button id="my-portfolio-risk-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="false" aria-controls="my-portfolio-risk-body">
+                                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                    <span>Show</span>
                                 </button>
                             </div>
-                            <div id="my-portfolio-risk-body" class="my-portfolio-risk-body">
+                            <div id="my-portfolio-risk-body" class="my-portfolio-risk-body" hidden>
                                 <p class="metric-desc">Unavailable until Portfolio Sync.</p>
                             </div>
                         </section>
 
-                        <section class="my-portfolio-heatmap-panel" aria-labelledby="my-portfolio-heatmap-heading">
+                        <section class="my-portfolio-heatmap-panel collapsed" aria-labelledby="my-portfolio-heatmap-heading">
                             <div class="my-portfolio-heatmap-header">
                                 <div>
                                     <h3 id="my-portfolio-heatmap-heading">Portfolio heatmap</h3>
@@ -742,13 +742,13 @@
                                         <option value="next_action">Next Action</option>
                                     </select>
                                 </div>
-                                <button id="my-portfolio-heatmap-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="true" aria-controls="my-portfolio-heatmap-body">
-                                    <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
-                                    <span>Hide</span>
+                                <button id="my-portfolio-heatmap-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="false" aria-controls="my-portfolio-heatmap-body">
+                                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                    <span>Show</span>
                                 </button>
                                 </div>
                             </div>
-                            <div id="my-portfolio-heatmap-body" class="my-portfolio-heatmap-body">
+                            <div id="my-portfolio-heatmap-body" class="my-portfolio-heatmap-body" hidden>
                                 <p class="metric-desc">Unavailable until Portfolio Sync.</p>
                             </div>
                         </section>
@@ -2409,7 +2409,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.201.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.202.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

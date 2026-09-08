@@ -26,14 +26,15 @@ EXECUTE for write). Missing holding → 404; missing note on an existing
 holding → `present: false`. Dashboard detail overlay adds an Owner note
 form at the bottom after Structural Review; the list shows Note /
 Follow-up chips next to the symbol. Dashboard assets advanced to
-`9.201.0`. No ADR: notes live in the existing My Portfolio SQLite
-subdomain.
+`9.202.0`. Risk concentration and Portfolio heatmap start collapsed.
+Morning triage actions scroll Current Holdings into view. No ADR: notes
+live in the existing My Portfolio SQLite subdomain.
 
 **Tests.** Contract emptiness/trim. Schema table + columns. API put/get/list,
 empty PUT delete, 404 without holding, READONLY write 403, delete-holding
 cascade, confirm REMOVED, reset counts. Remap moves note / keeps dest.
 Hosting/release-gate lock the overlay section, notes URL, badge class, and
-`9.201.0` assets. Focused suite: owner-notes API, schema, contracts,
+`9.202.0` assets. Focused suite: owner-notes API, schema, contracts,
 remap lifecycle, import reset, hosting, and release-gate — all passed.
 
 **Files created:** `tests/api/v1/test_my_portfolio_owner_notes.py`.

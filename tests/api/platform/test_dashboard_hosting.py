@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.201.0" in html
-    assert "dashboard.js?v=9.201.0" in html
+    assert "dashboard.css?v=9.202.0" in html
+    assert "dashboard.js?v=9.202.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -420,15 +420,15 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
         'class="my-portfolio-command-dashboard"'
     )
     assert html.find('class="my-portfolio-command-dashboard"') < html.find(
-        'class="my-portfolio-risk-panel"'
+        'class="my-portfolio-risk-panel collapsed"'
     )
-    assert html.find('class="my-portfolio-risk-panel"') < html.find(
-        'class="my-portfolio-heatmap-panel"'
+    assert html.find('class="my-portfolio-risk-panel collapsed"') < html.find(
+        'class="my-portfolio-heatmap-panel collapsed"'
     )
-    assert html.find('class="my-portfolio-heatmap-panel"') < html.find(
+    assert html.find('class="my-portfolio-heatmap-panel collapsed"') < html.find(
         'class="card my-portfolio-holdings-card"'
     )
-    assert html.find('class="my-portfolio-risk-panel"') < html.find(
+    assert html.find('class="my-portfolio-risk-panel collapsed"') < html.find(
         'class="card my-portfolio-holdings-card"'
     )
     assert 'id="my-portfolio-risk-heading"' in html
@@ -440,8 +440,12 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-heatmap-body"' in html
     assert 'id="my-portfolio-risk-toggle"' in html
     assert 'id="my-portfolio-heatmap-toggle"' in html
-    assert 'aria-expanded="true" aria-controls="my-portfolio-risk-body"' in html
-    assert 'aria-expanded="true" aria-controls="my-portfolio-heatmap-body"' in html
+    assert 'class="my-portfolio-risk-panel collapsed"' in html
+    assert 'class="my-portfolio-heatmap-panel collapsed"' in html
+    assert 'aria-expanded="false" aria-controls="my-portfolio-risk-body"' in html
+    assert 'aria-expanded="false" aria-controls="my-portfolio-heatmap-body"' in html
+    assert 'id="my-portfolio-risk-body" class="my-portfolio-risk-body" hidden' in html
+    assert 'id="my-portfolio-heatmap-body" class="my-portfolio-heatmap-body" hidden' in html
     assert "Unavailable until Portfolio Sync." in html
     assert html.find('class="my-portfolio-command-dashboard"') < html.find(
         'class="card my-portfolio-holdings-card"'
@@ -552,7 +556,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css?v=9.201.0");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.202.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
@@ -924,8 +928,11 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "P&L hidden" in js
     assert "function setMyPortfolioRiskExpanded" in js
     assert "function setMyPortfolioHeatmapExpanded" in js
-    assert "riskExpanded: true" in js
-    assert "heatmapExpanded: true" in js
+    assert "riskExpanded: false" in js
+    assert "heatmapExpanded: false" in js
+    assert "function scrollMyPortfolioHoldingsIntoView" in js
+    assert "scrollMyPortfolioHoldingsIntoView()" in js
+    assert "scroll-margin-top: var(--space-16);" in my_portfolio_css
     assert 'athena.myPortfolio.riskExpanded' in js
     assert 'athena.myPortfolio.heatmapExpanded' in js
     assert ".my-portfolio-risk-panel.collapsed .my-portfolio-risk-body" in my_portfolio_css

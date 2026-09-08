@@ -85,7 +85,7 @@ header and aborting Portfolio Sync refresh.
   index at all stay UNRESOLVED at preview and still use the BSE catalog
   fallback at confirm.
 - Live LTP on this page still needs a separate ADR. Do not add it here.
-- Dashboard assets: `9.201.0` after MP-NX6 Owner Notes (form at the bottom of the holding-detail overlay).
+- Dashboard assets: `9.202.0` after MP-NX6 Owner Notes (form at the bottom of the holding-detail overlay). Risk concentration and Portfolio heatmap start collapsed. Morning triage actions scroll Current Holdings into view.
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.
@@ -237,7 +237,7 @@ What shipped:
 - Inline Mini Sparklines not shipped: snapshot rows have no D1 close series
   and this milestone does not authorize a new history fetch.
 - Dashboard asset version `9.191.0`.
-- Risk Concentration and Heatmap have Hide/Show toggles, default expanded.
+- Risk Concentration and Heatmap have Hide/Show toggles, default collapsed.
 
 Implementation approach:
 
@@ -312,7 +312,7 @@ What shipped (Owner Notes only):
   REMOVED, and My Portfolio reset.
 - `GET /api/v1/my-portfolio/notes`, `GET/PUT/DELETE /notes/{instrument_id}`.
 - Detail overlay Owner note form at the bottom, after Structural Review; Note / Follow-up list chips.
-- Dashboard asset version `9.201.0`. No ADR — same My Portfolio SQLite store.
+- Dashboard asset version `9.202.0`. No ADR — same My Portfolio SQLite store.
 
 What did not ship:
 
