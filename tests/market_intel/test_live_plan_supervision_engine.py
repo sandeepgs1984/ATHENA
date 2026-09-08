@@ -150,6 +150,7 @@ def test_a_long_current_actionable_no_vwap_loss_is_valid():
     result = ENGINE.evaluate(
         entry_actionability=ea, currentness=_currentness(),
         vwap_loss_evidence=vle, target_progress_evidence=tpe,
+        supervision_as_of=evidence_as_of + timedelta(minutes=10),
         evaluated_at=evidence_as_of + timedelta(minutes=10),
     )
 
@@ -174,7 +175,7 @@ def test_b_current_candle_below_evolving_vwap_is_invalidated():
     result = ENGINE.evaluate(
         entry_actionability=ea, currentness=_currentness(),
         vwap_loss_evidence=vle, target_progress_evidence=tpe,
-        evaluated_at=_t(9, 25),
+        supervision_as_of=_t(9, 25), evaluated_at=_t(9, 25),
     )
 
     assert vle.triggered is True
@@ -212,7 +213,7 @@ def test_c_earlier_vwap_loss_survives_later_recovery():
         entry_actionability=ea, currentness=_currentness(),
         vwap_loss_evidence=vle,
         target_progress_evidence=compose_target_progress_evidence(path, ea.reward, Direction.LONG),
-        evaluated_at=_t(10, 25),
+        supervision_as_of=_t(10, 25), evaluated_at=_t(10, 25),
     )
     assert result.state is LivePlanSupervisionState.INVALIDATED
 
@@ -332,7 +333,7 @@ def test_j_target_progress_never_alters_valid_or_invalidated_state():
         result = ENGINE.evaluate(
             entry_actionability=ea, currentness=_currentness(),
             vwap_loss_evidence=not_triggered, target_progress_evidence=target_evidence,
-            evaluated_at=_t(9, 45),
+            supervision_as_of=_t(9, 45), evaluated_at=_t(9, 45),
         )
         assert result.state is LivePlanSupervisionState.VALID
 
@@ -340,7 +341,7 @@ def test_j_target_progress_never_alters_valid_or_invalidated_state():
         result = ENGINE.evaluate(
             entry_actionability=ea, currentness=_currentness(),
             vwap_loss_evidence=triggered, target_progress_evidence=target_evidence,
-            evaluated_at=_t(9, 45),
+            supervision_as_of=_t(9, 45), evaluated_at=_t(9, 45),
         )
         assert result.state is LivePlanSupervisionState.INVALIDATED
 
@@ -355,7 +356,7 @@ def test_k_upstream_not_actionable_is_not_applicable():
     result = ENGINE.evaluate(
         entry_actionability=ea, currentness=_currentness(),
         vwap_loss_evidence=None, target_progress_evidence=None,
-        evaluated_at=_t(9, 35),
+        supervision_as_of=_t(9, 35), evaluated_at=_t(9, 35),
     )
     assert result.state is LivePlanSupervisionState.NOT_APPLICABLE
     assert result.reason_codes == (LivePlanSupervisionReasonCode.UPSTREAM_NOT_ACTIONABLE,)
@@ -373,7 +374,7 @@ def test_l_short_direction_is_not_applicable_unvalidated_direction():
     result = ENGINE.evaluate(
         entry_actionability=ea, currentness=_currentness(),
         vwap_loss_evidence=None, target_progress_evidence=None,
-        evaluated_at=_t(9, 35),
+        supervision_as_of=_t(9, 35), evaluated_at=_t(9, 35),
     )
     assert result.state is LivePlanSupervisionState.NOT_APPLICABLE
     assert result.reason_codes == (LivePlanSupervisionReasonCode.UNVALIDATED_DIRECTION,)
@@ -395,7 +396,7 @@ def test_m_n_o_non_current_statuses_route_to_not_applicable_never_invalidated(st
     result = ENGINE.evaluate(
         entry_actionability=ea, currentness=_currentness(status),
         vwap_loss_evidence=None, target_progress_evidence=None,
-        evaluated_at=_t(9, 35),
+        supervision_as_of=_t(9, 35), evaluated_at=_t(9, 35),
     )
     assert result.state is LivePlanSupervisionState.NOT_APPLICABLE
     assert result.reason_codes == (LivePlanSupervisionReasonCode.UPSTREAM_NOT_CURRENT,)
@@ -421,7 +422,7 @@ def test_p_frozen_operative_invalidation_level_never_used_as_forward_vwap():
         entry_actionability=ea, currentness=_currentness(),
         vwap_loss_evidence=vle,
         target_progress_evidence=compose_target_progress_evidence(path, ea.reward, Direction.LONG),
-        evaluated_at=_t(9, 25),
+        supervision_as_of=_t(9, 25), evaluated_at=_t(9, 25),
     )
 
     # The forward decision is INVALIDATED (real evolving VWAP was
@@ -498,7 +499,24 @@ def test_t_evaluate_rejects_naive_evaluated_at():
         ENGINE.evaluate(
             entry_actionability=ea, currentness=_currentness(),
             vwap_loss_evidence=vle, target_progress_evidence=tpe,
+            supervision_as_of=_t(9, 45),
             evaluated_at=datetime(2026, 9, 8, 9, 45),  # naive
+        )
+
+
+def test_t_evaluate_rejects_naive_supervision_as_of():
+    ea = _actionable(evidence_as_of=_t(9, 30))
+    vle = VwapLossEvidence(
+        triggered=False, first_triggered_as_of=None, trigger_close=None, trigger_vwap=None,
+        current_close=None, current_vwap=None, currently_above_vwap=None,
+    )
+    tpe = TargetProgressEvidence(status=TargetProgress.NONE_REACHED, t1_reached_as_of=None, t2_reached_as_of=None)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ENGINE.evaluate(
+            entry_actionability=ea, currentness=_currentness(),
+            vwap_loss_evidence=vle, target_progress_evidence=tpe,
+            supervision_as_of=datetime(2026, 9, 8, 9, 45),  # naive
+            evaluated_at=_t(9, 45),
         )
 
 
@@ -532,5 +550,144 @@ def test_engine_raises_if_evidence_missing_past_upstream_gates():
         ENGINE.evaluate(
             entry_actionability=ea, currentness=_currentness(),
             vwap_loss_evidence=None, target_progress_evidence=None,
-            evaluated_at=_t(9, 35),
+            supervision_as_of=_t(9, 35), evaluated_at=_t(9, 35),
         )
+
+
+# ---------------------------------------------------------------------------
+# Identity regression: supervision_as_of must never collapse two
+# evaluations of the identical upstream EntryActionability made at
+# different supervision checkpoints (Owner source-review correction,
+# 2026-09-08) -- items A-F of that correction's own required test list.
+# ---------------------------------------------------------------------------
+
+
+def test_identity_a_same_checkpoint_same_inputs_has_one_identity():
+    """A: same EntryActionability + same methodology + supervision
+    checkpoint T1 -> one stable identity (called twice, byte-identical)."""
+    evidence_as_of = _t(9, 30)
+    ea = _actionable(evidence_as_of=evidence_as_of)
+    vle = VwapLossEvidence(
+        triggered=False, first_triggered_as_of=None, trigger_close=None, trigger_vwap=None,
+        current_close=Decimal("100"), current_vwap=Decimal("99"), currently_above_vwap=True,
+    )
+    tpe = TargetProgressEvidence(status=TargetProgress.NONE_REACHED, t1_reached_as_of=None, t2_reached_as_of=None)
+    t1_checkpoint = _t(9, 40)
+
+    first = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_currentness(),
+        vwap_loss_evidence=vle, target_progress_evidence=tpe,
+        supervision_as_of=t1_checkpoint, evaluated_at=_t(9, 41),
+    )
+    second = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_currentness(),
+        vwap_loss_evidence=vle, target_progress_evidence=tpe,
+        supervision_as_of=t1_checkpoint, evaluated_at=_t(9, 42),  # evaluated_at differs, identity must not
+    )
+
+    assert first.identity_tuple() == second.identity_tuple()
+
+
+def test_identity_b_c_d_later_checkpoint_of_same_ea_has_different_identity():
+    """B/C/D: the SAME exact EntryActionability supervised at a LATER
+    checkpoint T2 gets a DIFFERENT identity, while
+    `entry_actionability_as_of` (the upstream plan's own checkpoint)
+    stays byte-identical between the two -- proving `supervision_as_of`
+    is genuinely independent of it, never derived from it."""
+    evidence_as_of = _t(9, 30)
+    ea = _actionable(evidence_as_of=evidence_as_of)
+    vle = VwapLossEvidence(
+        triggered=False, first_triggered_as_of=None, trigger_close=None, trigger_vwap=None,
+        current_close=Decimal("100"), current_vwap=Decimal("99"), currently_above_vwap=True,
+    )
+    tpe = TargetProgressEvidence(status=TargetProgress.NONE_REACHED, t1_reached_as_of=None, t2_reached_as_of=None)
+    t1_checkpoint = _t(9, 40)
+    t2_checkpoint = _t(9, 55)
+
+    at_t1 = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_currentness(),
+        vwap_loss_evidence=vle, target_progress_evidence=tpe,
+        supervision_as_of=t1_checkpoint, evaluated_at=_t(9, 41),
+    )
+    at_t2 = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_currentness(),
+        vwap_loss_evidence=vle, target_progress_evidence=tpe,
+        supervision_as_of=t2_checkpoint, evaluated_at=_t(9, 56),
+    )
+
+    # B: different identity across checkpoints.
+    assert at_t1.identity_tuple() != at_t2.identity_tuple()
+    # C: the upstream plan's own checkpoint is unchanged between them.
+    assert at_t1.entry_actionability_as_of == at_t2.entry_actionability_as_of == ea.entry_actionability_as_of
+    # D: this assertion's own market checkpoint genuinely advanced.
+    assert at_t1.supervision_as_of == t1_checkpoint
+    assert at_t2.supervision_as_of == t2_checkpoint
+    assert at_t1.supervision_as_of != at_t2.supervision_as_of
+
+
+def test_identity_e_evaluated_at_is_diagnostic_never_a_substitute_for_supervision_as_of():
+    """E: `evaluated_at` (wall-clock diagnostic) does not participate in
+    `identity_tuple()` at all -- two evaluations sharing the SAME
+    `supervision_as_of` but carrying genuinely DIFFERENT `evaluated_at`
+    values must produce the identical identity tuple, and
+    `supervision_as_of` (not `evaluated_at`) is the market-checkpoint
+    value that actually appears in it."""
+    evidence_as_of = _t(9, 30)
+    ea = _actionable(evidence_as_of=evidence_as_of)
+    vle = VwapLossEvidence(
+        triggered=False, first_triggered_as_of=None, trigger_close=None, trigger_vwap=None,
+        current_close=Decimal("100"), current_vwap=Decimal("99"), currently_above_vwap=True,
+    )
+    tpe = TargetProgressEvidence(status=TargetProgress.NONE_REACHED, t1_reached_as_of=None, t2_reached_as_of=None)
+    shared_checkpoint = _t(9, 40)
+
+    early_wallclock = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_currentness(),
+        vwap_loss_evidence=vle, target_progress_evidence=tpe,
+        supervision_as_of=shared_checkpoint, evaluated_at=_t(9, 41),
+    )
+    much_later_wallclock = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_currentness(),
+        vwap_loss_evidence=vle, target_progress_evidence=tpe,
+        supervision_as_of=shared_checkpoint, evaluated_at=_t(11, 0),
+    )
+
+    assert early_wallclock.evaluated_at != much_later_wallclock.evaluated_at
+    assert early_wallclock.identity_tuple() == much_later_wallclock.identity_tuple()
+    assert shared_checkpoint in early_wallclock.identity_tuple()
+
+
+def test_identity_f_valid_then_invalidated_across_checkpoints_cannot_share_identity():
+    """F: a VALID assertion at one supervision checkpoint and an
+    INVALIDATED assertion of the identical upstream EntryActionability
+    at a later checkpoint must never share an identity tuple -- proven
+    with a real path-dependent VWAP-loss trigger occurring strictly
+    between the two checkpoints."""
+    evidence_as_of = _t(10, 0)
+    ea = _actionable(evidence_as_of=evidence_as_of)
+
+    early_session = [_c(_t(10, 0), 100), _c(_t(10, 5), 100)]
+    early_path = list(early_session)
+    early_checkpoint = _t(10, 10)
+    early_vle = compose_vwap_loss_evidence(early_session, early_path, Direction.LONG)
+    early_tpe = compose_target_progress_evidence(early_path, ea.reward, Direction.LONG)
+    valid_result = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_currentness(),
+        vwap_loss_evidence=early_vle, target_progress_evidence=early_tpe,
+        supervision_as_of=early_checkpoint, evaluated_at=early_checkpoint,
+    )
+    assert valid_result.state is LivePlanSupervisionState.VALID
+
+    later_session = early_session + [_c(_t(10, 10), 90)]  # dip -- triggers
+    later_path = list(later_session)
+    later_checkpoint = _t(10, 20)
+    later_vle = compose_vwap_loss_evidence(later_session, later_path, Direction.LONG)
+    later_tpe = compose_target_progress_evidence(later_path, ea.reward, Direction.LONG)
+    invalidated_result = ENGINE.evaluate(
+        entry_actionability=ea, currentness=_currentness(),
+        vwap_loss_evidence=later_vle, target_progress_evidence=later_tpe,
+        supervision_as_of=later_checkpoint, evaluated_at=later_checkpoint,
+    )
+    assert invalidated_result.state is LivePlanSupervisionState.INVALIDATED
+
+    assert valid_result.identity_tuple() != invalidated_result.identity_tuple()

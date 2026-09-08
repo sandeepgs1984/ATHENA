@@ -2,8 +2,9 @@
 
 Status: **ID-10 V0 METHODOLOGY CONTRACT / OWNER FROZEN — 2026-09-08.**
 V0 core implementation is complete against this frozen contract — see
-§15 for the implementation record (files, tests, `PERSISTENCE_NOT_YET_
-REQUIRED`, production-safety confirmation). §0-§14 below are the design
+§15 for the original implementation record and §16 for the same-day
+Owner source-review correction (two implementation-level defects,
+methodology unchanged) that superseded it. §0-§14 below are the design
 history that produced the frozen contract and remain unchanged from the
 Owner's freeze authorization. See §0 for the first correction round's
 record (path-dependence of invalidation/target progress); §9/§12 for the
@@ -376,12 +377,194 @@ throughout this milestone.
 
 **Discrepancy from the frozen contract:** none found.
 
-**Recommended classification:** `ID10_V0_IMPLEMENTATION_COMPLETE_
+**Recommended classification (superseded by §16):** `ID10_V0_IMPLEMENTATION_COMPLETE_
 NO_PRODUCTION_ACTIVATION_JUDGMENT_YET` — the implementation is complete
 and self-validated against the frozen contract; it has not yet been
 source-reviewed by the Owner/Chief Architect, and (mirroring ID-9's own
 precedent) is not self-declared closed here.
 
+## 16. Source-review correction (2026-09-08, same day — in place, no ID-10.1/ID-10A)
+
+Owner/Chief Architect source review of §15's implementation found two
+real source-level correctness defects. Both corrected in place; no
+methodology from §7-§12 reopened.
+
+**Defect #1 — supervision identity collapses across checkpoints.**
+`LivePlanSupervisionEngine.evaluate` constructed
+`supervision_as_of = entry_actionability.entry_actionability_as_of`.
+`entry_actionability_as_of` identifies the UPSTREAM PLAN's own
+checkpoint; `supervision_as_of` is supposed to identify THIS
+supervision assertion's own market checkpoint — different concepts. As
+supplied, two evaluations of the identical upstream `EntryActionability`
+made at genuinely different supervision checkpoints would receive the
+identical `supervision_as_of` and therefore the identical
+`identity_tuple()`, contradicting the frozen contract's own "identity
+must not collapse evaluations from different checkpoints" requirement.
+
+**Fix.** `LivePlanSupervisionEngine.evaluate` gained a new mandatory
+keyword-only parameter `supervision_as_of: datetime` (validated
+timezone-aware, exactly like `evaluated_at`), and `supervision_as_of` in
+the constructed `LivePlanSupervision` is now this supplied value, never
+derived from `entry_actionability.entry_actionability_as_of`. The
+workflow (`live_plan_supervision_stage`) supplies `ctx.as_of` — the same
+canonical market/cycle checkpoint every other stage in the DAG already
+keys its own point-in-time reads from (`session_stage`, `ind_stage`,
+etc. all read `as_of=ctx.as_of`) — never a wall clock and never the
+upstream artifact's own checkpoint. The engine remains fully
+repository-free/provider-free/clock-free/deterministic: it still never
+calls `now()` itself, it only receives the market checkpoint as an
+explicit argument, exactly like `evaluated_at`.
+
+**`identity_tuple()` behavior before vs. after.** Before: two
+evaluations of the same `EntryActionability` at different wall-clock
+instants (but the SAME synchronous cycle) already happened to differ
+only because `evaluated_at` isn't part of the identity tuple at all —
+meaning any two evaluations sharing the same upstream artifact would
+ALWAYS collapse to one identity regardless of when they were actually
+made, since `supervision_as_of` was pinned to the upstream's own fixed
+checkpoint. After: `supervision_as_of` is an independent field, so two
+evaluations of the identical upstream artifact at two different
+supervision checkpoints now produce two different `identity_tuple()`
+values, while `entry_actionability_as_of` — the upstream plan's own
+checkpoint — correctly stays identical between them (proven by new
+tests, see below).
+
+**New identity regression tests** (`tests/market_intel/test_live_plan_supervision_engine.py`):
+A) same `EntryActionability` + same supervision checkpoint T1 (even
+across two separate `evaluate()` calls with different `evaluated_at`
+values) → one identity. B/C/D) the identical `EntryActionability`
+supervised at a later checkpoint T2 → a DIFFERENT identity, while
+`entry_actionability_as_of` stays byte-identical between the two calls
+and `supervision_as_of` itself provably advances. E) `evaluated_at` is
+diagnostic only — two evaluations sharing one `supervision_as_of` but
+carrying different `evaluated_at` values still share one identity. F) a
+real VALID assertion at an early checkpoint and a real INVALIDATED
+assertion (via a genuine path-dependent VWAP-loss trigger) of the
+identical upstream artifact at a later checkpoint never share an
+identity tuple.
+
+**Defect #2 — false DAG dependency on `position_sizing`.** The
+`live_plan_supervision` `WorkflowStage` declared
+`depends_on=("position_sizing",)`, described in a comment as "purely to
+preserve order." A direct source read of `WorkflowEngine.execute`
+(`src/athena/runtime/workflow.py`) disproves that this is harmless: the
+engine computes `blocking = [d for d in stage.depends_on if d in
+failed_or_skipped]` for every stage and marks it `SKIPPED` if any
+declared dependency failed or was itself skipped — a real dependency
+edge participates in real failure/skip propagation. Since ID-10's own
+frozen contract requires PositionSizing to never be a prerequisite for
+supervision (`entry_actionability` alone is the true, and only, data
+dependency — PositionSizing is never read by `live_plan_supervision_stage`),
+this false edge meant a `position_sizing`-specific failure (e.g.
+`CapitalPolicy` unavailable causing a downstream invariant to raise, a
+missing canonical lot-size contract error, or any other sizing-specific
+defect) could wrongly suppress a genuinely eligible ID-10 supervision
+row — directly contradicting the frozen contract.
+
+**Workflow failure/skip semantics discovered from source.**
+`WorkflowEngine.execute` (confirmed by direct read, not assumed) is a
+simple sequential loop over `definition.execution_order` with NO
+global abort-on-any-failure behavior: a stage's exception is caught,
+recorded as `FAILED`, added to `failed_or_skipped`, and the loop
+`continue`s to the next stage in topological order; only stages that
+declare the failed stage as a dependency (transitively) are marked
+`SKIPPED`. Two sibling stages that both depend only on a common,
+successfully-completed upstream stage run completely independently of
+each other's success or failure.
+
+**Fix.** `depends_on=("position_sizing",)` corrected to
+`depends_on=("entry_actionability",)` — the stage's one true data
+dependency. Declaration position in the source stage list is retained
+(still listed last, for readability) but the actual execution order is
+determined by `WorkflowDefinition._topological_order`'s topological
+sort, not declaration position — `position_sizing` and
+`live_plan_supervision` are now correctly modeled as independent
+sibling consumers of `entry_actionability`. Comments throughout
+`live_plan_supervision_stage` and its `WorkflowStage` registration were
+corrected to state the real dependency honestly and to explain, for the
+historical record, why the removed false dependency was a genuine
+defect rather than inert metadata.
+
+**New failure-independence regression test**
+(`tests/ops/test_owner_validation.py::test_id10_independent_of_position_sizing_failure`):
+Part 1 (structural mock DAG) proves `entry_actionability` COMPLETED,
+`position_sizing` FAILED (forced), and `live_plan_supervision`
+(depending only on `entry_actionability`) still reaches COMPLETED —
+not skipped merely because its sibling failed. Part 2 (real end-to-end
+pipeline) forces a real `PositionSizingV0Engine.evaluate` exception on
+the same real TRADE+QUALIFIED+ACTIONABLE fixture the ID-9 SIZED test
+established, and proves `live_plan_supervision_stage` still runs and
+reaches a genuine VALID/INVALIDATED verdict for that same instrument in
+the same cycle via a direct spy on `LivePlanSupervisionEngine.evaluate`
+— while `position_sizing` itself is independently confirmed to have
+failed. Two pre-existing structural tests
+(`test_id10_live_plan_supervision_stage_does_not_perturb_existing_stage_order`,
+`test_id10_transitive_dependency_is_structurally_guaranteed`) and one
+renamed structural test
+(`test_id10_stage_declared_last_depends_only_on_entry_actionability`,
+formerly asserting the now-removed false dependency, corrected to
+target the exact `WorkflowStage(...)` construction call via a regex
+match — not a substring that a prose comment could satisfy by
+accident) were updated to reflect the corrected dependency. ID-9's own
+existing proof that `PositionSizing` output is completely unchanged by
+ID-10's presence (`test_id10_coexistence_does_not_alter_position_sizing_output`)
+is retained unchanged and still passes.
+
+**Documentation corrections applied in place:** the `live_plan_supervision_stage`
+body comment and the `WorkflowStage` registration comment in
+`owner_validation.py` were rewritten to (a) never again describe
+`supervision_as_of` as sharing a "wall-clock role" with `evaluated_at`
+(it is a market checkpoint, sourced from `ctx.as_of`, not a wall-clock
+read) and (b) never again describe the `position_sizing` dependency as
+present "purely to preserve order" — both replaced with an honest
+statement of the real dependency and, for context, an explanation of
+why the prior wording was itself the defect being corrected.
+
+**Confirmation methodology itself did not change:**
+`LONG_VALIDATED_SHORT_UNVALIDATED`, `NOT_APPLICABLE`/`VALID`/`INVALIDATED`,
+`WEAKENING` deferred, the session-start VWAP source window, the
+post-`evidence_as_of` supervision event window, the evolving
+session-cumulative VWAP formula, first-VWAP-loss-trigger permanence,
+target-progress semantics, `EntryActionability` as the durable anchor,
+exact currentness-helper reuse, no `PositionSizing` prerequisite,
+`PERSISTENCE_NOT_YET_REQUIRED`, schema 18, REFRESH/FAST cadence, and
+zero broker/order/execution/EMR/DarvaX touch are all unchanged — this
+was a source-level correctness correction to two implementation
+defects, not a methodology change.
+
+**Focused test results:** pure engine/composer file 28 tests (23 + 5 net
+new: 6 identity regression tests added, none removed — the naive-
+`evaluated_at` test was joined by a new naive-`supervision_as_of`
+sibling); `tests/ops/test_owner_validation.py` 92 tests (84 + 8 ID-10,
+up from 7 — 1 new failure-independence test, 1 renamed/corrected
+structural test replacing the old one at the same count); relevant
+`entry_actionability_currentness`/`position_sizing` focused files:
+106 tests total across the three files, all passing.
+
+**Full-suite result:** **3963 passed, 1 pre-existing unrelated skip, 0
+failures** (up from 3957).
+
+**Schema/integrity/safety confirmation:** `SCHEMA_VERSION` unchanged at
+18 (verified in source); `db/athena.db` `integrity_check: ok`, no new
+table. No migration, no production DB mutation, no service restart, no
+manual run-due/Validate-All invocation, no scheduler change, no
+provider/broker/order/execution activation, no EMR change, no DarvaX
+change. Production PID 93394 (`--with-cycles --cycle-interval 60.0`)
+confirmed running and untouched throughout. `git diff --check`/
+`git status --short` clean — diff scoped to exactly
+`live_plan_supervision_engine.py`, `owner_validation.py`, and the two
+test files (plus this document).
+
+**Discrepancy from the frozen contract:** none — both defects were
+implementation-level (a checkpoint-derivation bug and a DAG-modeling
+bug), not deviations from the Owner-frozen §7-§12 methodology contract.
+
+**Final recommended classification:**
+`ID10_V0_IMPLEMENTATION_CORRECTED_NO_PRODUCTION_ACTIVATION_JUDGMENT_YET`
+— both source-review defects are corrected in place with regression
+coverage; the implementation has not yet been source-reviewed against
+this correction, and is not self-declared closed here.
+
 ---
 
-**ID-10 V0 IMPLEMENTATION READY FOR OWNER / CHIEF ARCHITECT SOURCE REVIEW**
+**ID-10 V0 SOURCE-REVIEW CORRECTIONS READY FOR OWNER / CHIEF ARCHITECT REVIEW**

@@ -76,10 +76,50 @@ scheduler change, no broker/execution/order/EMR/DarvaX touch;
 table); the running production scheduler (PID 93394,
 `--with-cycles --cycle-interval 60.0`) was left untouched throughout.
 
-**Status.** ID-10 V0 core implementation complete against the Owner's
-frozen contract — not yet source-reviewed, not self-declared closed.
-See `docs/research/ID-10-LIVE-PLAN-SUPERVISION-DISCOVERY.md` §15 for
-the full implementation record.
+**Source-review correction (2026-09-08, same day, in place — no
+ID-10.1/ID-10A created).** Owner/Chief Architect source review found
+two real defects, both corrected in place: (1) `supervision_as_of` was
+derived from `entry_actionability.entry_actionability_as_of` (the
+UPSTREAM PLAN's own checkpoint) instead of being its own, independent
+market checkpoint for THIS supervision assertion — collapsing the
+identity of evaluations made at different checkpoints of the same
+upstream artifact. Fixed by adding a new mandatory
+`supervision_as_of: datetime` parameter to
+`LivePlanSupervisionEngine.evaluate(...)`, sourced by the workflow stage
+from `ctx.as_of` (the canonical market/cycle checkpoint every other
+stage already keys its own reads from) — never derived from the
+upstream artifact, never a wall clock. (2) The new `live_plan_supervision`
+`WorkflowStage` falsely declared `depends_on=("position_sizing",)`
+"purely to preserve declaration order" — but a `WorkflowStage.depends_on`
+participates in real failure/skip propagation
+(`WorkflowEngine.execute`'s own `blocking = [... if d in
+failed_or_skipped]` mechanics), so an unrelated `position_sizing`
+failure could wrongly suppress ID-10 supervision even with a genuinely
+eligible `EntryActionability`. Fixed by correcting the dependency to
+`depends_on=("entry_actionability",)` — its one true data dependency;
+`position_sizing` and `live_plan_supervision` are independent sibling
+consumers of the same upstream artifact. 6 new identity regression
+tests (`tests/market_intel/test_live_plan_supervision_engine.py`, items
+A-F: stable identity at one checkpoint, different identity at a later
+checkpoint of the same EA, `entry_actionability_as_of` unchanged while
+`supervision_as_of` advances, `evaluated_at` excluded from identity, and
+a VALID-then-INVALIDATED pair across checkpoints proven never to share
+an identity) plus 1 new failure-independence regression test
+(`tests/ops/test_owner_validation.py`, structural mock-DAG proof +
+real end-to-end pipeline proof that a forced `PositionSizingV0Engine`
+failure does not skip or block `live_plan_supervision_stage`) and
+2 corrected pre-existing structural tests. No methodology changed:
+`LONG_VALIDATED_SHORT_UNVALIDATED`, the state model, WEAKENING deferred,
+the two-window VWAP contract, trigger permanence, target-progress
+semantics, currentness reuse, `PERSISTENCE_NOT_YET_REQUIRED`, and
+schema 18 are all unchanged. Full suite after correction: **3963
+passed, 1 pre-existing unrelated skip, 0 failures**.
+
+**Status.** ID-10 V0 implementation corrected in place against the
+Owner's two source-review findings — not yet source-reviewed against
+this correction, not self-declared closed. See
+`docs/research/ID-10-LIVE-PLAN-SUPERVISION-DISCOVERY.md` §15/§16 for
+the full implementation and correction record.
 
 ---
 

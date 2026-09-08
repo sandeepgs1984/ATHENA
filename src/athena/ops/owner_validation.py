@@ -1687,16 +1687,33 @@ class OwnerValidationPipeline:
                 return {"position_sizing": sizing}
 
             def live_plan_supervision_stage(ctx):
-                # ID-10: the first stage downstream of `position_sizing` --
-                # its TRUE methodology dependency is `entry_actionability`
-                # only (PositionSizing is never read here; it is not
-                # required for supervision identity or eligibility, per
-                # the frozen V0 contract -- see
+                # ID-10: its TRUE and ONLY data dependency is
+                # `entry_actionability` (PositionSizing is never read
+                # here; it is not required for supervision identity or
+                # eligibility, per the frozen V0 contract -- see
                 # docs/research/ID-10-LIVE-PLAN-SUPERVISION-DISCOVERY.md).
-                # Declared last / depends_on=("position_sizing",) purely to
-                # preserve the existing thirteen stages' relative order,
-                # exactly mirroring ID-9's own precedent -- it does not
-                # read, and must never alter, PositionSizing's own output.
+                # `depends_on=("entry_actionability",)` on the
+                # `WorkflowStage` below reflects this honestly -- an
+                # earlier draft declared a false `depends_on=
+                # ("position_sizing",)` purely to force this stage after
+                # `position_sizing` in the declared stage list; Owner
+                # source review (2026-09-08) correctly identified that a
+                # DAG dependency participates in real failure/skip
+                # propagation (`WorkflowEngine.execute`'s own
+                # `blocking = [d for d in stage.depends_on if d in
+                # failed_or_skipped]` mechanics), so that false
+                # dependency could wrongly SKIP a genuinely eligible
+                # supervision row merely because an UNRELATED
+                # `position_sizing` failure occurred (e.g. a missing
+                # canonical instrument lot-size contract error) --
+                # something ID-10's own frozen contract explicitly
+                # forbids (supervision must not become unavailable
+                # because sizing failed, so long as EntryActionability
+                # itself is available). `position_sizing` and
+                # `live_plan_supervision` are independent SIBLING
+                # consumers of the same upstream `entry_actionability`
+                # artifact; this stage does not read, and must never
+                # alter, PositionSizing's own output.
                 #
                 # "entry_actionability": the exact same-cycle artifact
                 # `entry_actionability_stage` produced from THIS Decision/
@@ -1711,12 +1728,23 @@ class OwnerValidationPipeline:
                     return {"live_plan_supervision": None}
 
                 # One captured wall-clock instant serves BOTH the
-                # currentness `now` and this artifact's own
-                # `evaluated_at`/`supervision_as_of` clock role -- never
-                # two independent `datetime.now()`-equivalent reads for
-                # one supervision decision, and never `ctx.as_of` as a
-                # wall clock, mirroring `position_sizing_stage`'s own
-                # `sizing_clock_instant` precedent exactly. Currentness
+                # currentness `now` and this artifact's own `evaluated_at`
+                # -- never two independent `datetime.now()`-equivalent
+                # reads for one supervision decision, mirroring
+                # `position_sizing_stage`'s own `sizing_clock_instant`
+                # precedent exactly. `supervision_as_of` is a SEPARATE,
+                # deliberately non-wall-clock concept -- the MARKET
+                # checkpoint this supervision assertion is made at --
+                # sourced from `ctx.as_of` (the canonical market/cycle
+                # checkpoint every other stage in this DAG already keys
+                # its own point-in-time reads from), never from this wall
+                # clock and never from
+                # `entry_actionability.entry_actionability_as_of` (Owner
+                # source-review correction, 2026-09-08: the upstream
+                # plan's own checkpoint and THIS assertion's own
+                # checkpoint are different concepts and must never
+                # collapse two distinct supervision evaluations of the
+                # same upstream artifact onto one identity). Currentness
                 # itself is reused verbatim from the existing, unmodified
                 # `entry_actionability_currentness.is_currently_usable` --
                 # never re-implemented -- computed unconditionally
@@ -1813,6 +1841,7 @@ class OwnerValidationPipeline:
                     currentness=currentness,
                     vwap_loss_evidence=vwap_loss_evidence,
                     target_progress_evidence=target_progress_evidence,
+                    supervision_as_of=ctx.as_of,
                     evaluated_at=supervision_clock_instant,
                 )
                 return {"live_plan_supervision": supervision}
@@ -1959,18 +1988,31 @@ class OwnerValidationPipeline:
                         depends_on=("entry_actionability",),
                         produces=("position_sizing",),
                     ),
-                    # ID-10: depends on "position_sizing" only to preserve
-                    # the existing thirteen stages' relative execution
-                    # order (mirroring every prior "declared last" stage
-                    # in this DAG) -- its TRUE data dependency is
-                    # "entry_actionability" alone; PositionSizing's own
-                    # output is never read here and is never altered by
-                    # this stage's presence. Declared last: nothing else
-                    # depends on it.
+                    # ID-10: depends on "entry_actionability" -- its ONLY
+                    # true data dependency (Owner source-review
+                    # correction, 2026-09-08: an earlier draft declared a
+                    # false `depends_on=("position_sizing",)` merely to
+                    # force this stage after `position_sizing` in the
+                    # declared list; since a `WorkflowStage.depends_on`
+                    # participates in real failure/skip propagation
+                    # (`WorkflowEngine.execute`), that false dependency
+                    # could wrongly skip a genuinely eligible supervision
+                    # row solely because an unrelated `position_sizing`
+                    # failure occurred -- forbidden by ID-10's own frozen
+                    # contract). `position_sizing` and
+                    # `live_plan_supervision` are independent sibling
+                    # consumers of the same upstream `entry_actionability`
+                    # artifact; PositionSizing's own output is never read
+                    # here and is never altered by this stage's presence.
+                    # Declared last in this list purely for readability
+                    # (nothing depends on it) -- the topological sort
+                    # (`WorkflowDefinition._topological_order`) is what
+                    # actually determines execution order, not
+                    # declaration position.
                     WorkflowStage(
                         "live_plan_supervision",
                         live_plan_supervision_stage,
-                        depends_on=("position_sizing",),
+                        depends_on=("entry_actionability",),
                         produces=("live_plan_supervision",),
                     ),
                 ],

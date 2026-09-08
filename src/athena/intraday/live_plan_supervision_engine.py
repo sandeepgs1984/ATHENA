@@ -207,8 +207,27 @@ class LivePlanSupervisionEngine:
         currentness: CurrentnessResult,
         vwap_loss_evidence: VwapLossEvidence | None,
         target_progress_evidence: TargetProgressEvidence | None,
+        supervision_as_of: datetime,
         evaluated_at: datetime,
     ) -> LivePlanSupervision:
+        """`supervision_as_of` and `entry_actionability.entry_actionability_as_of`
+        are DIFFERENT concepts and must never be derived from one another
+        (Owner source-review correction, 2026-09-08): the latter
+        identifies the UPSTREAM PLAN's own checkpoint (frozen the instant
+        `EntryActionability` was minted); the former identifies THIS
+        supervision assertion's own market checkpoint -- the instant at
+        which THIS evaluate() call is being made, supplied by the
+        workflow (never derived here, never a repository/provider/clock
+        read). Two evaluations of the identical upstream
+        `EntryActionability` at two different `supervision_as_of`
+        checkpoints must never collapse to the same
+        `LivePlanSupervision.identity_tuple()` -- that is exactly what
+        deriving `supervision_as_of` from the upstream artifact's own
+        checkpoint would silently do."""
+        if supervision_as_of.tzinfo is None:
+            raise ValueError(
+                "LivePlanSupervisionEngine.evaluate: supervision_as_of must be timezone-aware"
+            )
         if evaluated_at.tzinfo is None:
             raise ValueError("LivePlanSupervisionEngine.evaluate: evaluated_at must be timezone-aware")
 
@@ -224,7 +243,7 @@ class LivePlanSupervisionEngine:
             entry_actionability_methodology_version=(
                 entry_actionability.entry_actionability_methodology_version
             ),
-            supervision_as_of=entry_actionability.entry_actionability_as_of,
+            supervision_as_of=supervision_as_of,
             supervision_methodology_version=DEFAULT_METHODOLOGY_VERSION,
             currentness=currentness,
             evidence_as_of=entry_actionability.evidence_as_of,

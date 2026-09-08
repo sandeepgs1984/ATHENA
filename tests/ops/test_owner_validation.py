@@ -3616,19 +3616,23 @@ class TestOwnerValidationPipeline:
         correction inside entry_actionability_stage, never a DAG
         redesign. The literal count grew from 4 (as of ID-7E.1) to 9
         after ID-9 legitimately added a new downstream `position_sizing`
-        stage that depends on and reads "entry_actionability", and to 12
+        stage that depends on and reads "entry_actionability", to 12
         after ID-10 legitimately added a new downstream
         `live_plan_supervision` stage that reads
-        `ctx.get("entry_actionability")` directly (its own out-of-scope
-        gate mirrors `position_sizing_stage`'s exactly) -- this assertion
-        locks in that new, deliberate, reviewed count, not an earlier
-        milestone's."""
+        `ctx.get("entry_actionability")` directly, and to 14 after the
+        2026-09-08 ID-10 source-review correction (Defect #2) rewrote
+        `live_plan_supervision`'s own DAG dependency AND its explanatory
+        comments to honestly reflect `depends_on=("entry_actionability",)`
+        as its one true data dependency (replacing a false
+        `depends_on=("position_sizing",)` that wrongly participated in
+        failure/skip propagation) -- this assertion locks in that new,
+        deliberate, reviewed count, not an earlier milestone's."""
         import inspect
 
         import athena.ops.owner_validation as ov
 
         source = inspect.getsource(ov)
-        assert source.count('"entry_actionability"') == 12, "stage/key name literal count changed"
+        assert source.count('"entry_actionability"') == 14, "stage/key name literal count changed"
         assert 'depends_on=("entry_qualification",)' in source
         assert 'produces=("entry_actionability",)' in source
 
@@ -4775,10 +4779,13 @@ class TestOwnerValidationPipeline:
         self, repo: SqliteRepository, config_dir: Path
     ) -> None:
         """ID-10 test-matrix item W: the new `live_plan_supervision` stage
-        explicitly depends only on `position_sizing` -- and, since
-        nothing depends on IT, the fourteen pre-existing stages must keep
-        their exact relative order, mirroring ID-9's own analogous
-        proof."""
+        explicitly depends only on `entry_actionability` (its ONLY true
+        data dependency, corrected 2026-09-08 -- see
+        `test_id10_independent_of_position_sizing_failure` for why a
+        `position_sizing` dependency was a real defect, not harmless
+        ordering metadata) -- and, since nothing depends on IT, the
+        fourteen pre-existing stages must keep their exact relative
+        order, mirroring ID-9's own analogous proof."""
         from athena.runtime.workflow import WorkflowStage, build_definition
 
         store = SqliteCandidateStore(repo)
@@ -4836,7 +4843,7 @@ class TestOwnerValidationPipeline:
         with_lp = build_definition(
             "post-id10",
             [*stages, WorkflowStage(
-                "live_plan_supervision", noop, depends_on=("position_sizing",),
+                "live_plan_supervision", noop, depends_on=("entry_actionability",),
                 produces=("live_plan_supervision",),
             )],
         ).execution_order
@@ -4848,11 +4855,13 @@ class TestOwnerValidationPipeline:
         """ID-10 test-matrix item W (continued): proves -- from
         WorkflowEngine's own generic failure-propagation mechanics, not
         from insertion order -- that `live_plan_supervision` (depending
-        only on `position_sizing`) can safely read whatever
-        `entry_actionability_stage` itself relied on: if
-        `entry_actionability` had failed/been skipped, `position_sizing`
-        (and therefore `live_plan_supervision`) could never reach
-        COMPLETED either."""
+        only on `entry_actionability` directly, corrected 2026-09-08) can
+        safely read whatever `entry_actionability_stage` itself relied
+        on: if `entry_actionability` had failed/been skipped,
+        `live_plan_supervision` could never reach COMPLETED either --
+        exactly like its SIBLING `position_sizing`, which independently
+        depends on the identical upstream stage rather than chaining
+        through it."""
         from athena.runtime.models import ExecutionStatus
         from athena.runtime.workflow import WorkflowEngine, WorkflowStage, build_definition
 
@@ -4866,7 +4875,7 @@ class TestOwnerValidationPipeline:
             WorkflowStage("position_sizing", lambda ctx: {"position_sizing": True},
                           depends_on=("entry_actionability",), produces=("position_sizing",)),
             WorkflowStage("live_plan_supervision", lambda ctx: {"live_plan_supervision": True},
-                          depends_on=("position_sizing",), produces=("live_plan_supervision",)),
+                          depends_on=("entry_actionability",), produces=("live_plan_supervision",)),
         ]
         execution = WorkflowEngine().execute(
             build_definition("id10-transitive-proof", stages), as_of=AS_OF
@@ -4875,6 +4884,148 @@ class TestOwnerValidationPipeline:
         assert by_name["entry_actionability"].status is ExecutionStatus.SKIPPED
         assert by_name["position_sizing"].status is ExecutionStatus.SKIPPED
         assert by_name["live_plan_supervision"].status is ExecutionStatus.SKIPPED
+
+    def test_id10_independent_of_position_sizing_failure(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-10 §5/§6/§7 correction (Owner source-review, 2026-09-08):
+        `live_plan_supervision` must NOT become unavailable merely
+        because `position_sizing` failed for a sizing-specific reason,
+        provided `entry_actionability` itself is available -- this is
+        the architectural contract a false `depends_on=
+        ("position_sizing",)` violated (a DAG dependency participates in
+        real failure/skip propagation, per `WorkflowEngine.execute`'s
+        own `blocking = [d for d in stage.depends_on if d in
+        failed_or_skipped]` mechanics -- confirmed by direct source
+        read, not assumed).
+
+        Part 1 (structural, mock DAG): proves `WorkflowEngine` itself
+        allows two SIBLING stages that both depend only on a common,
+        successfully-completed upstream stage to run independently --
+        one sibling failing does not skip the other, since neither is
+        named in the other's `depends_on`. `WorkflowEngine.execute` is
+        a simple sequential loop with NO global abort-on-any-failure
+        behavior (confirmed by direct source read: a caught stage
+        exception is recorded as FAILED and the loop `continue`s to the
+        next stage in topological order) -- so this is not merely a
+        possibility being hoped for, it is exactly what the engine
+        already does.
+
+        Part 2 (real end-to-end pipeline): forces a real, unrelated
+        `PositionSizingV0Engine.evaluate` failure on the same real
+        TRADE+QUALIFIED+ACTIONABLE fixture the ID-9 SIZED test
+        established, and proves `live_plan_supervision_stage` still
+        runs and reaches a real VALID/INVALIDATED verdict for that same
+        instrument in the same cycle -- not SKIPPED, not None -- while
+        `position_sizing` itself is correctly recorded FAILED.
+        """
+        from athena.runtime.models import ExecutionStatus
+        from athena.runtime.workflow import WorkflowEngine, WorkflowStage, build_definition
+
+        # ---- Part 1: structural mock-DAG proof ----
+        def boom_sizing(ctx):
+            raise ValueError("sizing-specific invariant failure (e.g. missing lot size)")
+
+        stages = [
+            WorkflowStage("entry_actionability", lambda ctx: {"entry_actionability": True},
+                          produces=("entry_actionability",)),
+            WorkflowStage("position_sizing", boom_sizing,
+                          depends_on=("entry_actionability",), produces=("position_sizing",)),
+            WorkflowStage("live_plan_supervision", lambda ctx: {"live_plan_supervision": True},
+                          depends_on=("entry_actionability",), produces=("live_plan_supervision",)),
+        ]
+        execution = WorkflowEngine().execute(
+            build_definition("id10-sizing-failure-independence", stages), as_of=AS_OF
+        )
+        by_name = {r.stage_name: r for r in execution.stage_results}
+        assert by_name["entry_actionability"].status is ExecutionStatus.COMPLETED
+        assert by_name["position_sizing"].status is ExecutionStatus.FAILED
+        assert by_name["live_plan_supervision"].status is ExecutionStatus.COMPLETED, (
+            "live_plan_supervision must not be skipped merely because the unrelated "
+            "sibling stage position_sizing failed"
+        )
+
+        # ---- Part 2: real end-to-end pipeline proof ----
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.decision import TradePlan
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.intraday import EntryQualificationEngine, EntryQualificationState
+        from athena.intraday.live_plan_supervision_engine import LivePlanSupervisionEngine
+        from athena.intraday.live_plan_supervision_models import LivePlanSupervisionState
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.TRADE, direction=Dir.LONG, gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"), risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_qualified(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            return dataclasses.replace(eq, state=EntryQualificationState.QUALIFIED, reason_codes=())
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_qualified)
+
+        def forced_sizing_failure(self, *args, **kwargs):
+            raise ValueError("forced sizing-specific invariant failure for regression test")
+
+        monkeypatch.setattr(PositionSizingV0Engine, "evaluate", forced_sizing_failure)
+
+        supervision_calls: list[object] = []
+        real_lp_evaluate = LivePlanSupervisionEngine.evaluate
+
+        def spy_lp(self, **kwargs):
+            result = real_lp_evaluate(self, **kwargs)
+            supervision_calls.append(result)
+            return result
+
+        monkeypatch.setattr(LivePlanSupervisionEngine, "evaluate", spy_lp)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        # Within the frozen 10-minute currentness band -- see the ID-9
+        # SIZED test's own comment for why real wall-clock `now` cannot
+        # be used here (this fixture's AS_OF is a fixed historical
+        # instant, not close to real wall-clock time).
+        clock_instant = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(seconds=3)
+        pipe = OwnerValidationPipeline(repo, config_dir, persistence_clock=lambda: clock_instant)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-lp-sizing-independence"
+        )
+
+        assert len(supervision_calls) == 1, (
+            "live_plan_supervision_stage must still run for this instrument even though "
+            "position_sizing failed"
+        )
+        supervision = supervision_calls[0]
+        assert supervision.state in (LivePlanSupervisionState.VALID, LivePlanSupervisionState.INVALIDATED)
 
     def test_id10_short_direction_preserved_not_applicable(
         self, repo: SqliteRepository, config_dir: Path, monkeypatch
@@ -5030,20 +5181,35 @@ class TestOwnerValidationPipeline:
         assert ".save_live_plan_supervision(" not in source
         assert SCHEMA_VERSION == 18
 
-    def test_id10_stage_declared_last_depends_only_on_position_sizing(self) -> None:
-        """ID-10: structural proof the new stage's own name, dependency
-        set, and produced-key set are exactly as frozen -- declared last
-        in `_scan_eligible`'s stage list (14 `WorkflowStage(` occurrences
-        total), depending only on `position_sizing` even though its true
-        methodology dependency is `entry_actionability` (mirrors ID-9's
-        own precedent of depending on the immediately-prior stage purely
-        to preserve DAG ordering)."""
+    def test_id10_stage_declared_last_depends_only_on_entry_actionability(self) -> None:
+        """ID-10 (corrected 2026-09-08, Owner source-review Defect #2):
+        structural proof the new stage's own name, dependency set, and
+        produced-key set are exactly as frozen post-correction --
+        declared last in `_scan_eligible`'s stage list (14
+        `WorkflowStage(` occurrences total), depending ONLY on
+        `entry_actionability` -- its one true data dependency -- never
+        on `position_sizing` (an earlier draft's false dependency,
+        removed because it wrongly participated in
+        `WorkflowEngine.execute`'s own failure/skip propagation; see
+        `test_id10_independent_of_position_sizing_failure`). This
+        assertion targets the exact `WorkflowStage(` construction call
+        for `live_plan_supervision`, not merely a substring anywhere in
+        the file, so it cannot be satisfied by a prose comment alone."""
         import inspect
+        import re
 
         import athena.ops.owner_validation as ov
 
         source = inspect.getsource(ov)
         assert source.count("WorkflowStage(") == 14
-        assert '"live_plan_supervision",\n                        live_plan_supervision_stage,' in source
-        assert 'depends_on=("position_sizing",)' in source
-        assert 'produces=("live_plan_supervision",)' in source
+
+        match = re.search(
+            r'WorkflowStage\(\s*"live_plan_supervision",\s*live_plan_supervision_stage,'
+            r'\s*depends_on=\(([^)]*)\),\s*produces=\("live_plan_supervision",\),\s*\)',
+            source,
+        )
+        assert match is not None, (
+            "could not locate the exact live_plan_supervision WorkflowStage(...) "
+            "construction call in owner_validation.py"
+        )
+        assert match.group(1).strip() == '"entry_actionability",'
