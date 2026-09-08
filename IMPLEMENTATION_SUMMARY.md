@@ -35,9 +35,9 @@ Hosting/release-gate lock Start review, session bar, session helper, and
 **Files modified:** same My Portfolio notes/schema/API/dashboard/docs set as
 MP-NX6, plus this milestone's review-session columns, chrome, and tests.
 
-**Status:** Implementation complete 2026-09-08; ready for Owner / Chief
-Architect review. Do not start another My Portfolio next-level UX milestone
-until this slice is approved.
+**Status:** Owner/Chief Architect approved and closed 2026-09-08. The
+14-item next-level UX sequence is complete. Watchlist / Opportunity Bridge
+was skipped; Inline Mini Sparklines were not shipped. No MP-NX7 exists.
 
 ---
 

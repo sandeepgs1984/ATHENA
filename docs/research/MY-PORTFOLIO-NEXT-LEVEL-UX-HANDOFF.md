@@ -108,7 +108,7 @@ The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 - Risk Concentration Panel: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
 - Watchlist / Opportunity Bridge: MP-NX5 — skipped; no stable My Portfolio opportunity contract.
 - Notes / Owner Override Layer: MP-NX6 — Owner/Chief Architect approved and closed 2026-09-08.
-- Review Session Mode: MP-NX6B — implemented 2026-09-08, pending owner review.
+- Review Session Mode: MP-NX6B — Owner/Chief Architect approved and closed 2026-09-08.
 - Pinned Rows: MP-NX3 — Owner/Chief Architect approved and closed 2026-09-08.
 - Smart Filters: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Inline Mini Sparklines: MP-NX4 — not shipped; snapshot rows have no D1 close series.
@@ -352,7 +352,18 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-Review and approve MP-NX6B Review Session Mode.
+The 14-item next-level UX sequence is complete (MP-NX1 through MP-NX6B).
+There is no MP-NX7.
 
-Do not start another My Portfolio next-level UX milestone until this slice is
-approved.
+Authorize the next piece of work explicitly. Remaining My Portfolio options
+that still need their own authorization:
+
+- Watchlist / Opportunity Bridge — skipped; needs a stable opportunity
+  contract and no new ranking unless separately approved.
+- Inline Mini Sparklines — not shipped; snapshot rows have no D1 close series.
+- Near Trigger / Near Support / Fresh Breakout — still unavailable until
+  owner-approved threshold semantics exist.
+- Live LTP on this page — still needs a separate ADR.
+
+Do not invent an NX7, and do not start Intraday or another track from this
+handoff.

@@ -59,7 +59,7 @@ This roadmap covers the full 14-item next-level UX inventory:
 | Symbol Detail Review Timeline | MP-NX5 | Implemented 2026-09-08: per-holding review timeline from recent snapshots. |
 | Watchlist / Opportunity Bridge | MP-NX5 | Skipped: no stable My Portfolio opportunity contract; no new ranking authorized. |
 | Notes / Owner Override Layer | MP-NX6 | Owner/Chief Architect approved and closed 2026-09-08. |
-| Review Session Mode | MP-NX6B | Implemented 2026-09-08: one-holding-at-a-time walk of the current Morning triage list with owner reviewed/deferred marks. |
+| Review Session Mode | MP-NX6B | Owner/Chief Architect approved and closed 2026-09-08. |
 
 ## Design Principles
 
@@ -254,9 +254,9 @@ Primary UX outcome:
 
 ### MP-NX6 — Owner Notes and Review Session Mode
 
-Owner Notes (MP-NX6) Owner/Chief Architect approved and closed 2026-09-08.
-Review Session Mode shipped as MP-NX6B (implemented 2026-09-08, ready for
-review).
+Owner Notes (MP-NX6) and Review Session Mode (MP-NX6B) are Owner/Chief
+Architect approved and closed 2026-09-08. The next-level UX sequence is
+complete.
 
 Objective: turn My Portfolio into a daily review workflow while preserving
 separation between owner judgment and ATHENA-generated intelligence.
