@@ -303,6 +303,7 @@ class SqliteRepository:
                         self._conn.execute(statement)
                     self._migrate_instruments_name_column()
                     self._migrate_instruments_sector_column()
+                    self._migrate_portfolio_holding_notes_review_columns()
                     # SCHEMA_VERSION 11 tables (institutional_flows) are created
                     # by CREATE TABLE IF NOT EXISTS in ddl_statements above.
                     row = self._conn.execute("SELECT version FROM schema_version").fetchone()
@@ -339,6 +340,29 @@ class SqliteRepository:
         cols = {row[1] for row in self._conn.execute("PRAGMA table_info(instruments)")}
         if "sector" not in cols:
             self._conn.execute("ALTER TABLE instruments ADD COLUMN sector TEXT")
+
+    def _migrate_portfolio_holding_notes_review_columns(self) -> None:
+        """SCHEMA_VERSION 20: owner review-session marks on notes.
+
+        Additive columns. ``CREATE TABLE IF NOT EXISTS`` does not alter an
+        already-created ``portfolio_holding_notes`` table from schema 19.
+        """
+
+        cols = {
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(portfolio_holding_notes)")
+        }
+        if not cols:
+            return
+        if "deferred" not in cols:
+            self._conn.execute(
+                "ALTER TABLE portfolio_holding_notes "
+                "ADD COLUMN deferred INTEGER NOT NULL DEFAULT 0"
+            )
+        if "reviewed_at" not in cols:
+            self._conn.execute(
+                "ALTER TABLE portfolio_holding_notes ADD COLUMN reviewed_at TEXT"
+            )
 
     def close_read_connection(self) -> None:
         """Close *this calling thread's own* read-only connection, if it has
@@ -2019,7 +2043,7 @@ class SqliteRepository:
     def list_portfolio_holding_notes(self) -> list[OwnerHoldingNote]:
         rows = self._query_all(
             "SELECT instrument_id, thesis, watch_condition, reminder, review_comment, "
-            "follow_up, created_at, updated_at, provenance_json "
+            "follow_up, deferred, reviewed_at, created_at, updated_at, provenance_json "
             "FROM portfolio_holding_notes ORDER BY instrument_id"
         )
         return [self._portfolio_holding_note_from_row(row) for row in rows]
@@ -2027,7 +2051,7 @@ class SqliteRepository:
     def get_portfolio_holding_note(self, instrument_id: str) -> OwnerHoldingNote | None:
         row = self._query_one(
             "SELECT instrument_id, thesis, watch_condition, reminder, review_comment, "
-            "follow_up, created_at, updated_at, provenance_json "
+            "follow_up, deferred, reviewed_at, created_at, updated_at, provenance_json "
             "FROM portfolio_holding_notes WHERE instrument_id=?",
             (instrument_id,),
         )
@@ -2046,12 +2070,13 @@ class SqliteRepository:
                 self._conn.execute(
                     "INSERT INTO portfolio_holding_notes ("
                     "instrument_id, thesis, watch_condition, reminder, review_comment, "
-                    "follow_up, created_at, updated_at, provenance_json"
-                    ") VALUES (?,?,?,?,?,?,?,?,?) "
+                    "follow_up, deferred, reviewed_at, created_at, updated_at, provenance_json"
+                    ") VALUES (?,?,?,?,?,?,?,?,?,?,?) "
                     "ON CONFLICT(instrument_id) DO UPDATE SET "
                     "thesis=excluded.thesis, watch_condition=excluded.watch_condition, "
                     "reminder=excluded.reminder, review_comment=excluded.review_comment, "
-                    "follow_up=excluded.follow_up, updated_at=excluded.updated_at, "
+                    "follow_up=excluded.follow_up, deferred=excluded.deferred, "
+                    "reviewed_at=excluded.reviewed_at, updated_at=excluded.updated_at, "
                     "provenance_json=excluded.provenance_json",
                     (
                         note.instrument_id,
@@ -2060,6 +2085,8 @@ class SqliteRepository:
                         note.reminder,
                         note.review_comment,
                         1 if note.follow_up else 0,
+                        1 if note.deferred else 0,
+                        note.reviewed_at.isoformat() if note.reviewed_at is not None else None,
                         note.created_at.isoformat(),
                         note.updated_at.isoformat(),
                         json.dumps(dict(note.provenance), sort_keys=True),
@@ -3122,9 +3149,11 @@ class SqliteRepository:
             reminder=row[3] or "",
             review_comment=row[4] or "",
             follow_up=bool(row[5]),
-            created_at=datetime.fromisoformat(row[6]),
-            updated_at=datetime.fromisoformat(row[7]),
-            provenance=json.loads(row[8] or "{}"),
+            deferred=bool(row[6]),
+            reviewed_at=datetime.fromisoformat(row[7]) if row[7] else None,
+            created_at=datetime.fromisoformat(row[8]),
+            updated_at=datetime.fromisoformat(row[9]),
+            provenance=json.loads(row[10] or "{}"),
         )
 
     def _portfolio_holding_from_row(self, row: tuple) -> CanonicalPortfolioHolding:

@@ -85,7 +85,7 @@ header and aborting Portfolio Sync refresh.
   index at all stay UNRESOLVED at preview and still use the BSE catalog
   fallback at confirm.
 - Live LTP on this page still needs a separate ADR. Do not add it here.
-- Dashboard assets: `9.202.0` after MP-NX6 Owner Notes (form at the bottom of the holding-detail overlay). Risk concentration and Portfolio heatmap start collapsed. Morning triage actions scroll Current Holdings into view.
+- Dashboard assets: `9.203.0` after MP-NX6B Review Session. Owner Notes form stays at the bottom of the holding-detail overlay. Risk concentration and Portfolio heatmap start collapsed. Morning triage actions scroll Current Holdings into view.
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.
@@ -107,8 +107,8 @@ The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 - Change Since Last Sync: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
 - Risk Concentration Panel: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
 - Watchlist / Opportunity Bridge: MP-NX5 — skipped; no stable My Portfolio opportunity contract.
-- Notes / Owner Override Layer: MP-NX6 — Owner Notes implemented 2026-09-08, pending owner review.
-- Review Session Mode: later NX6 slice — not started.
+- Notes / Owner Override Layer: MP-NX6 — Owner/Chief Architect approved and closed 2026-09-08.
+- Review Session Mode: MP-NX6B — implemented 2026-09-08, pending owner review.
 - Pinned Rows: MP-NX3 — Owner/Chief Architect approved and closed 2026-09-08.
 - Smart Filters: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Inline Mini Sparklines: MP-NX4 — not shipped; snapshot rows have no D1 close series.
@@ -298,33 +298,43 @@ Suggested tests:
 - API/service tests for snapshot history query or diff contract;
 - dashboard contract for timeline section and empty state.
 
-### 6. MP-NX6 Owner Notes and Review Session Mode
+### 6. MP-NX6 Owner Notes and MP-NX6B Review Session Mode
 
-Owner Notes implemented 2026-09-08. Ready for Owner / Chief Architect review.
-Review Session Mode is a later slice and is not started.
+Owner Notes (MP-NX6) Owner/Chief Architect approved and closed 2026-09-08.
+Review Session Mode shipped as MP-NX6B (implemented 2026-09-08, ready for
+Owner / Chief Architect review).
 
-What shipped (Owner Notes only):
+What shipped:
 
-- `portfolio_holding_notes` (schema 19) + `OwnerHoldingNote`.
+- `portfolio_holding_notes` (schema 20) + `OwnerHoldingNote`.
 - Per-holding thesis / watch_condition / reminder / review_comment / follow_up.
-- Provenance `{"source": "owner", "authored": true}`. Empty notes are deleted.
-- Notes follow NSE→BSE remaps (dest note wins). Deleted with holding, confirm
-  REMOVED, and My Portfolio reset.
+- Owner review marks: `deferred`, `reviewed_at`, computed IST `reviewed_today`.
+- Provenance `{"source": "owner", "authored": true}`. Empty notes (no text, no
+  follow-up, no deferred, no reviewed_at) are deleted.
+- Notes follow NSE→BSE remaps (dest note wins, including its review marks).
+  Deleted with holding, confirm REMOVED, and My Portfolio reset.
 - `GET /api/v1/my-portfolio/notes`, `GET/PUT/DELETE /notes/{instrument_id}`.
-- Detail overlay Owner note form at the bottom, after Structural Review; Note / Follow-up list chips.
-- Dashboard asset version `9.202.0`. No ADR — same My Portfolio SQLite store.
+  PUT `reviewed: null` keeps `reviewed_at`; `true` sets it; `false` clears it.
+- Detail overlay Owner note form at the bottom, after Structural Review.
+- List chips: Note / Follow-up / Reviewed / Deferred.
+- Morning triage Start review walks the current visible/sorted list one holding
+  at a time. Overlay chrome: Previous / Reviewed today / Defer / Next / Exit.
+  Closing the overlay ends the session; marks stay. Session walk state is not
+  persisted.
+- Dashboard asset version `9.203.0`. No ADR — same My Portfolio SQLite store.
 
 What did not ship:
 
-- Review Session Mode (reviewed today / defer / one-holding-at-a-time).
 - Notes on snapshot rows as ATHENA fields.
 - Any change to Status, scores, guidance, conviction, or interpretation versions.
+- A new opportunity ranking or replacement of pins.
 
 Watch-outs:
 
-- Notes must never alter ATHENA evidence, scoring, or generated guidance.
+- Notes and review marks must never alter ATHENA evidence, scoring, or generated
+  guidance.
 - Do not auto-generate recommendations from owner notes.
-- Do not start Review Session Mode until this Owner Notes slice is approved.
+- Do not persist the in-memory review-session walk in SQLite.
 
 ## Milestone Definition of Done
 
@@ -342,7 +352,7 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-Review and approve MP-NX6 Owner Notes.
+Review and approve MP-NX6B Review Session Mode.
 
-If accepted, authorize Review Session Mode as a later NX6 slice. Do not start
-that slice until Owner Notes is approved.
+Do not start another My Portfolio next-level UX milestone until this slice is
+approved.

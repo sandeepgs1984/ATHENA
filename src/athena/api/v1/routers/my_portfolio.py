@@ -229,6 +229,8 @@ def upsert_holding_note(
             reminder=body.reminder,
             review_comment=body.review_comment,
             follow_up=body.follow_up,
+            deferred=body.deferred,
+            reviewed=body.reviewed,
         ),
         meta=_meta(request),
     )

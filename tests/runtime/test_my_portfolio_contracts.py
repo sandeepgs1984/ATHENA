@@ -12,6 +12,7 @@ from athena.portfolio.my_portfolio_contracts import (
     CanonicalPortfolioHolding,
     ImportedHoldingRow,
     OwnerHoldingNote,
+    owner_note_reviewed_today,
     PortfolioAnalysisProvenance,
     PortfolioFreshness,
     PortfolioSnapshotRow,
@@ -64,8 +65,26 @@ def test_owner_holding_note_is_empty_and_trims() -> None:
     follow_up_only = OwnerHoldingNote(instrument_id="NSE:INFY", follow_up=True)
     assert follow_up_only.is_empty() is False
 
+    reviewed_only = OwnerHoldingNote(instrument_id="NSE:INFY", reviewed_at=NOW)
+    assert reviewed_only.is_empty() is False
+    assert reviewed_only.reviewed_today(now=NOW) is True
+    assert owner_note_reviewed_today(NOW, now=NOW) is True
+
+    deferred_only = OwnerHoldingNote(instrument_id="NSE:INFY", deferred=True)
+    assert deferred_only.is_empty() is False
+
     with pytest.raises(ValueError, match="canonical"):
         OwnerHoldingNote(instrument_id="INFY")
+
+
+def test_owner_note_reviewed_today_uses_ist_calendar_day() -> None:
+    just_before_ist_midnight = datetime(2026, 9, 7, 18, 29, tzinfo=timezone.utc)
+    just_after_ist_midnight = datetime(2026, 9, 7, 18, 31, tzinfo=timezone.utc)
+    same_ist_evening = datetime(2026, 9, 8, 18, 29, tzinfo=timezone.utc)
+
+    assert owner_note_reviewed_today(just_before_ist_midnight, now=just_after_ist_midnight) is False
+    assert owner_note_reviewed_today(just_after_ist_midnight, now=same_ist_evening) is True
+    assert owner_note_reviewed_today(None, now=just_after_ist_midnight) is False
 
 
 def test_imported_holding_row_validates_required_normalized_facts() -> None:

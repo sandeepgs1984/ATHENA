@@ -152,6 +152,11 @@
             }
         })(),
         detailOpenKey: null,
+        reviewSession: {
+            active: false,
+            keys: [],
+            index: 0,
+        },
         syncCompletion: null,
         exporting: false,
         exportColumnsByScope: {},
@@ -2448,6 +2453,9 @@
         if (!note || note.present === false) return false;
         return Boolean(
             note.follow_up
+            || note.deferred
+            || note.reviewed_today
+            || note.reviewed_at
             || String(note.thesis || "").trim()
             || String(note.watch_condition || "").trim()
             || String(note.reminder || "").trim()
@@ -2457,12 +2465,21 @@
 
     function myPortfolioNoteBadge(row) {
         const note = myPortfolioNoteForRow(row);
-        if (!myPortfolioNoteIsPresent(note)) return "";
-        const label = note.follow_up ? "Follow-up" : "Note";
-        const title = note.follow_up
-            ? "Owner follow-up. This is your mark, not ATHENA guidance."
-            : "Owner note. This is your judgment, not ATHENA evidence.";
-        return `<span class="my-portfolio-note-badge${note.follow_up ? " is-follow-up" : ""}" title="${title}">${label}</span>`;
+        const chips = [];
+        if (note?.reviewed_today) {
+            chips.push(`<span class="my-portfolio-note-badge is-reviewed" title="Owner reviewed today. This is your mark, not ATHENA guidance.">Reviewed</span>`);
+        }
+        if (note?.deferred) {
+            chips.push(`<span class="my-portfolio-note-badge is-deferred" title="Owner deferred. This is your mark, not ATHENA ranking.">Deferred</span>`);
+        }
+        if (myPortfolioNoteIsPresent(note) && (note.follow_up || String(note.thesis || "").trim() || String(note.watch_condition || "").trim() || String(note.reminder || "").trim() || String(note.review_comment || "").trim())) {
+            const label = note.follow_up ? "Follow-up" : "Note";
+            const title = note.follow_up
+                ? "Owner follow-up. This is your mark, not ATHENA guidance."
+                : "Owner note. This is your judgment, not ATHENA evidence.";
+            chips.push(`<span class="my-portfolio-note-badge${note.follow_up ? " is-follow-up" : ""}" title="${title}">${label}</span>`);
+        }
+        return chips.join("");
     }
 
     function myPortfolioPinBadge(row) {
@@ -2913,31 +2930,43 @@
         const openRow = openKey ? myPortfolioState.snapshotRowsByKey[openKey] : null;
         renderMyPortfolioHoldings(myPortfolioSourceRows());
         if (openRow) renderMyPortfolioDetail(openRow);
+        renderMyPortfolioReviewSessionChrome();
     }
 
-    async function saveMyPortfolioNote(instrumentId) {
-        if (!instrumentId) return;
+    function myPortfolioNotePayload(instrumentId, extras = {}) {
+        const existing = myPortfolioState.notes[instrumentId] || {};
+        return {
+            thesis: document.getElementById("my-portfolio-note-thesis")?.value || existing.thesis || "",
+            watch_condition: document.getElementById("my-portfolio-note-watch")?.value || existing.watch_condition || "",
+            reminder: document.getElementById("my-portfolio-note-reminder")?.value || existing.reminder || "",
+            review_comment: document.getElementById("my-portfolio-note-comment")?.value || existing.review_comment || "",
+            follow_up: document.getElementById("my-portfolio-note-follow-up")
+                ? Boolean(document.getElementById("my-portfolio-note-follow-up").checked)
+                : Boolean(existing.follow_up),
+            deferred: extras.deferred !== undefined ? Boolean(extras.deferred) : Boolean(existing.deferred),
+            ...(extras.reviewed === undefined ? {} : { reviewed: extras.reviewed }),
+        };
+    }
+
+    async function saveMyPortfolioNote(instrumentId, extras = {}) {
+        if (!instrumentId) return null;
         const status = document.getElementById("my-portfolio-note-status");
         const saveBtn = document.getElementById("my-portfolio-note-save");
         if (saveBtn) saveBtn.disabled = true;
         try {
             const response = await apiRequest(`/api/v1/my-portfolio/notes/${encodeURIComponent(instrumentId)}`, {
                 method: "PUT",
-                body: JSON.stringify({
-                    thesis: document.getElementById("my-portfolio-note-thesis")?.value || "",
-                    watch_condition: document.getElementById("my-portfolio-note-watch")?.value || "",
-                    reminder: document.getElementById("my-portfolio-note-reminder")?.value || "",
-                    review_comment: document.getElementById("my-portfolio-note-comment")?.value || "",
-                    follow_up: Boolean(document.getElementById("my-portfolio-note-follow-up")?.checked),
-                }),
+                body: JSON.stringify(myPortfolioNotePayload(instrumentId, extras)),
                 skipToast: true,
             });
             rememberMyPortfolioNote(instrumentId, response?.data);
             const nextStatus = document.getElementById("my-portfolio-note-status");
             if (nextStatus) nextStatus.textContent = response?.data?.present ? "Owner note saved." : "Owner note cleared.";
+            return response?.data || null;
         } catch (err) {
             if (status) status.textContent = "Could not save the owner note.";
             showMyPortfolioAlert("Could not save the owner note.", "danger");
+            return null;
         } finally {
             if (saveBtn) saveBtn.disabled = false;
         }
@@ -2960,6 +2989,91 @@
         }
     }
 
+    function myPortfolioReviewSessionRows() {
+        return sortedMyPortfolioRows(myPortfolioVisibleRows(myPortfolioSourceRows()));
+    }
+
+    function renderMyPortfolioReviewSessionChrome() {
+        const bar = document.getElementById("my-portfolio-review-session");
+        const status = document.getElementById("my-portfolio-review-session-status");
+        const session = myPortfolioState.reviewSession;
+        if (!bar) return;
+        if (!session.active || !session.keys.length) {
+            bar.hidden = true;
+            return;
+        }
+        bar.hidden = false;
+        const position = session.index + 1;
+        const currentKey = session.keys[session.index] || "";
+        const note = myPortfolioState.notes[currentKey] || {};
+        const marks = [
+            note.reviewed_today ? "reviewed today" : null,
+            note.deferred ? "deferred" : null,
+        ].filter(Boolean);
+        if (status) {
+            status.textContent = `Review session ${position} of ${session.keys.length}${marks.length ? ` · ${marks.join(", ")}` : ""}. Owner marks only — this never changes ATHENA Status or guidance.`;
+        }
+        const prev = document.getElementById("my-portfolio-review-prev");
+        const next = document.getElementById("my-portfolio-review-next");
+        if (prev) prev.disabled = session.index <= 0;
+        if (next) next.disabled = session.index >= session.keys.length - 1;
+    }
+
+    function endMyPortfolioReviewSession() {
+        myPortfolioState.reviewSession = { active: false, keys: [], index: 0 };
+        renderMyPortfolioReviewSessionChrome();
+    }
+
+    function openMyPortfolioReviewSessionAt(index) {
+        const session = myPortfolioState.reviewSession;
+        if (!session.active || !session.keys.length) return;
+        const nextIndex = Math.max(0, Math.min(index, session.keys.length - 1));
+        session.index = nextIndex;
+        const key = session.keys[nextIndex];
+        if (!key) return;
+        openMyPortfolioDetail(key);
+        renderMyPortfolioReviewSessionChrome();
+    }
+
+    function startMyPortfolioReviewSession() {
+        const rows = myPortfolioReviewSessionRows();
+        const keys = rows.map(row => myPortfolioPinKey(row) || myPortfolioRowKey(row)).filter(Boolean);
+        if (!keys.length) {
+            showMyPortfolioAlert("No holdings in the current Morning triage view to review.", "warning");
+            return;
+        }
+        const firstUnreviewed = keys.findIndex(key => !myPortfolioState.notes[key]?.reviewed_today);
+        myPortfolioState.reviewSession = {
+            active: true,
+            keys,
+            index: firstUnreviewed >= 0 ? firstUnreviewed : 0,
+        };
+        openMyPortfolioReviewSessionAt(myPortfolioState.reviewSession.index);
+        scrollMyPortfolioHoldingsIntoView();
+    }
+
+    function stepMyPortfolioReviewSession(delta) {
+        if (!myPortfolioState.reviewSession.active) return;
+        openMyPortfolioReviewSessionAt(myPortfolioState.reviewSession.index + delta);
+    }
+
+    async function markMyPortfolioReviewSession(kind) {
+        const session = myPortfolioState.reviewSession;
+        const key = session.keys[session.index];
+        if (!session.active || !key) return;
+        const extras = kind === "defer"
+            ? { deferred: true }
+            : { reviewed: true };
+        const saved = await saveMyPortfolioNote(key, extras);
+        if (!saved) return;
+        const nextUnreviewed = session.keys.findIndex((item, index) => (
+            index > session.index && !myPortfolioState.notes[item]?.reviewed_today
+        ));
+        if (nextUnreviewed >= 0) openMyPortfolioReviewSessionAt(nextUnreviewed);
+        else if (session.index < session.keys.length - 1) stepMyPortfolioReviewSession(1);
+        else renderMyPortfolioReviewSessionChrome();
+    }
+
     function resetMyPortfolioDetailScroll() {
         if (myPortfolioDetailBody) myPortfolioDetailBody.scrollTop = 0;
         const container = myPortfolioDetailModal?.querySelector(".my-portfolio-detail-modal-container");
@@ -2974,6 +3088,10 @@
             myPortfolioDetailSubtitle.textContent = `Qty ${formatMyPortfolioPrivateNumber(row.qty ?? row.quantity)} @ ${formatMyPortfolioPrivateMoney(row.avg_price)} avg`;
         }
         myPortfolioState.detailOpenKey = key;
+        if (myPortfolioState.reviewSession.active) {
+            const sessionIndex = myPortfolioState.reviewSession.keys.indexOf(key);
+            if (sessionIndex >= 0) myPortfolioState.reviewSession.index = sessionIndex;
+        }
         myPortfolioState.timelineKey = key;
         myPortfolioState.timeline = null;
         myPortfolioState.timelineLoading = true;
@@ -2983,6 +3101,7 @@
         resetMyPortfolioDetailScroll();
         openModal(myPortfolioDetailModal);
         window.requestAnimationFrame(resetMyPortfolioDetailScroll);
+        renderMyPortfolioReviewSessionChrome();
     }
 
     myPortfolioHoldingsRows?.addEventListener("click", event => {
@@ -3013,9 +3132,15 @@
             myPortfolioDeleteHolding(instrumentId);
         }
     });
-    myPortfolioDetailClose?.addEventListener("click", () => closeModal(myPortfolioDetailModal));
+    myPortfolioDetailClose?.addEventListener("click", () => {
+        endMyPortfolioReviewSession();
+        closeModal(myPortfolioDetailModal);
+    });
     window.addEventListener("click", event => {
-        if (event.target === myPortfolioDetailModal) closeModal(myPortfolioDetailModal);
+        if (event.target === myPortfolioDetailModal) {
+            endMyPortfolioReviewSession();
+            closeModal(myPortfolioDetailModal);
+        }
     });
 
     // Holdings edit/delete: owner-initiated corrections to one current
@@ -3603,6 +3728,20 @@
     myPortfolioQueueAll?.addEventListener("click", () => setMyPortfolioQueueView(false));
     myPortfolioQueueOnly?.addEventListener("click", () => setMyPortfolioQueueView(true));
     myPortfolioTriageClear?.addEventListener("click", clearMyPortfolioTriage);
+    document.getElementById("my-portfolio-review-start")?.addEventListener("click", startMyPortfolioReviewSession);
+    document.getElementById("my-portfolio-review-prev")?.addEventListener("click", () => stepMyPortfolioReviewSession(-1));
+    document.getElementById("my-portfolio-review-next")?.addEventListener("click", () => stepMyPortfolioReviewSession(1));
+    document.getElementById("my-portfolio-review-mark")?.addEventListener("click", () => markMyPortfolioReviewSession("reviewed"));
+    document.getElementById("my-portfolio-review-defer")?.addEventListener("click", () => markMyPortfolioReviewSession("defer"));
+    document.getElementById("my-portfolio-review-exit")?.addEventListener("click", () => {
+        endMyPortfolioReviewSession();
+        closeModal(myPortfolioDetailModal);
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && myPortfolioState.reviewSession.active) {
+            endMyPortfolioReviewSession();
+        }
+    });
     myPortfolioCommandDashboard?.addEventListener("click", event => {
         const attentionChip = event.target.closest(".my-portfolio-triage-chip[data-triage-available='true']");
         if (attentionChip) {

@@ -6,13 +6,48 @@ status updated on approval.
 
 ---
 
+## MP-NX6B — Review Session Mode
+
+**Summary.** Authorized after MP-NX6 Owner Notes approval ("start next").
+Walk the current visible/sorted Morning triage list one holding at a time
+and persist owner reviewed/deferred marks on the existing notes row. Marks
+never change ATHENA Status, scores, guidance, conviction, or interpretation
+versions. Session walk state stays in memory only.
+
+**What changed.** Schema 19 → 20 adds `deferred` and `reviewed_at` to
+`portfolio_holding_notes`, with an ALTER migrate for existing notes tables.
+`reviewed_today` is computed from the IST calendar day. PUT `reviewed: null`
+keeps `reviewed_at` so Save note does not wipe marks; `true` sets now;
+`false` clears. Empty notes now also stay if deferred or reviewed. Morning
+triage gains Start review. The holding-detail overlay shows session chrome
+(Previous / Reviewed today / Defer / Next / Exit). List chips add Reviewed /
+Deferred. Closing the overlay or pressing Escape ends the session; marks
+stay. Dashboard assets advanced to `9.203.0`. No ADR.
+
+**Tests.** Contract emptiness for review-only marks and IST day-boundary
+`reviewed_today`. Schema columns + v19→v20 ALTER migrate. API reviewed /
+deferred persist, Save-note keeps `reviewed_at`, `reviewed: false` clears.
+Hosting/release-gate lock Start review, session bar, session helper, and
+`9.203.0` assets. SCHEMA_VERSION pins updated to 20.
+
+**Files created:** none.
+
+**Files modified:** same My Portfolio notes/schema/API/dashboard/docs set as
+MP-NX6, plus this milestone's review-session columns, chrome, and tests.
+
+**Status:** Implementation complete 2026-09-08; ready for Owner / Chief
+Architect review. Do not start another My Portfolio next-level UX milestone
+until this slice is approved.
+
+---
+
 ## MP-NX6 — Owner Notes (Review Session later)
 
 **Summary.** Authorized after MP-NX5 approval. Persist owner-authored
 holding notes so the owner can keep thesis, watch condition, reminder,
 review comment, and a follow-up mark on current holdings without changing
 ATHENA Status, scores, guidance, conviction, or interpretation versions.
-Review Session Mode is a later NX6 slice and was not implemented.
+Review Session Mode shipped separately as MP-NX6B.
 
 **What changed.** New `OwnerHoldingNote` contract and
 `portfolio_holding_notes` table (schema 18 → 19). Notes are sparse: an
@@ -63,9 +98,8 @@ remap lifecycle, import reset, hosting, and release-gate — all passed.
 `docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
 `ATHENA_BRIEFING.md`, this file.
 
-**Status:** Implementation complete 2026-09-08; ready for Owner / Chief
-Architect review. Review Session Mode not started. Do not start that
-slice until this Owner Notes slice is approved.
+**Status:** Owner/Chief Architect approved and closed 2026-09-08. Review
+Session Mode shipped as MP-NX6B.
 
 ---
 

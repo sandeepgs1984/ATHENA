@@ -212,3 +212,45 @@ def test_reset_clears_notes(my_portfolio_client: TestClient) -> None:
     assert counts["portfolio_holdings"] == 1
     assert repo.list_portfolio_holding_notes() == []
     assert repo.list_portfolio_holdings() == []
+
+
+def test_reviewed_mark_sets_reviewed_today(my_portfolio_client: TestClient) -> None:
+    _confirm_infy_holding(my_portfolio_client)
+    marked = _put_note(my_portfolio_client, "NSE:INFY", reviewed=True)
+
+    assert marked["present"] is True
+    assert marked["reviewed_today"] is True
+    assert marked["reviewed_at"]
+    assert marked["thesis"] == ""
+    assert marked["deferred"] is False
+
+
+def test_save_note_without_reviewed_keeps_reviewed_at(my_portfolio_client: TestClient) -> None:
+    _confirm_infy_holding(my_portfolio_client)
+    first = _put_note(my_portfolio_client, "NSE:INFY", reviewed=True)
+    kept = _put_note(my_portfolio_client, "NSE:INFY", thesis="Still holding.")
+
+    assert kept["present"] is True
+    assert kept["thesis"] == "Still holding."
+    assert kept["reviewed_at"] == first["reviewed_at"]
+    assert kept["reviewed_today"] is True
+
+
+def test_deferred_mark_persists_without_text(my_portfolio_client: TestClient) -> None:
+    repo = _confirm_infy_holding(my_portfolio_client)
+    marked = _put_note(my_portfolio_client, "NSE:INFY", deferred=True)
+
+    assert marked["present"] is True
+    assert marked["deferred"] is True
+    assert marked["reviewed_today"] is False
+    assert repo.get_portfolio_holding_note("NSE:INFY") is not None
+
+
+def test_reviewed_false_clears_reviewed_at(my_portfolio_client: TestClient) -> None:
+    _confirm_infy_holding(my_portfolio_client)
+    _put_note(my_portfolio_client, "NSE:INFY", reviewed=True, thesis="Keep.")
+    cleared = _put_note(my_portfolio_client, "NSE:INFY", thesis="Keep.", reviewed=False)
+
+    assert cleared["present"] is True
+    assert cleared["reviewed_at"] is None
+    assert cleared["reviewed_today"] is False

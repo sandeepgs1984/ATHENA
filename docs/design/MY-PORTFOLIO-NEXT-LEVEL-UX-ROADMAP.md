@@ -58,8 +58,8 @@ This roadmap covers the full 14-item next-level UX inventory:
 | Inline Mini Sparklines | MP-NX4 | Not shipped: snapshot rows have no D1 close series; no new history fetch. |
 | Symbol Detail Review Timeline | MP-NX5 | Implemented 2026-09-08: per-holding review timeline from recent snapshots. |
 | Watchlist / Opportunity Bridge | MP-NX5 | Skipped: no stable My Portfolio opportunity contract; no new ranking authorized. |
-| Notes / Owner Override Layer | MP-NX6 | Owner-authored thesis, reminder, watch condition, and follow-up state. |
-| Review Session Mode | MP-NX6 | Guided daily review workflow using queue/profile/filter inputs. |
+| Notes / Owner Override Layer | MP-NX6 | Owner/Chief Architect approved and closed 2026-09-08. |
+| Review Session Mode | MP-NX6B | Implemented 2026-09-08: one-holding-at-a-time walk of the current Morning triage list with owner reviewed/deferred marks. |
 
 ## Design Principles
 
@@ -254,8 +254,9 @@ Primary UX outcome:
 
 ### MP-NX6 — Owner Notes and Review Session Mode
 
-Owner Notes implemented 2026-09-08 (ready for review). Review Session Mode
-is a later slice and is not started.
+Owner Notes (MP-NX6) Owner/Chief Architect approved and closed 2026-09-08.
+Review Session Mode shipped as MP-NX6B (implemented 2026-09-08, ready for
+review).
 
 Objective: turn My Portfolio into a daily review workflow while preserving
 separation between owner judgment and ATHENA-generated intelligence.
@@ -288,7 +289,7 @@ Recommended order:
 3. MP-NX3 — Column Profiles.
 4. MP-NX4 — Portfolio Heatmap.
 5. MP-NX5 — Symbol Review Timeline.
-6. MP-NX6 — Owner Notes and Review Session Mode.
+6. MP-NX6 — Owner Notes (closed) and MP-NX6B Review Session Mode.
 
 Reasoning: MP-NX1 and MP-NX2 produce the highest workflow value with the lowest
 methodology risk. MP-NX3 then makes the table scalable. Heatmap and timeline add

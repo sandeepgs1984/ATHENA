@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.202.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.203.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -700,7 +700,10 @@
                             </div>
                             <div class="my-portfolio-triage-footer">
                                 <p id="my-portfolio-triage-summary">Showing all holdings.</p>
-                                <button id="my-portfolio-triage-clear" class="btn btn-sm" type="button" hidden>Clear filters</button>
+                                <div class="my-portfolio-triage-footer-actions">
+                                    <button id="my-portfolio-review-start" class="btn btn-primary btn-sm" type="button">Start review</button>
+                                    <button id="my-portfolio-triage-clear" class="btn btn-sm" type="button" hidden>Clear filters</button>
+                                </div>
                             </div>
                         </section>
 
@@ -1988,6 +1991,16 @@
                 <div>
                     <h3 id="my-portfolio-detail-title">Holding detail</h3>
                     <p id="my-portfolio-detail-subtitle" class="metric-desc"></p>
+                    <div id="my-portfolio-review-session" class="my-portfolio-review-session" hidden>
+                        <p id="my-portfolio-review-session-status" class="metric-desc">Review session. Owner marks only — this never changes ATHENA Status or guidance.</p>
+                        <div class="my-portfolio-review-session-actions">
+                            <button id="my-portfolio-review-prev" class="btn btn-sm" type="button">Previous</button>
+                            <button id="my-portfolio-review-mark" class="btn btn-primary btn-sm" type="button">Reviewed today</button>
+                            <button id="my-portfolio-review-defer" class="btn btn-sm" type="button">Defer</button>
+                            <button id="my-portfolio-review-next" class="btn btn-sm" type="button">Next</button>
+                            <button id="my-portfolio-review-exit" class="btn btn-sm" type="button">Exit session</button>
+                        </div>
+                    </div>
                 </div>
                 <button id="my-portfolio-detail-close" class="modal-close-btn" type="button" aria-label="Close holding detail">&times;</button>
             </div>
@@ -2409,7 +2422,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.202.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.203.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

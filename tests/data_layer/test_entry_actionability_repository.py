@@ -567,8 +567,8 @@ def test_historical_actionable_row_state_unaffected_by_a_later_write(repo) -> No
 # --------------------------------------------------------------------------- #
 
 
-def test_schema_version_bumped_to_19() -> None:
-    assert SCHEMA_VERSION == 19
+def test_schema_version_bumped_to_20() -> None:
+    assert SCHEMA_VERSION == 20
 
 
 def test_migration_creates_entry_actionabilities_table(repo) -> None:

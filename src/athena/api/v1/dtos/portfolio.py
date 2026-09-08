@@ -181,6 +181,9 @@ class OwnerHoldingNoteDTO(BaseModel):
     reminder: str = ""
     review_comment: str = ""
     follow_up: bool = False
+    deferred: bool = False
+    reviewed_at: datetime | None = None
+    reviewed_today: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
     provenance: dict[str, object] = Field(default_factory=dict)
@@ -198,6 +201,8 @@ class UpsertOwnerHoldingNoteRequest(BaseModel):
     reminder: str = Field(default="", max_length=2000)
     review_comment: str = Field(default="", max_length=4000)
     follow_up: bool = False
+    deferred: bool = False
+    reviewed: bool | None = None
 
 
 class UpdateMyPortfolioHoldingRequest(BaseModel):

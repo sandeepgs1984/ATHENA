@@ -448,11 +448,19 @@ class MyPortfolioService:
         reminder: str,
         review_comment: str,
         follow_up: bool,
+        deferred: bool = False,
+        reviewed: bool | None = None,
     ) -> OwnerHoldingNoteDTO:
         if self._repo.get_portfolio_holding(instrument_id) is None:
             raise MyPortfolioHoldingNotFoundError(f"portfolio holding not found: {instrument_id}")
         now = datetime.now(tz=timezone.utc)
         existing = self._repo.get_portfolio_holding_note(instrument_id)
+        if reviewed is True:
+            reviewed_at = now
+        elif reviewed is False:
+            reviewed_at = None
+        else:
+            reviewed_at = existing.reviewed_at if existing is not None else None
         note = OwnerHoldingNote(
             instrument_id=instrument_id,
             thesis=thesis,
@@ -460,6 +468,8 @@ class MyPortfolioService:
             reminder=reminder,
             review_comment=review_comment,
             follow_up=follow_up,
+            deferred=deferred,
+            reviewed_at=reviewed_at,
             created_at=existing.created_at if existing is not None else now,
             updated_at=now,
             provenance={"source": "owner", "authored": True},
@@ -1225,6 +1235,9 @@ class MyPortfolioService:
             reminder=note.reminder,
             review_comment=note.review_comment,
             follow_up=note.follow_up,
+            deferred=note.deferred,
+            reviewed_at=note.reviewed_at,
+            reviewed_today=note.reviewed_today(now=datetime.now(tz=timezone.utc)),
             created_at=note.created_at,
             updated_at=note.updated_at,
             provenance=dict(note.provenance),

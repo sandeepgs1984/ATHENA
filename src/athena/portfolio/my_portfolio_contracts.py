@@ -13,6 +13,9 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from types import MappingProxyType
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
 
 PORTFOLIO_ANALYSIS_VERSION = "my-portfolio-v1"
 
@@ -146,6 +149,8 @@ class OwnerHoldingNote:
     reminder: str = ""
     review_comment: str = ""
     follow_up: bool = False
+    deferred: bool = False
+    reviewed_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     provenance: Mapping[str, object] = field(default_factory=dict)
@@ -157,11 +162,14 @@ class OwnerHoldingNote:
             raise ValueError("OwnerHoldingNote.created_at must be timezone-aware")
         if self.updated_at is not None and self.updated_at.tzinfo is None:
             raise ValueError("OwnerHoldingNote.updated_at must be timezone-aware")
+        if self.reviewed_at is not None and self.reviewed_at.tzinfo is None:
+            raise ValueError("OwnerHoldingNote.reviewed_at must be timezone-aware")
         object.__setattr__(self, "thesis", str(self.thesis or "").strip())
         object.__setattr__(self, "watch_condition", str(self.watch_condition or "").strip())
         object.__setattr__(self, "reminder", str(self.reminder or "").strip())
         object.__setattr__(self, "review_comment", str(self.review_comment or "").strip())
         object.__setattr__(self, "follow_up", bool(self.follow_up))
+        object.__setattr__(self, "deferred", bool(self.deferred))
         object.__setattr__(self, "provenance", MappingProxyType(dict(self.provenance)))
 
     def is_empty(self) -> bool:
@@ -171,7 +179,22 @@ class OwnerHoldingNote:
             and not self.reminder
             and not self.review_comment
             and not self.follow_up
+            and not self.deferred
+            and self.reviewed_at is None
         )
+
+    def reviewed_today(self, *, now: datetime) -> bool:
+        return owner_note_reviewed_today(self.reviewed_at, now=now)
+
+
+def owner_note_reviewed_today(reviewed_at: datetime | None, *, now: datetime) -> bool:
+    """True when reviewed_at falls on the same IST calendar day as now."""
+
+    if reviewed_at is None:
+        return False
+    if reviewed_at.tzinfo is None or now.tzinfo is None:
+        raise ValueError("reviewed_at and now must be timezone-aware")
+    return reviewed_at.astimezone(IST).date() == now.astimezone(IST).date()
 
 
 @dataclass(frozen=True, slots=True)

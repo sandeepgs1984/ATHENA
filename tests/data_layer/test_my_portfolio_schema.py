@@ -67,7 +67,7 @@ def test_my_portfolio_tables_are_created_in_athena_schema(tmp_path: Path) -> Non
     }
 
     assert expected <= tables
-    assert SCHEMA_VERSION == 19
+    assert SCHEMA_VERSION == 20
     assert repo._conn.execute("SELECT version FROM schema_version").fetchone()[0] == SCHEMA_VERSION
     repo.close()
 
@@ -83,10 +83,43 @@ def test_portfolio_holding_notes_columns(tmp_path: Path) -> None:
         "reminder",
         "review_comment",
         "follow_up",
+        "deferred",
+        "reviewed_at",
         "created_at",
         "updated_at",
         "provenance_json",
     }
+    repo.close()
+
+
+def test_portfolio_holding_notes_review_columns_migrate_from_schema_19(tmp_path: Path) -> None:
+    db_path = tmp_path / "athena.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version(version) VALUES (19);
+        CREATE TABLE portfolio_holding_notes (
+            instrument_id TEXT PRIMARY KEY,
+            thesis TEXT NOT NULL DEFAULT '',
+            watch_condition TEXT NOT NULL DEFAULT '',
+            reminder TEXT NOT NULL DEFAULT '',
+            review_comment TEXT NOT NULL DEFAULT '',
+            follow_up INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            provenance_json TEXT NOT NULL DEFAULT '{}'
+        );
+        """
+    )
+    conn.close()
+
+    repo = SqliteRepository(db_path)
+    repo.initialize()
+    columns = _columns(repo._conn, "portfolio_holding_notes")  # type: ignore[attr-defined]
+    assert "deferred" in columns
+    assert "reviewed_at" in columns
+    assert repo._conn.execute("SELECT version FROM schema_version").fetchone()[0] == 20  # type: ignore[attr-defined]
     repo.close()
 
 
