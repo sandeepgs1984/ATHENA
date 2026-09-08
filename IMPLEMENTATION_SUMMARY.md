@@ -6,6 +6,53 @@ status updated on approval.
 
 ---
 
+## MP-NX3 — Column Profiles, Pinned Rows, and Export Profiles
+
+**Summary.** Replaced the Compact/Full density toggle with purposeful table
+profiles so the owner can switch from scanning to P&L, technical, risk, or
+full audit without fighting the table. Owner-pinned rows stay visible across
+sort and triage filters and are labeled as owner-authored, not ATHENA
+ranking. Export Profiles reuse the approved selected-column contract.
+
+**What changed.** Compact Scan, P&L Review, Technical Review, Risk Review,
+and Full Audit each set visible columns, default sort, and density. The
+active profile and pin list persist in localStorage only. A thumbtack in
+Actions pins/unpins a holding. Export Advanced Columns gained Daily Review,
+Full Audit, and Private Sharing presets; Private Sharing omits quantity,
+investment, current value, and P&L. Table profile state stays separate from
+export column state. Dashboard assets advanced to `9.189.0`. MP-NX2 was
+Owner/Chief Architect approved and closed the same day. Screenshot
+correction: each profile table is locked to the sum of its visible column
+widths so `.data-table { width: 100% }` cannot stretch leftover Full Audit
+space; hidden Qty/Avg/Last/P&L columns collapse instead of sitting empty
+under sticky Symbol; Technical/Risk snap padding is No.+Symbol only; and
+switching profile resets horizontal scroll. The Current Holdings header
+row now stays pinned while scrolling the table so column names remain
+readable against the values.
+
+**Tests.** Dashboard hosting / release-gate contracts lock the profile
+select, pin badge copy, export profile buttons, profile-specific hidden
+columns, profile min-widths / 234px snap padding, sticky holdings
+header row, localStorage keys, and cache-busted `9.189.0` assets.
+
+**Files created:** none.
+
+**Files modified:** `src/athena/api/static/index.html`,
+`src/athena/api/static/dashboard.css`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
+
+**Status:** Implementation complete 2026-09-07; screenshot width/scroll
+correction 2026-09-08; ready for Owner / Chief Architect review. Not
+marked approved. Do not start MP-NX4 until authorized.
+
+---
+
 ## MP-NX2 — Change Since Last Sync and Risk Concentration
 
 **Summary.** Added a display-only latest-vs-previous snapshot comparison and a
@@ -58,8 +105,8 @@ tones, owner-facing risk labels, and cache-busted `9.186.0` assets.
 `docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
 `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
 
-**Status:** Implementation complete 2026-09-07; ready for Owner / Chief
-Architect review. Not marked approved. Do not start MP-NX3 until authorized.
+**Status:** Owner/Chief Architect approved and closed 2026-09-07. MP-NX3
+authorized and implemented the same day.
 
 ---
 

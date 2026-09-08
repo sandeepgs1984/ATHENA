@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.186.0" in html
-    assert "dashboard.js?v=9.186.0" in html
+    assert "dashboard.css?v=9.189.0" in html
+    assert "dashboard.js?v=9.189.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -445,11 +445,17 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
         'class="my-portfolio-mini-bar my-portfolio-holdings-context"'
     )
     assert 'class="my-portfolio-holdings-controls" aria-label="Current holdings controls"' in html
-    assert 'class="my-portfolio-density-toggle" role="group"' in html
-    assert 'id="my-portfolio-density-compact"' in html
-    assert 'id="my-portfolio-density-comfortable"' in html
-    assert "Compact scan" in html
-    assert "Full review" in html
+    assert 'id="my-portfolio-table-profile"' in html
+    assert "Compact Scan" in html
+    assert "P&amp;L Review" in html
+    assert "Technical Review" in html
+    assert "Risk Review" in html
+    assert "Full Audit" in html
+    assert 'id="my-portfolio-export-preset-daily-review"' in html
+    assert 'id="my-portfolio-export-preset-full-audit"' in html
+    assert 'id="my-portfolio-export-preset-private"' in html
+    assert "Private Sharing" in html
+    assert 'id="my-portfolio-mini-profile"' in html
     assert 'class="my-portfolio-secondary-grid"' in html
     assert 'class="card my-portfolio-upload-panel"' in html
     assert 'class="card my-portfolio-history-panel"' in html
@@ -490,7 +496,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-sort-direction"' in html
     assert 'id="my-portfolio-sort-reset"' in html
     assert 'class="btn btn-icon my-portfolio-sort-reset"' in html
-    assert 'aria-label="Reset to default P&amp;L % sort"' in html
+    assert 'aria-label="Reset to the active profile sort"' in html
     assert 'id="my-portfolio-preview-duplicates"' in html
     assert 'id="my-portfolio-holdings-rows"' in html
     assert 'id="my-portfolio-history-rows"' in html
@@ -531,7 +537,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.189.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
@@ -580,7 +586,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-preview-modal-body" in my_portfolio_css
     assert ".my-portfolio-preview-modal-container" in css
     assert "max-height: min(86vh, 860px)" in css
-    assert "min-width: 2249px" in my_portfolio_css
+    assert "min-width: 2277px" in my_portfolio_css
     assert "min-width: 2185px" not in my_portfolio_css
     assert "min-width: 2160px" not in my_portfolio_css
     assert "min-width: 2140px" not in my_portfolio_css
@@ -699,7 +705,18 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-upload-panel .card-header h2" in my_portfolio_css
     assert ".my-portfolio-history-panel .card-header h2" in my_portfolio_css
     assert "margin-bottom: var(--space-8)" in my_portfolio_css
-    assert ".my-portfolio-density-toggle" in my_portfolio_css
+    assert ".my-portfolio-wide-table[data-table-profile=\"pnl_review\"] th:nth-child(9)" in my_portfolio_css
+    assert ".my-portfolio-wide-table[data-table-profile=\"technical_review\"] th:nth-child(3)" in my_portfolio_css
+    assert ".my-portfolio-wide-table[data-table-profile=\"risk_review\"] th:nth-child(5)" in my_portfolio_css
+    assert ".my-portfolio-wide-table.comfortable-density[data-table-profile=\"pnl_review\"]" in my_portfolio_css
+    assert "min-width: 1338px" in my_portfolio_css
+    assert "min-width: 1843px" in my_portfolio_css
+    assert "min-width: 1693px" in my_portfolio_css
+    assert "max-width: 1338px" in my_portfolio_css
+    assert "max-width: 1843px" in my_portfolio_css
+    assert "max-width: 1693px" in my_portfolio_css
+    assert "visibility: collapse;" in my_portfolio_css
+    assert ".my-portfolio-pin-badge" in my_portfolio_css
     assert ".my-portfolio-wide-table.comfortable-density th" in my_portfolio_css
     assert ".my-portfolio-wide-table.compact-density th" in my_portfolio_css
     assert ".my-portfolio-wide-table.compact-density .my-portfolio-col-avg-price" in my_portfolio_css
@@ -725,9 +742,14 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     # columns at an unconstrained scroll offset).
     assert "padding: var(--space-10) var(--space-12);" in my_portfolio_css
     assert ".my-portfolio-holdings-scroll" in my_portfolio_css
+    assert "max-height: min(72vh, calc(100dvh - 13.5rem));" in my_portfolio_css
+    assert "border-collapse: separate;" in my_portfolio_css
+    assert "border-spacing: 0;" in my_portfolio_css
+    assert ".my-portfolio-table thead th" in my_portfolio_css
     assert "scroll-snap-type: x mandatory;" in my_portfolio_css
     assert "scroll-padding-left: 474px;" in my_portfolio_css
     assert "scroll-padding-left: 324px;" in my_portfolio_css
+    assert "scroll-padding-left: 234px;" in my_portfolio_css
     assert "scroll-snap-align: start;" in my_portfolio_css
     assert "scroll-snap-stop: always;" in my_portfolio_css
     assert 'my-portfolio-holdings-scroll' in html
@@ -827,7 +849,17 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'myPortfolioRankedHoldings(rows.filter(row => myPortfolioPnlValue(row) < 0), myPortfolioPnlValue, "asc", 3, "negative")' in js
     assert ".my-portfolio-risk-rank li.tone-positive strong" in my_portfolio_css
     assert ".my-portfolio-risk-rank li.tone-negative strong" in my_portfolio_css
-    assert "myPortfolioDensityCompact?.addEventListener" in js
+    assert "function setMyPortfolioTableProfile" in js
+    assert "function resetMyPortfolioHoldingsHorizontalScroll" in js
+    assert "function toggleMyPortfolioPin" in js
+    assert "MY_PORTFOLIO_TABLE_PROFILES" in js
+    assert 'athena.myPortfolio.tableProfile' in js
+    assert 'athena.myPortfolio.pinnedInstrumentIds' in js
+    assert 'data-action="pin"' in js
+    assert "Owner-pinned. This is your pin, not ATHENA conviction or ranking." in js
+    assert 'applyMyPortfolioExportPreset("daily_review")' in js
+    assert 'applyMyPortfolioExportPreset("full_audit")' in js
+    assert 'applyMyPortfolioExportPreset("private_sharing")' in js
     assert "myPortfolioHistoryToggle?.addEventListener" in js
     # Owner Correction 2: TradePlan-derived levels must never be labeled
     # "Support"/"Major Support" — that implies rejected structural

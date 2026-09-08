@@ -70,18 +70,18 @@ The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 
 - Portfolio Command Dashboard: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Action Queue View: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
-- Column Profiles: MP-NX3.
+- Column Profiles: MP-NX3 — implemented 2026-09-07, pending owner review.
 - Portfolio Heatmap: MP-NX4.
 - Symbol Detail Review Timeline: MP-NX5.
-- Change Since Last Sync: MP-NX2 — implemented 2026-09-07, pending owner review.
-- Risk Concentration Panel: MP-NX2 — implemented 2026-09-07, pending owner review.
+- Change Since Last Sync: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
+- Risk Concentration Panel: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
 - Watchlist / Opportunity Bridge: MP-NX5.
 - Notes / Owner Override Layer: MP-NX6.
 - Review Session Mode: MP-NX6.
-- Pinned Rows: MP-NX3.
+- Pinned Rows: MP-NX3 — implemented 2026-09-07, pending owner review.
 - Smart Filters: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Inline Mini Sparklines: MP-NX4.
-- Export Profiles: MP-NX3.
+- Export Profiles: MP-NX3 — implemented 2026-09-07, pending owner review.
 
 ## Recommended Implementation Order
 
@@ -110,7 +110,7 @@ Do not reopen MP-NX1 unless the owner asks for a correction.
 
 ### 2. MP-NX2 Change Since Last Sync
 
-Implemented 2026-09-07. Ready for Owner / Chief Architect review.
+Owner/Chief Architect approved and closed 2026-09-07.
 
 What shipped:
 
@@ -147,6 +147,26 @@ Suggested tests:
 - partial/stale/no-previous-snapshot cases.
 
 ### 3. MP-NX3 Column Profiles
+
+Implemented 2026-09-07. Ready for Owner / Chief Architect review.
+
+What shipped:
+
+- Table profiles in `08b-my-portfolio.js`: Compact Scan, P&L Review,
+  Technical Review, Risk Review, Full Audit. Each sets columns, default
+  sort, and density. Active profile is stored in
+  `athena.myPortfolio.tableProfile`.
+- Owner-pinned rows via the thumbtack in Actions. Pins stay visible
+  across sort/filter and are labeled `Pinned` as owner-authored, not
+  ATHENA conviction. Stored in `athena.myPortfolio.pinnedInstrumentIds`.
+- Export profiles Daily Review, Full Audit, and Private Sharing on the
+  existing selected-column export contract. Table profile state stays
+  separate from export column state.
+- Dashboard asset version `9.189.0`. Screenshot correction: each profile
+  table is locked to visible-column widths, hidden columns collapse so
+  they cannot sit under sticky Symbol, Technical/Risk snap padding is
+  No.+Symbol only, switching profile resets horizontal scroll, and the
+  Current Holdings header row stays pinned while scrolling.
 
 Implementation approach:
 
@@ -259,7 +279,7 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-Review and approve MP-NX2.
+Review and approve MP-NX3.
 
-If accepted, authorize MP-NX3 only: Column Profiles, Pinned Rows, and Export
-Profiles. Do not start MP-NX3 until MP-NX2 is approved.
+If accepted, authorize MP-NX4 only: Portfolio Heatmap and optional Inline
+Mini Sparklines. Do not start MP-NX4 until MP-NX3 is approved.

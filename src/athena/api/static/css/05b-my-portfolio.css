@@ -1083,12 +1083,112 @@
        looked heavy/blocky in a fixed-layout table), and Freshness widened
        140px->185px (measured: its date string needs ~174px) so it neither
        clips into Actions nor truncates itself. */
-    min-width: 2249px;
+    min-width: 2277px;
     table-layout: fixed;
+    /* collapse breaks position:sticky on thead; separate + 0 spacing
+       keeps the same grid while the header row can pin. */
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 .my-portfolio-wide-table.comfortable-density {
-    min-width: 2440px;
+    min-width: 2468px;
+}
+
+/* Profile tables must not inherit `.data-table { width: 100% }`. That
+   stretches leftover Full Audit width across the remaining columns after
+   hides, so Symbol/Conviction look huge and later columns snap under
+   sticky Symbol. Lock each profile to the sum of its visible col widths. */
+.my-portfolio-wide-table.comfortable-density[data-table-profile="pnl_review"] {
+    width: 1338px;
+    min-width: 1338px;
+    max-width: 1338px;
+}
+
+.my-portfolio-wide-table.comfortable-density[data-table-profile="technical_review"] {
+    width: 1843px;
+    min-width: 1843px;
+    max-width: 1843px;
+}
+
+.my-portfolio-wide-table.comfortable-density[data-table-profile="risk_review"] {
+    width: 1693px;
+    min-width: 1693px;
+    max-width: 1693px;
+}
+
+.my-portfolio-wide-table[data-table-profile="pnl_review"] .my-portfolio-col-conviction,
+.my-portfolio-wide-table[data-table-profile="pnl_review"] .my-portfolio-col-trend,
+.my-portfolio-wide-table[data-table-profile="pnl_review"] .my-portfolio-col-daily-review,
+.my-portfolio-wide-table[data-table-profile="pnl_review"] .my-portfolio-col-levels,
+.my-portfolio-wide-table[data-table-profile="pnl_review"] .my-portfolio-col-freshness,
+.my-portfolio-wide-table[data-table-profile="pnl_review"] th:nth-child(9),
+.my-portfolio-wide-table[data-table-profile="pnl_review"] td:nth-child(9),
+.my-portfolio-wide-table[data-table-profile="pnl_review"] th:nth-child(10),
+.my-portfolio-wide-table[data-table-profile="pnl_review"] td:nth-child(10),
+.my-portfolio-wide-table[data-table-profile="pnl_review"] th:nth-child(11),
+.my-portfolio-wide-table[data-table-profile="pnl_review"] td:nth-child(11),
+.my-portfolio-wide-table[data-table-profile="pnl_review"] th:nth-child(13),
+.my-portfolio-wide-table[data-table-profile="pnl_review"] td:nth-child(13),
+.my-portfolio-wide-table[data-table-profile="pnl_review"] th:nth-child(14),
+.my-portfolio-wide-table[data-table-profile="pnl_review"] td:nth-child(14),
+.my-portfolio-wide-table[data-table-profile="technical_review"] .my-portfolio-col-qty,
+.my-portfolio-wide-table[data-table-profile="technical_review"] .my-portfolio-col-avg-price,
+.my-portfolio-wide-table[data-table-profile="technical_review"] .my-portfolio-col-money-wide,
+.my-portfolio-wide-table[data-table-profile="technical_review"] .my-portfolio-col-freshness,
+.my-portfolio-wide-table[data-table-profile="technical_review"] th:nth-child(3),
+.my-portfolio-wide-table[data-table-profile="technical_review"] td:nth-child(3),
+.my-portfolio-wide-table[data-table-profile="technical_review"] th:nth-child(4),
+.my-portfolio-wide-table[data-table-profile="technical_review"] td:nth-child(4),
+.my-portfolio-wide-table[data-table-profile="technical_review"] th:nth-child(6),
+.my-portfolio-wide-table[data-table-profile="technical_review"] td:nth-child(6),
+.my-portfolio-wide-table[data-table-profile="technical_review"] th:nth-child(14),
+.my-portfolio-wide-table[data-table-profile="technical_review"] td:nth-child(14),
+.my-portfolio-wide-table[data-table-profile="risk_review"] .my-portfolio-col-qty,
+.my-portfolio-wide-table[data-table-profile="risk_review"] .my-portfolio-col-avg-price,
+.my-portfolio-wide-table[data-table-profile="risk_review"] .my-portfolio-col-money,
+.my-portfolio-wide-table[data-table-profile="risk_review"] .my-portfolio-col-money-wide,
+.my-portfolio-wide-table[data-table-profile="risk_review"] .my-portfolio-col-freshness,
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(3),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(3),
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(4),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(4),
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(5),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(5),
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(6),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(6),
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(14),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(14) {
+    display: none;
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    scroll-snap-align: none;
+    scroll-snap-stop: normal;
+}
+
+.my-portfolio-pin-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: var(--space-6);
+    padding: 1px var(--space-6);
+    border: 1px dashed rgba(148, 163, 184, 0.4);
+    border-radius: 999px;
+    color: var(--text-muted);
+    background: rgba(148, 163, 184, 0.08);
+    font-size: var(--text-0-68);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.my-portfolio-row-action.is-pinned {
+    color: var(--accent);
+    border-color: rgba(0, 229, 255, 0.34);
+}
+
+#my-portfolio-holdings-rows tr.is-owner-pinned td:first-child::before {
+    background: rgba(148, 163, 184, 0.7);
 }
 
 /* MY-PORTFOLIO-POST-V1-UI-POLISH: tighter than the shared .data-table
@@ -1178,7 +1278,7 @@
 }
 
 .my-portfolio-col-actions {
-    width: 90px;
+    width: 118px;
 }
 
 .my-portfolio-holdings-header {
@@ -1450,7 +1550,7 @@
 }
 
 .my-portfolio-wide-table.compact-density {
-    min-width: 1705px;
+    min-width: 1733px;
     font-size: var(--text-0-88);
 }
 
@@ -1519,8 +1619,9 @@
 .my-portfolio-table thead th {
     position: sticky;
     top: 0;
-    z-index: 2;
+    z-index: 6;
     background: var(--bg-sidebar);
+    box-shadow: 0 1px 0 var(--border-color);
 }
 
 .my-portfolio-wide-table th:first-child,
@@ -1595,6 +1696,54 @@
     text-overflow: ellipsis;
 }
 
+.my-portfolio-wide-table[data-table-profile="technical_review"] th:nth-child(3),
+.my-portfolio-wide-table[data-table-profile="technical_review"] td:nth-child(3),
+.my-portfolio-wide-table[data-table-profile="technical_review"] th:nth-child(4),
+.my-portfolio-wide-table[data-table-profile="technical_review"] td:nth-child(4),
+.my-portfolio-wide-table[data-table-profile="technical_review"] th:nth-child(6),
+.my-portfolio-wide-table[data-table-profile="technical_review"] td:nth-child(6),
+.my-portfolio-wide-table[data-table-profile="technical_review"] th:nth-child(14),
+.my-portfolio-wide-table[data-table-profile="technical_review"] td:nth-child(14),
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(3),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(3),
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(4),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(4),
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(5),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(5),
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(6),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(6),
+.my-portfolio-wide-table[data-table-profile="risk_review"] th:nth-child(14),
+.my-portfolio-wide-table[data-table-profile="risk_review"] td:nth-child(14) {
+    display: none;
+    position: static;
+    left: auto;
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    box-shadow: none;
+    scroll-snap-align: none;
+    scroll-snap-stop: normal;
+}
+
+.my-portfolio-wide-table[data-table-profile="pnl_review"] col.my-portfolio-col-conviction,
+.my-portfolio-wide-table[data-table-profile="pnl_review"] col.my-portfolio-col-trend,
+.my-portfolio-wide-table[data-table-profile="pnl_review"] col.my-portfolio-col-daily-review,
+.my-portfolio-wide-table[data-table-profile="pnl_review"] col.my-portfolio-col-levels,
+.my-portfolio-wide-table[data-table-profile="pnl_review"] col.my-portfolio-col-freshness,
+.my-portfolio-wide-table[data-table-profile="technical_review"] col.my-portfolio-col-qty,
+.my-portfolio-wide-table[data-table-profile="technical_review"] col.my-portfolio-col-avg-price,
+.my-portfolio-wide-table[data-table-profile="technical_review"] col.my-portfolio-col-money-wide,
+.my-portfolio-wide-table[data-table-profile="technical_review"] col.my-portfolio-col-freshness,
+.my-portfolio-wide-table[data-table-profile="risk_review"] col.my-portfolio-col-qty,
+.my-portfolio-wide-table[data-table-profile="risk_review"] col.my-portfolio-col-avg-price,
+.my-portfolio-wide-table[data-table-profile="risk_review"] col.my-portfolio-col-money,
+.my-portfolio-wide-table[data-table-profile="risk_review"] col.my-portfolio-col-money-wide,
+.my-portfolio-wide-table[data-table-profile="risk_review"] col.my-portfolio-col-freshness {
+    width: 0;
+    min-width: 0;
+    visibility: collapse;
+}
+
 /* MY-PORTFOLIO-POST-V1-UI-POLISH root-cause fix for the Owner-reported
    clipped-fragment artifact: nothing previously constrained where the
    horizontal scroll could come to rest, so it could stop at ANY pixel —
@@ -1611,6 +1760,10 @@
    scoped to the non-sticky columns (4th onward) only — the first three
    are position:sticky and already pinned, not real scroll targets. */
 .my-portfolio-holdings-scroll {
+    /* Vertical scroll lives here so thead can stick. overflow:auto without
+       a height lets the table grow and the page scroll, which traps sticky
+       headers in a scroller that never moves vertically. */
+    max-height: min(72vh, calc(100dvh - 13.5rem));
     scroll-snap-type: x mandatory;
     /* Full sticky region width (No. 64 + Symbol 170 + Qty 90 + Avg Price
        150 = 474px) — snap points are measured from where non-sticky content
@@ -1626,6 +1779,12 @@
     scroll-padding-left: 474px;
 }
 
+.my-portfolio-holdings-scroll.comfortable-density[data-table-profile="technical_review"],
+.my-portfolio-holdings-scroll.comfortable-density[data-table-profile="risk_review"] {
+    /* Qty / Avg Price are hidden, so only No. + Symbol stay sticky. */
+    scroll-padding-left: 234px;
+}
+
 .my-portfolio-wide-table th:nth-child(n + 5),
 .my-portfolio-wide-table td:nth-child(n + 5) {
     scroll-snap-align: start;
@@ -1633,14 +1792,14 @@
 }
 
 .my-portfolio-wide-table thead th:first-child {
-    z-index: 5;
+    z-index: 7;
     background: var(--bg-sidebar);
 }
 
 .my-portfolio-wide-table thead th:nth-child(2),
 .my-portfolio-wide-table thead th:nth-child(3),
 .my-portfolio-wide-table thead th:nth-child(4) {
-    z-index: 5;
+    z-index: 7;
     background: var(--bg-sidebar);
 }
 

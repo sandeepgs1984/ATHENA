@@ -70,8 +70,11 @@
     const myPortfolioSortDirection = document.getElementById("my-portfolio-sort-direction");
     const myPortfolioSortReset = document.getElementById("my-portfolio-sort-reset");
     const myPortfolioSortSummary = document.getElementById("my-portfolio-sort-summary");
-    const myPortfolioDensityCompact = document.getElementById("my-portfolio-density-compact");
-    const myPortfolioDensityComfortable = document.getElementById("my-portfolio-density-comfortable");
+    const myPortfolioTableProfile = document.getElementById("my-portfolio-table-profile");
+    const myPortfolioMiniProfile = document.getElementById("my-portfolio-mini-profile");
+    const myPortfolioExportPresetDailyReview = document.getElementById("my-portfolio-export-preset-daily-review");
+    const myPortfolioExportPresetFullAudit = document.getElementById("my-portfolio-export-preset-full-audit");
+    const myPortfolioExportPresetPrivate = document.getElementById("my-portfolio-export-preset-private");
     const myPortfolioHoldingsTable = document.querySelector(".my-portfolio-wide-table");
     const myPortfolioHoldingsCard = document.querySelector(".my-portfolio-holdings-card");
     const myPortfolioHoldingsHeader = document.querySelector(".my-portfolio-holdings-card > .card-header");
@@ -116,6 +119,8 @@
             direction: "desc",
         },
         density: "compact",
+        tableProfile: "compact_scan",
+        pinnedInstrumentIds: [],
         historyExpanded: false,
         valuesHidden: (() => {
             try {
@@ -275,6 +280,71 @@
                 "unresolved_rows",
                 "ambiguous_rows",
             ],
+            daily_review: [
+                "no",
+                "filename",
+                "uploaded_at",
+                "confirmed_at",
+                "status",
+                "accepted_rows",
+                "rejected_rows",
+            ],
+            private_sharing: ["no", "filename", "status", "uploaded_at", "confirmed_at"],
+        },
+    };
+
+    MY_PORTFOLIO_EXPORT_PRESETS.snapshot.daily_review = [
+        "no",
+        "symbol",
+        "status",
+        "daily_review_status",
+        "supertrend_direction",
+        "next_action",
+        "daily_guidance",
+    ];
+    MY_PORTFOLIO_EXPORT_PRESETS.snapshot.private_sharing = [
+        "no",
+        "symbol",
+        "status",
+        "conviction",
+        "trend_setup",
+        "daily_review_status",
+        "next_action",
+        "daily_guidance",
+    ];
+    MY_PORTFOLIO_EXPORT_PRESETS.holdings.daily_review = MY_PORTFOLIO_EXPORT_PRESETS.holdings.review;
+    MY_PORTFOLIO_EXPORT_PRESETS.holdings.private_sharing = ["no", "symbol", "imported_at", "updated_at"];
+
+    const MY_PORTFOLIO_TABLE_PROFILES = {
+        compact_scan: {
+            id: "compact_scan",
+            label: "Compact Scan",
+            density: "compact",
+            sort: { key: "pnl_pct", direction: "desc" },
+        },
+        pnl_review: {
+            id: "pnl_review",
+            label: "P&L Review",
+            density: "comfortable",
+            sort: { key: "pnl_pct", direction: "desc" },
+        },
+        technical_review: {
+            id: "technical_review",
+            label: "Technical Review",
+            density: "comfortable",
+            sort: { key: "daily_review", direction: "desc" },
+        },
+        risk_review: {
+            id: "risk_review",
+            label: "Risk Review",
+            density: "comfortable",
+            sort: { key: "status", direction: "desc" },
+        },
+        full_audit: {
+            id: "full_audit",
+            label: "Full Audit",
+            density: "comfortable",
+            sort: { key: "pnl_pct", direction: "desc" },
         },
     };
 
@@ -412,6 +482,10 @@
 
     function applyMyPortfolioExportPreset(presetName) {
         const scope = currentMyPortfolioExportScope();
+        if (presetName === "full_audit") {
+            setMyPortfolioExportColumns(scope, null);
+            return;
+        }
         const preset = MY_PORTFOLIO_EXPORT_PRESETS[scope]?.[presetName];
         if (!preset) return;
         setMyPortfolioExportColumns(scope, preset);
@@ -557,6 +631,9 @@
         const key = myPortfolioState.sort.key;
         const direction = myPortfolioState.sort.direction;
         return [...(rows || [])].sort((left, right) => {
+            const leftPinned = myPortfolioIsPinned(myPortfolioPinKey(left));
+            const rightPinned = myPortfolioIsPinned(myPortfolioPinKey(right));
+            if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
             const primary = myPortfolioCompareValues(
                 myPortfolioSortValue(left, key),
                 myPortfolioSortValue(right, key),
@@ -603,16 +680,60 @@
         }
     }
 
+    function currentMyPortfolioTableProfile() {
+        return MY_PORTFOLIO_TABLE_PROFILES[myPortfolioState.tableProfile] || MY_PORTFOLIO_TABLE_PROFILES.compact_scan;
+    }
+
     function renderMyPortfolioDensityControls() {
         const comfortable = myPortfolioState.density === "comfortable";
+        const profileId = currentMyPortfolioTableProfile().id;
         myPortfolioHoldingsTable?.classList.toggle("comfortable-density", comfortable);
         myPortfolioHoldingsTable?.classList.toggle("compact-density", !comfortable);
         myPortfolioHoldingsScroll?.classList.toggle("comfortable-density", comfortable);
         myPortfolioHoldingsScroll?.classList.toggle("compact-density", !comfortable);
-        myPortfolioDensityCompact?.classList.toggle("active", !comfortable);
-        myPortfolioDensityComfortable?.classList.toggle("active", comfortable);
-        myPortfolioDensityCompact?.setAttribute("aria-pressed", String(!comfortable));
-        myPortfolioDensityComfortable?.setAttribute("aria-pressed", String(comfortable));
+        myPortfolioHoldingsTable?.setAttribute("data-table-profile", profileId);
+        myPortfolioHoldingsScroll?.setAttribute("data-table-profile", profileId);
+        if (myPortfolioTableProfile) myPortfolioTableProfile.value = profileId;
+        if (myPortfolioMiniProfile) myPortfolioMiniProfile.textContent = currentMyPortfolioTableProfile().label;
+    }
+
+    function persistMyPortfolioTableProfile(profileId) {
+        try {
+            window.localStorage.setItem("athena.myPortfolio.tableProfile", profileId);
+        } catch (err) {
+            // Browser privacy/storage restrictions should not break rendering.
+        }
+    }
+
+    function persistMyPortfolioPins() {
+        try {
+            window.localStorage.setItem(
+                "athena.myPortfolio.pinnedInstrumentIds",
+                JSON.stringify(myPortfolioState.pinnedInstrumentIds)
+            );
+        } catch (err) {
+            // Browser privacy/storage restrictions should not break rendering.
+        }
+    }
+
+    function setMyPortfolioTableProfile(profileId, options = {}) {
+        const profile = MY_PORTFOLIO_TABLE_PROFILES[profileId] || MY_PORTFOLIO_TABLE_PROFILES.compact_scan;
+        myPortfolioState.tableProfile = profile.id;
+        myPortfolioState.density = profile.density;
+        persistMyPortfolioTableProfile(profile.id);
+        if (options.applySort !== false) {
+            myPortfolioState.sort = { key: profile.sort.key, direction: profile.sort.direction };
+        }
+        renderMyPortfolioDensityControls();
+        if (options.render !== false) {
+            renderMyPortfolioHoldings(myPortfolioSourceRows());
+        }
+        resetMyPortfolioHoldingsHorizontalScroll();
+    }
+
+    function resetMyPortfolioHoldingsHorizontalScroll() {
+        if (!myPortfolioHoldingsScroll) return;
+        myPortfolioHoldingsScroll.scrollLeft = 0;
     }
 
     function syncMyPortfolioStickyHeaderState() {
@@ -626,6 +747,24 @@
     function setMyPortfolioDensity(density) {
         myPortfolioState.density = density === "comfortable" ? "comfortable" : "compact";
         renderMyPortfolioDensityControls();
+    }
+
+    function myPortfolioPinKey(row) {
+        return String(row?.provenance?.instrument_id || row?.instrument_id || row?.symbol || "");
+    }
+
+    function myPortfolioIsPinned(key) {
+        return Boolean(key) && myPortfolioState.pinnedInstrumentIds.includes(key);
+    }
+
+    function toggleMyPortfolioPin(key) {
+        if (!key) return;
+        const pinned = new Set(myPortfolioState.pinnedInstrumentIds);
+        if (pinned.has(key)) pinned.delete(key);
+        else pinned.add(key);
+        myPortfolioState.pinnedInstrumentIds = [...pinned];
+        persistMyPortfolioPins();
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
     }
 
     function renderMyPortfolioHistoryDisclosure() {
@@ -899,7 +1038,9 @@
 
     function myPortfolioVisibleRows(rows) {
         const ctx = myPortfolioTriageContext();
-        return (rows || []).filter(row => myPortfolioRowVisible(row, ctx));
+        return (rows || []).filter(row =>
+            myPortfolioIsPinned(myPortfolioPinKey(row)) || myPortfolioRowVisible(row, ctx)
+        );
     }
 
     function myPortfolioQueueReasons(row) {
@@ -1820,7 +1961,12 @@
     }
 
     function myPortfolioRowKey(row) {
-        return String(row?.provenance?.instrument_id || row?.symbol || "");
+        return String(row?.provenance?.instrument_id || row?.instrument_id || row?.symbol || "");
+    }
+
+    function myPortfolioPinBadge(row) {
+        if (!myPortfolioIsPinned(myPortfolioPinKey(row))) return "";
+        return `<span class="my-portfolio-pin-badge" title="Owner-pinned. This is your pin, not ATHENA conviction or ranking.">Pinned</span>`;
     }
 
     // Holdings edit/delete: one small, reused Actions cell. Buttons carry
@@ -1833,14 +1979,20 @@
     // a Portfolio Sync this action triggered is still recalculating —
     // editing/deleting another holding mid-sync would race the same full
     // resync, so every row's actions are held until it settles.
-    function myPortfolioRowActionsCell(symbol) {
+    function myPortfolioRowActionsCell(row) {
+        const symbol = row?.symbol || bareMyPortfolioSymbol(row?.instrument_id);
+        const key = myPortfolioPinKey(row);
+        const pinned = myPortfolioIsPinned(key);
         const busy = Boolean(myPortfolioState.syncing);
         const safeSymbol = escapeMyPortfolioHtml(symbol);
         const disabledAttr = busy ? "disabled" : "";
         const editIcon = busy ? '<i class="fa-solid fa-spinner fa-spin"></i>' : '<i class="fa-solid fa-pen"></i>';
         const deleteIcon = busy ? '<i class="fa-solid fa-spinner fa-spin"></i>' : '<i class="fa-solid fa-trash-can"></i>';
+        const pinIcon = '<i class="fa-solid fa-thumbtack"></i>';
         const title = busy ? "Portfolio Sync is recalculating — please wait" : null;
+        const pinTitle = pinned ? `Unpin ${safeSymbol}` : `Pin ${safeSymbol} to keep it visible`;
         return `<td class="holdings-actions">
+            <button type="button" class="inspect-btn my-portfolio-row-action${pinned ? " is-pinned" : ""}" data-action="pin" title="${pinTitle}" aria-label="${pinTitle}" aria-pressed="${pinned}">${pinIcon}</button>
             <button type="button" class="inspect-btn my-portfolio-row-action" data-action="edit" title="${title || `Edit ${safeSymbol}`}" aria-label="Edit ${safeSymbol}" ${disabledAttr}>${editIcon}</button>
             <button type="button" class="inspect-btn btn-danger-outline my-portfolio-row-action" data-action="delete" title="${title || `Delete ${safeSymbol}`}" aria-label="Delete ${safeSymbol}" ${disabledAttr}>${deleteIcon}</button>
         </td>`;
@@ -1865,10 +2017,11 @@
         const rows = sortedMyPortfolioRows(visibleRows);
         myPortfolioHoldingsRows.innerHTML = rows.map((holding, index) => {
             const symbol = holding.symbol || bareMyPortfolioSymbol(holding.instrument_id);
+            const pinKey = myPortfolioPinKey(holding);
             return `
-            <tr class="my-portfolio-row-state state-muted" data-instrument-id="${escapeMyPortfolioHtml(holding.instrument_id)}">
+            <tr class="my-portfolio-row-state state-muted${myPortfolioIsPinned(pinKey) ? " is-owner-pinned" : ""}" data-instrument-id="${escapeMyPortfolioHtml(pinKey)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
-                <td class="font-mono"><strong>${escapeMyPortfolioHtml(symbol)}</strong></td>
+                <td class="font-mono"><strong>${escapeMyPortfolioHtml(symbol)}</strong>${myPortfolioPinBadge(holding)}</td>
                 <td>${myPortfolioPrivateNumberCell(holding.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(holding.avg_price)}</td>
                 <td>${myPortfolioDash()}</td>
@@ -1881,7 +2034,7 @@
                 <td>${myPortfolioUnavailableChip()}</td>
                 <td>${myPortfolioDash()}</td>
                 <td class="text-muted">Not synced</td>
-                ${myPortfolioRowActionsCell(symbol)}
+                ${myPortfolioRowActionsCell(holding)}
             </tr>
         `;
         }).join("");
@@ -1905,9 +2058,9 @@
         }
         const sortedRows = sortedMyPortfolioRows(visibleRows);
         myPortfolioHoldingsRows.innerHTML = sortedRows.map((row, index) => `
-            <tr class="my-portfolio-row-state ${myPortfolioRowStateClass(row)}" data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
+            <tr class="my-portfolio-row-state ${myPortfolioRowStateClass(row)}${myPortfolioIsPinned(myPortfolioRowKey(row)) ? " is-owner-pinned" : ""}" data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
-                <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong>${myPortfolioQueueReasonChips(row)}${myPortfolioChangeBadgeChips(row)}</td>
+                <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong>${myPortfolioPinBadge(row)}${myPortfolioQueueReasonChips(row)}${myPortfolioChangeBadgeChips(row)}</td>
                 <td>${myPortfolioPrivateNumberCell(row.qty ?? row.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(row.avg_price)}</td>
                 <td class="font-mono">${myPortfolioPriceToneCell(row.last_price, row.avg_price)}</td>
@@ -1920,7 +2073,7 @@
                 <td>${myPortfolioActionPill(row.next_action, row)}</td>
                 <td>${myPortfolioPlanLevelsCell(row)}</td>
                 <td>${myPortfolioFreshnessCell(row)}</td>
-                ${myPortfolioRowActionsCell(row.symbol)}
+                ${myPortfolioRowActionsCell(row)}
             </tr>
         `).join("");
         renderMyPortfolioSortControls();
@@ -2240,7 +2393,9 @@
         const tr = btn.closest("tr[data-instrument-id]");
         if (!tr) return;
         const instrumentId = tr.getAttribute("data-instrument-id");
-        if (btn.getAttribute("data-action") === "edit") {
+        if (btn.getAttribute("data-action") === "pin") {
+            toggleMyPortfolioPin(instrumentId);
+        } else if (btn.getAttribute("data-action") === "edit") {
             myPortfolioEditHolding(instrumentId);
         } else if (btn.getAttribute("data-action") === "delete") {
             myPortfolioDeleteHolding(instrumentId);
@@ -2829,7 +2984,8 @@
         renderMyPortfolioHoldings(myPortfolioSourceRows());
     });
     myPortfolioSortReset?.addEventListener("click", () => {
-        myPortfolioState.sort = { key: "pnl_pct", direction: "desc" };
+        const profile = currentMyPortfolioTableProfile();
+        myPortfolioState.sort = { key: profile.sort.key, direction: profile.sort.direction };
         renderMyPortfolioHoldings(myPortfolioSourceRows());
     });
     myPortfolioQueueAll?.addEventListener("click", () => setMyPortfolioQueueView(false));
@@ -2849,8 +3005,9 @@
             );
         }
     });
-    myPortfolioDensityCompact?.addEventListener("click", () => setMyPortfolioDensity("compact"));
-    myPortfolioDensityComfortable?.addEventListener("click", () => setMyPortfolioDensity("comfortable"));
+    myPortfolioTableProfile?.addEventListener("change", event => {
+        setMyPortfolioTableProfile(event.target.value);
+    });
     myPortfolioPrivacyToggle?.addEventListener("click", () => {
         setMyPortfolioValuesHidden(!myPortfolioState.valuesHidden);
     });
@@ -2873,6 +3030,9 @@
     myPortfolioExportColumns?.addEventListener("change", updateMyPortfolioExportSelectionFromInputs);
     myPortfolioExportPresetEssential?.addEventListener("click", () => applyMyPortfolioExportPreset("essential"));
     myPortfolioExportPresetReview?.addEventListener("click", () => applyMyPortfolioExportPreset("review"));
+    myPortfolioExportPresetDailyReview?.addEventListener("click", () => applyMyPortfolioExportPreset("daily_review"));
+    myPortfolioExportPresetFullAudit?.addEventListener("click", () => applyMyPortfolioExportPreset("full_audit"));
+    myPortfolioExportPresetPrivate?.addEventListener("click", () => applyMyPortfolioExportPreset("private_sharing"));
     myPortfolioExportSelectAll?.addEventListener("click", () => {
         myPortfolioState.exportColumnsByScope[currentMyPortfolioExportScope()] = null;
         renderMyPortfolioExportColumns();
@@ -2904,8 +3064,28 @@
     myPortfolioResetClose?.addEventListener("click", closeMyPortfolioResetModal);
     myPortfolioResetConfirm?.addEventListener("input", resetMyPortfolioGate);
     myPortfolioResetSubmit?.addEventListener("click", resetMyPortfolio);
+    (function loadMyPortfolioLocalPreferences() {
+        try {
+            const savedProfile = window.localStorage.getItem("athena.myPortfolio.tableProfile");
+            if (savedProfile && MY_PORTFOLIO_TABLE_PROFILES[savedProfile]) {
+                myPortfolioState.tableProfile = savedProfile;
+                myPortfolioState.density = MY_PORTFOLIO_TABLE_PROFILES[savedProfile].density;
+                myPortfolioState.sort = {
+                    key: MY_PORTFOLIO_TABLE_PROFILES[savedProfile].sort.key,
+                    direction: MY_PORTFOLIO_TABLE_PROFILES[savedProfile].sort.direction,
+                };
+            }
+            const savedPins = JSON.parse(window.localStorage.getItem("athena.myPortfolio.pinnedInstrumentIds") || "[]");
+            if (Array.isArray(savedPins)) {
+                myPortfolioState.pinnedInstrumentIds = savedPins.filter(id => typeof id === "string" && id);
+            }
+        } catch (err) {
+            // Browser privacy/storage restrictions should not break rendering.
+        }
+    })();
     renderMyPortfolioPrivacyToggle();
     renderMyPortfolioExportPanel();
+    renderMyPortfolioDensityControls();
     renderMyPortfolioExportColumns();
     syncMyPortfolioStickyHeaderState();
     window.addEventListener("scroll", syncMyPortfolioStickyHeaderState, { passive: true });
