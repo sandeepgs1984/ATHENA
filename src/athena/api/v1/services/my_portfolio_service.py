@@ -31,6 +31,7 @@ from athena.api.v1.dtos.portfolio import (
     DeleteMyPortfolioHoldingResultDTO,
     ImportedHoldingRowDTO,
     MyPortfolioHoldingDTO,
+    OwnerHoldingNoteDTO,
     PortfolioAnalysisProvenanceDTO,
     PortfolioDailyReviewDTO,
     PortfolioFreshnessDTO,
@@ -67,6 +68,7 @@ from athena.portfolio.my_portfolio_contracts import (
     PORTFOLIO_ANALYSIS_VERSION,
     CanonicalPortfolioHolding,
     ImportStatus,
+    OwnerHoldingNote,
     PortfolioSnapshotCurrentness,
     PortfolioSnapshotSummary,
     ReconciliationAction,
@@ -425,6 +427,56 @@ class MyPortfolioService:
 
     def list_holdings(self) -> list[MyPortfolioHoldingDTO]:
         return [self._holding_to_dto(holding) for holding in self._repo.list_portfolio_holdings()]
+
+    def list_holding_notes(self) -> list[OwnerHoldingNoteDTO]:
+        return [self._note_to_dto(note) for note in self._repo.list_portfolio_holding_notes()]
+
+    def get_holding_note(self, instrument_id: str) -> OwnerHoldingNoteDTO:
+        if self._repo.get_portfolio_holding(instrument_id) is None:
+            raise MyPortfolioHoldingNotFoundError(f"portfolio holding not found: {instrument_id}")
+        note = self._repo.get_portfolio_holding_note(instrument_id)
+        if note is None:
+            return OwnerHoldingNoteDTO(instrument_id=instrument_id, present=False, owner_authored=True)
+        return self._note_to_dto(note)
+
+    def upsert_holding_note(
+        self,
+        instrument_id: str,
+        *,
+        thesis: str,
+        watch_condition: str,
+        reminder: str,
+        review_comment: str,
+        follow_up: bool,
+    ) -> OwnerHoldingNoteDTO:
+        if self._repo.get_portfolio_holding(instrument_id) is None:
+            raise MyPortfolioHoldingNotFoundError(f"portfolio holding not found: {instrument_id}")
+        now = datetime.now(tz=timezone.utc)
+        existing = self._repo.get_portfolio_holding_note(instrument_id)
+        note = OwnerHoldingNote(
+            instrument_id=instrument_id,
+            thesis=thesis,
+            watch_condition=watch_condition,
+            reminder=reminder,
+            review_comment=review_comment,
+            follow_up=follow_up,
+            created_at=existing.created_at if existing is not None else now,
+            updated_at=now,
+            provenance={"source": "owner", "authored": True},
+        )
+        try:
+            saved = self._repo.upsert_portfolio_holding_note(note)
+        except RepositoryError as exc:
+            raise MyPortfolioHoldingError(str(exc)) from exc
+        if saved is None:
+            return OwnerHoldingNoteDTO(instrument_id=instrument_id, present=False, owner_authored=True)
+        return self._note_to_dto(saved)
+
+    def delete_holding_note(self, instrument_id: str) -> OwnerHoldingNoteDTO:
+        if self._repo.get_portfolio_holding(instrument_id) is None:
+            raise MyPortfolioHoldingNotFoundError(f"portfolio holding not found: {instrument_id}")
+        self._repo.delete_portfolio_holding_note(instrument_id)
+        return OwnerHoldingNoteDTO(instrument_id=instrument_id, present=False, owner_authored=True)
 
     def update_holding(
         self, instrument_id: str, *, quantity: int, avg_price: Decimal
@@ -1163,6 +1215,21 @@ class MyPortfolioService:
             action=change.action,
             before=self._holding_json(change.before),
             after=self._holding_json(change.after),
+        )
+
+    def _note_to_dto(self, note: OwnerHoldingNote) -> OwnerHoldingNoteDTO:
+        return OwnerHoldingNoteDTO(
+            instrument_id=note.instrument_id,
+            thesis=note.thesis,
+            watch_condition=note.watch_condition,
+            reminder=note.reminder,
+            review_comment=note.review_comment,
+            follow_up=note.follow_up,
+            created_at=note.created_at,
+            updated_at=note.updated_at,
+            provenance=dict(note.provenance),
+            owner_authored=True,
+            present=not note.is_empty(),
         )
 
     def _holding_to_dto(self, holding: CanonicalPortfolioHolding) -> MyPortfolioHoldingDTO:

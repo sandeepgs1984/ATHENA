@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.199.0" in html
-    assert "dashboard.js?v=9.199.0" in html
+    assert "dashboard.css?v=9.201.0" in html
+    assert "dashboard.js?v=9.201.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -552,7 +552,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css?v=9.199.0");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.201.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
@@ -585,6 +585,15 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-change-badge" in my_portfolio_css
     assert ".my-portfolio-detail-section[data-detail-section=\"since-last-sync\"]" in my_portfolio_css
     assert ".my-portfolio-detail-section[data-detail-section=\"review-timeline\"]" in my_portfolio_css
+    assert 'data-detail-section="owner-note"' in js
+    assert "function myPortfolioOwnerNoteSection" in js
+    assert "function saveMyPortfolioNote" in js
+    assert "/api/v1/my-portfolio/notes" in js
+    assert js.index("${myPortfolioReviewTimelineSection()}") < js.index("${myPortfolioOwnerNoteSection(row)}")
+    assert js.rindex('data-detail-section="structural"') < js.index("${myPortfolioOwnerNoteSection(row)}")
+    assert ".my-portfolio-note-badge" in my_portfolio_css
+    assert ".my-portfolio-owner-note" in my_portfolio_css
+    assert '.my-portfolio-detail-section[data-detail-section="owner-note"]' in my_portfolio_css
     assert ".my-portfolio-review-timeline" in my_portfolio_css
     assert ".my-portfolio-detail-row-wide" in my_portfolio_css
     assert ".my-portfolio-change-delta-stack" in my_portfolio_css

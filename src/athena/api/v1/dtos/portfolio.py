@@ -170,6 +170,36 @@ class MyPortfolioHoldingDTO(BaseModel):
     provenance: dict[str, object] = Field(default_factory=dict)
 
 
+class OwnerHoldingNoteDTO(BaseModel):
+    """Owner-authored holding note. Never ATHENA evidence or guidance."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: str
+    thesis: str = ""
+    watch_condition: str = ""
+    reminder: str = ""
+    review_comment: str = ""
+    follow_up: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    provenance: dict[str, object] = Field(default_factory=dict)
+    owner_authored: bool = True
+    present: bool = True
+
+
+class UpsertOwnerHoldingNoteRequest(BaseModel):
+    """Create or replace the owner note for one current holding."""
+
+    model_config = ConfigDict(frozen=True)
+
+    thesis: str = Field(default="", max_length=4000)
+    watch_condition: str = Field(default="", max_length=2000)
+    reminder: str = Field(default="", max_length=2000)
+    review_comment: str = Field(default="", max_length=4000)
+    follow_up: bool = False
+
+
 class UpdateMyPortfolioHoldingRequest(BaseModel):
     """Owner-initiated correction to one holding's quantity/avg price."""
 

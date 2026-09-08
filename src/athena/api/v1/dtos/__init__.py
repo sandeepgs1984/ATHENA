@@ -116,6 +116,7 @@ from athena.api.v1.dtos.pipelines import (
 from athena.api.v1.dtos.portfolio import (
     ImportedHoldingRowDTO,
     MyPortfolioHoldingDTO,
+    OwnerHoldingNoteDTO,
     PortfolioDTO,
     PortfolioFreshnessDTO,
     PortfolioImportConfirmRequest,
@@ -217,6 +218,7 @@ __all__ = [
     "NearMissItemDTO",
     "OpsTelemetryDTO",
     "OpsWarningDTO",
+    "OwnerHoldingNoteDTO",
     "PaginationParams",
     "PerformanceSnapshotDTO",
     "PerformanceSnapshotSummaryDTO",

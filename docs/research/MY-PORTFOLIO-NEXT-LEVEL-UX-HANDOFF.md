@@ -85,7 +85,7 @@ header and aborting Portfolio Sync refresh.
   index at all stay UNRESOLVED at preview and still use the BSE catalog
   fallback at confirm.
 - Live LTP on this page still needs a separate ADR. Do not add it here.
-- Dashboard assets: `9.199.0`. This is not MP-NX6.
+- Dashboard assets: `9.201.0` after MP-NX6 Owner Notes (form at the bottom of the holding-detail overlay).
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.
@@ -103,12 +103,12 @@ The roadmap intentionally covers all 14 owner-discussed next-level UX ideas:
 - Action Queue View: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Column Profiles: MP-NX3 — Owner/Chief Architect approved and closed 2026-09-08.
 - Portfolio Heatmap: MP-NX4 — Owner/Chief Architect approved and closed 2026-09-08.
-- Symbol Detail Review Timeline: MP-NX5 — implemented 2026-09-08, pending owner review.
+- Symbol Detail Review Timeline: MP-NX5 — Owner/Chief Architect approved and closed 2026-09-08.
 - Change Since Last Sync: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
 - Risk Concentration Panel: MP-NX2 — Owner/Chief Architect approved and closed 2026-09-07.
 - Watchlist / Opportunity Bridge: MP-NX5 — skipped; no stable My Portfolio opportunity contract.
-- Notes / Owner Override Layer: MP-NX6.
-- Review Session Mode: MP-NX6.
+- Notes / Owner Override Layer: MP-NX6 — Owner Notes implemented 2026-09-08, pending owner review.
+- Review Session Mode: later NX6 slice — not started.
 - Pinned Rows: MP-NX3 — Owner/Chief Architect approved and closed 2026-09-08.
 - Smart Filters: MP-NX1 — Owner/Chief Architect approved and closed 2026-09-07.
 - Inline Mini Sparklines: MP-NX4 — not shipped; snapshot rows have no D1 close series.
@@ -263,7 +263,7 @@ Suggested tests:
 
 ### 5. MP-NX5 Symbol Review Timeline
 
-Implemented 2026-09-08. Ready for Owner / Chief Architect review.
+Owner/Chief Architect approved and closed 2026-09-08.
 
 What shipped:
 
@@ -300,26 +300,31 @@ Suggested tests:
 
 ### 6. MP-NX6 Owner Notes and Review Session Mode
 
-Implementation approach:
+Owner Notes implemented 2026-09-08. Ready for Owner / Chief Architect review.
+Review Session Mode is a later slice and is not started.
 
-- Design owner-authored persistence first. This is the first milestone in the
-  sequence likely to require schema/API work.
-- Notes should include provenance: created_at, updated_at, optional reviewed_at,
-  and clear owner-authored markers.
-- Review Session Mode should use existing filters/action queue as its input.
+What shipped (Owner Notes only):
+
+- `portfolio_holding_notes` (schema 19) + `OwnerHoldingNote`.
+- Per-holding thesis / watch_condition / reminder / review_comment / follow_up.
+- Provenance `{"source": "owner", "authored": true}`. Empty notes are deleted.
+- Notes follow NSE→BSE remaps (dest note wins). Deleted with holding, confirm
+  REMOVED, and My Portfolio reset.
+- `GET /api/v1/my-portfolio/notes`, `GET/PUT/DELETE /notes/{instrument_id}`.
+- Detail overlay Owner note form at the bottom, after Structural Review; Note / Follow-up list chips.
+- Dashboard asset version `9.201.0`. No ADR — same My Portfolio SQLite store.
+
+What did not ship:
+
+- Review Session Mode (reviewed today / defer / one-holding-at-a-time).
+- Notes on snapshot rows as ATHENA fields.
+- Any change to Status, scores, guidance, conviction, or interpretation versions.
 
 Watch-outs:
 
 - Notes must never alter ATHENA evidence, scoring, or generated guidance.
 - Do not auto-generate recommendations from owner notes.
-- This milestone may need an ADR if persistent owner workflow state changes
-  architecture boundaries.
-
-Suggested tests:
-
-- persistence migration/repository tests;
-- API auth/validation tests;
-- dashboard flow tests for create/update/delete notes and review marks.
+- Do not start Review Session Mode until this Owner Notes slice is approved.
 
 ## Milestone Definition of Done
 
@@ -337,7 +342,7 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-Review and approve MP-NX5.
+Review and approve MP-NX6 Owner Notes.
 
-If accepted, authorize MP-NX6 only: Owner Notes and Review Session Mode.
-Do not start MP-NX6 until MP-NX5 is approved.
+If accepted, authorize Review Session Mode as a later NX6 slice. Do not start
+that slice until Owner Notes is approved.

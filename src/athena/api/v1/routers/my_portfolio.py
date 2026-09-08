@@ -13,6 +13,7 @@ from athena.api.v1.dtos import AthenaResponse, ResponseMeta
 from athena.api.v1.dtos.portfolio import (
     DeleteMyPortfolioHoldingResultDTO,
     MyPortfolioHoldingDTO,
+    OwnerHoldingNoteDTO,
     PortfolioImportConfirmRequest,
     PortfolioImportConfirmResultDTO,
     PortfolioImportHistoryDTO,
@@ -26,6 +27,7 @@ from athena.api.v1.dtos.portfolio import (
     ResetMyPortfolioRequest,
     ResetMyPortfolioResultDTO,
     UpdateMyPortfolioHoldingRequest,
+    UpsertOwnerHoldingNoteRequest,
 )
 from athena.api.v1.services.my_portfolio_service import MyPortfolioService
 
@@ -166,6 +168,89 @@ def export_my_portfolio(
             "Content-Disposition": f'attachment; filename="{export_file.filename}"',
             "X-ATHENA-Request-ID": getattr(request.state, "request_id", "unknown"),
         },
+    )
+
+
+@router.get(
+    "/notes",
+    response_model=AthenaResponse[list[OwnerHoldingNoteDTO]],
+    summary="List owner-authored My Portfolio notes",
+    status_code=status.HTTP_200_OK,
+    operation_id="listMyPortfolioNotes",
+)
+def list_holding_notes(
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[list[OwnerHoldingNoteDTO]]:
+    return AthenaResponse(status="success", data=service.list_holding_notes(), meta=_meta(request))
+
+
+@router.get(
+    "/notes/{instrument_id}",
+    response_model=AthenaResponse[OwnerHoldingNoteDTO],
+    summary="Get the owner note for one My Portfolio holding",
+    status_code=status.HTTP_200_OK,
+    operation_id="getMyPortfolioNote",
+)
+def get_holding_note(
+    instrument_id: str,
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[OwnerHoldingNoteDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.get_holding_note(instrument_id),
+        meta=_meta(request),
+    )
+
+
+@router.put(
+    "/notes/{instrument_id}",
+    response_model=AthenaResponse[OwnerHoldingNoteDTO],
+    summary="Create or replace the owner note for one My Portfolio holding",
+    status_code=status.HTTP_200_OK,
+    operation_id="upsertMyPortfolioNote",
+)
+def upsert_holding_note(
+    instrument_id: str,
+    body: UpsertOwnerHoldingNoteRequest,
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[OwnerHoldingNoteDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.upsert_holding_note(
+            instrument_id,
+            thesis=body.thesis,
+            watch_condition=body.watch_condition,
+            reminder=body.reminder,
+            review_comment=body.review_comment,
+            follow_up=body.follow_up,
+        ),
+        meta=_meta(request),
+    )
+
+
+@router.delete(
+    "/notes/{instrument_id}",
+    response_model=AthenaResponse[OwnerHoldingNoteDTO],
+    summary="Clear the owner note for one My Portfolio holding",
+    status_code=status.HTTP_200_OK,
+    operation_id="deleteMyPortfolioNote",
+)
+def delete_holding_note(
+    instrument_id: str,
+    request: Request,
+    service: MyPortfolioService = Depends(get_my_portfolio_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.EXECUTE)),  # noqa: B008
+) -> AthenaResponse[OwnerHoldingNoteDTO]:
+    return AthenaResponse(
+        status="success",
+        data=service.delete_holding_note(instrument_id),
+        meta=_meta(request),
     )
 
 

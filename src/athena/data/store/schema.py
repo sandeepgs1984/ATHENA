@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -356,6 +356,22 @@ _DDL = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_portfolio_holdings_updated "
     "ON portfolio_holdings(updated_at)",
+
+    """
+    CREATE TABLE IF NOT EXISTS portfolio_holding_notes (
+        instrument_id   TEXT PRIMARY KEY,
+        thesis          TEXT NOT NULL DEFAULT '',
+        watch_condition TEXT NOT NULL DEFAULT '',
+        reminder        TEXT NOT NULL DEFAULT '',
+        review_comment  TEXT NOT NULL DEFAULT '',
+        follow_up       INTEGER NOT NULL DEFAULT 0,
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT NOT NULL,
+        provenance_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_portfolio_holding_notes_updated "
+    "ON portfolio_holding_notes(updated_at)",
 
     """
     CREATE TABLE IF NOT EXISTS portfolio_reconciliations (

@@ -11,6 +11,7 @@ from athena.api.v1.services.my_portfolio_service import MyPortfolioService
 from athena.data.store.repository import SqliteRepository
 from athena.errors import RepositoryError
 from athena.ops.symbol_validate import SymbolValidateResult
+from athena.portfolio.my_portfolio_contracts import OwnerHoldingNote
 
 NOW = datetime(2026, 9, 8, 3, 6, tzinfo=timezone.utc)
 
@@ -55,6 +56,71 @@ def test_remap_portfolio_holding_instrument_id(tmp_path: Path) -> None:
     assert remapped.quantity == 10
     assert repo.get_portfolio_holding("NSE:HFCL") is None
     assert remapped.provenance["exchange_remaps"][0]["to_instrument_id"] == "BSE:HFCL"
+    repo.close()
+
+
+def test_remap_moves_owner_note_with_holding(tmp_path: Path) -> None:
+    repo = SqliteRepository(tmp_path / "athena.db")
+    repo.initialize()
+    _seed_holding(repo, "NSE:HFCL")
+    repo.upsert_portfolio_holding_note(
+        OwnerHoldingNote(
+            instrument_id="NSE:HFCL",
+            thesis="Follow the listing.",
+            created_at=NOW,
+            updated_at=NOW,
+            provenance={"source": "owner", "authored": True},
+        )
+    )
+
+    repo.remap_portfolio_holding_instrument_id(
+        from_instrument_id="NSE:HFCL",
+        to_instrument_id="BSE:HFCL",
+        updated_at=NOW,
+        reason="NSE catalog miss; resolved on BSE",
+    )
+
+    assert repo.get_portfolio_holding_note("NSE:HFCL") is None
+    moved = repo.get_portfolio_holding_note("BSE:HFCL")
+    assert moved is not None
+    assert moved.thesis == "Follow the listing."
+    repo.close()
+
+
+def test_remap_keeps_dest_note_and_drops_source_note(tmp_path: Path) -> None:
+    repo = SqliteRepository(tmp_path / "athena.db")
+    repo.initialize()
+    _seed_holding(repo, "NSE:HFCL")
+    repo.upsert_portfolio_holding_note(
+        OwnerHoldingNote(
+            instrument_id="NSE:HFCL",
+            thesis="Source note.",
+            created_at=NOW,
+            updated_at=NOW,
+            provenance={"source": "owner", "authored": True},
+        )
+    )
+    repo.upsert_portfolio_holding_note(
+        OwnerHoldingNote(
+            instrument_id="BSE:HFCL",
+            thesis="Keep dest.",
+            created_at=NOW,
+            updated_at=NOW,
+            provenance={"source": "owner", "authored": True},
+        )
+    )
+
+    repo.remap_portfolio_holding_instrument_id(
+        from_instrument_id="NSE:HFCL",
+        to_instrument_id="BSE:HFCL",
+        updated_at=NOW,
+        reason="NSE catalog miss; resolved on BSE",
+    )
+
+    assert repo.get_portfolio_holding_note("NSE:HFCL") is None
+    kept = repo.get_portfolio_holding_note("BSE:HFCL")
+    assert kept is not None
+    assert kept.thesis == "Keep dest."
     repo.close()
 
 

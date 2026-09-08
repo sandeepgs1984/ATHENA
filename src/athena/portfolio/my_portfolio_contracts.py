@@ -137,6 +137,44 @@ class CanonicalPortfolioHolding:
 
 
 @dataclass(frozen=True, slots=True)
+class OwnerHoldingNote:
+    """Owner-authored note for one current holding. Never ATHENA evidence."""
+
+    instrument_id: str
+    thesis: str = ""
+    watch_condition: str = ""
+    reminder: str = ""
+    review_comment: str = ""
+    follow_up: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    provenance: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.instrument_id or ":" not in self.instrument_id:
+            raise ValueError("OwnerHoldingNote.instrument_id must be canonical")
+        if self.created_at is not None and self.created_at.tzinfo is None:
+            raise ValueError("OwnerHoldingNote.created_at must be timezone-aware")
+        if self.updated_at is not None and self.updated_at.tzinfo is None:
+            raise ValueError("OwnerHoldingNote.updated_at must be timezone-aware")
+        object.__setattr__(self, "thesis", str(self.thesis or "").strip())
+        object.__setattr__(self, "watch_condition", str(self.watch_condition or "").strip())
+        object.__setattr__(self, "reminder", str(self.reminder or "").strip())
+        object.__setattr__(self, "review_comment", str(self.review_comment or "").strip())
+        object.__setattr__(self, "follow_up", bool(self.follow_up))
+        object.__setattr__(self, "provenance", MappingProxyType(dict(self.provenance)))
+
+    def is_empty(self) -> bool:
+        return (
+            not self.thesis
+            and not self.watch_condition
+            and not self.reminder
+            and not self.review_comment
+            and not self.follow_up
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ReconciliationChange:
     """Auditable before/after diff for one canonical instrument."""
 

@@ -6,6 +6,68 @@ status updated on approval.
 
 ---
 
+## MP-NX6 — Owner Notes (Review Session later)
+
+**Summary.** Authorized after MP-NX5 approval. Persist owner-authored
+holding notes so the owner can keep thesis, watch condition, reminder,
+review comment, and a follow-up mark on current holdings without changing
+ATHENA Status, scores, guidance, conviction, or interpretation versions.
+Review Session Mode is a later NX6 slice and was not implemented.
+
+**What changed.** New `OwnerHoldingNote` contract and
+`portfolio_holding_notes` table (schema 18 → 19). Notes are sparse: an
+empty body with `follow_up` false is deleted. Provenance is always
+`{"source": "owner", "authored": true}`. Lifecycle hooks delete the note
+with the holding, on confirm REMOVED, and on My Portfolio reset. On
+NSE→BSE remap the note moves with the holding; if a dest note already
+exists, the source note is dropped. API:
+`GET /notes`, `GET/PUT/DELETE /notes/{instrument_id}` (READ for get/list,
+EXECUTE for write). Missing holding → 404; missing note on an existing
+holding → `present: false`. Dashboard detail overlay adds an Owner note
+form at the bottom after Structural Review; the list shows Note /
+Follow-up chips next to the symbol. Dashboard assets advanced to
+`9.201.0`. No ADR: notes live in the existing My Portfolio SQLite
+subdomain.
+
+**Tests.** Contract emptiness/trim. Schema table + columns. API put/get/list,
+empty PUT delete, 404 without holding, READONLY write 403, delete-holding
+cascade, confirm REMOVED, reset counts. Remap moves note / keeps dest.
+Hosting/release-gate lock the overlay section, notes URL, badge class, and
+`9.201.0` assets. Focused suite: owner-notes API, schema, contracts,
+remap lifecycle, import reset, hosting, and release-gate — all passed.
+
+**Files created:** `tests/api/v1/test_my_portfolio_owner_notes.py`.
+
+**Files modified:** `src/athena/data/store/schema.py`,
+`src/athena/portfolio/my_portfolio_contracts.py`,
+`src/athena/data/store/repository.py`,
+`src/athena/api/v1/dtos/portfolio.py`,
+`src/athena/api/v1/dtos/__init__.py`,
+`src/athena/api/v1/services/my_portfolio_service.py`,
+`src/athena/api/v1/routers/my_portfolio.py`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`src/athena/api/static/index.html`,
+`src/athena/api/static/dashboard.css`,
+`tests/data_layer/test_my_portfolio_schema.py`,
+`tests/data_layer/test_entry_actionability_repository.py`,
+`tests/ops/test_owner_validation.py`,
+`tests/runtime/test_my_portfolio_contracts.py`,
+`tests/api/v1/test_my_portfolio_import_api.py`,
+`tests/api/v1/test_my_portfolio_refresh_catalog.py`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/MILESTONES.md`,
+`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
+`ATHENA_BRIEFING.md`, this file.
+
+**Status:** Implementation complete 2026-09-08; ready for Owner / Chief
+Architect review. Review Session Mode not started. Do not start that
+slice until this Owner Notes slice is approved.
+
+---
+
 ## ID-10 — Live Plan Supervision V0 (implementation)
 
 **Summary.** Owner-frozen V0 methodology (2026-09-08, after three
@@ -283,8 +345,8 @@ the mixed-session header helper and `9.193.0` assets.
 `tests/api/platform/test_decision_chart_release_gate.py`,
 `docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`, this file.
 
-**Status:** Implementation complete 2026-09-08. MP-NX5 remains pending
-owner review. Do not start MP-NX6 until authorized.
+**Status:** Implementation complete 2026-09-08. MP-NX5 later approved
+the same day; MP-NX6 Owner Notes authorized after that.
 
 ---
 
@@ -333,8 +395,8 @@ cache-busted `9.192.0` assets.
 `docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
 `docs/MILESTONES.md`, `ATHENA_BRIEFING.md`, this file.
 
-**Status:** Implementation complete 2026-09-08; ready for Owner / Chief
-Architect review. Not marked approved. Do not start MP-NX6 until authorized.
+**Status:** Owner/Chief Architect approved and closed 2026-09-08. MP-NX6
+Owner Notes was authorized the same day.
 
 ---
 

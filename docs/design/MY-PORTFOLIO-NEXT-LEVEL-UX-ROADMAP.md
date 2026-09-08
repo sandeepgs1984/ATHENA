@@ -254,6 +254,9 @@ Primary UX outcome:
 
 ### MP-NX6 — Owner Notes and Review Session Mode
 
+Owner Notes implemented 2026-09-08 (ready for review). Review Session Mode
+is a later slice and is not started.
+
 Objective: turn My Portfolio into a daily review workflow while preserving
 separation between owner judgment and ATHENA-generated intelligence.
 

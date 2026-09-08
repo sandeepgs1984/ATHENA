@@ -1949,6 +1949,7 @@ def test_reset_my_portfolio_clears_subdomain_state(my_portfolio_client: TestClie
     assert response.status_code == 200
     counts = response.json()["data"]["deleted_counts"]
     assert counts["portfolio_holdings"] == 1
+    assert counts["portfolio_holding_notes"] == 0
     assert counts["portfolio_imports"] == 1
     assert counts["portfolio_sync_runs"] == 1
     assert counts["portfolio_analysis_snapshots"] == 1

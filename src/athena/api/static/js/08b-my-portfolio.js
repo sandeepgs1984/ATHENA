@@ -128,6 +128,7 @@
         timelineError: false,
         holdings: [],
         imports: [],
+        notes: {},
         snapshotRowsByKey: {},
         sort: {
             key: "pnl_pct",
@@ -2293,12 +2294,14 @@
         myPortfolioHoldingsRows.innerHTML = '<tr><td colspan="15" class="text-center text-muted">Loading holdings...</td></tr>';
         myPortfolioHistoryRows.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading import history...</td></tr>';
         try {
-            const [holdingsRes, historyRes] = await Promise.all([
+            const [holdingsRes, historyRes, notesRes] = await Promise.all([
                 apiRequest("/api/v1/my-portfolio/holdings", { skipToast: true }),
                 apiRequest("/api/v1/my-portfolio/imports", { skipToast: true }),
+                apiRequest("/api/v1/my-portfolio/notes", { skipToast: true }).catch(() => ({ data: [] })),
             ]);
             myPortfolioState.holdings = holdingsRes?.data || [];
             myPortfolioState.imports = historyRes?.data?.imports || [];
+            myPortfolioState.notes = myPortfolioNotesById(notesRes?.data || []);
             try {
                 const snapshotRes = await apiRequest("/api/v1/my-portfolio/snapshot", { skipToast: true });
                 myPortfolioState.snapshot = snapshotRes?.data || null;
@@ -2323,6 +2326,7 @@
             showMyPortfolioAlert("Could not load My Portfolio holdings or import history.", "danger");
             myPortfolioState.snapshot = null;
             myPortfolioState.changes = null;
+            myPortfolioState.notes = {};
             renderMyPortfolioHoldings([]);
             renderMyPortfolioHistory([]);
             renderMyPortfolioSummary();
@@ -2416,6 +2420,40 @@
         return String(row?.provenance?.instrument_id || row?.instrument_id || row?.symbol || "");
     }
 
+    function myPortfolioNotesById(notes) {
+        const byId = {};
+        (Array.isArray(notes) ? notes : []).forEach(note => {
+            const key = String(note?.instrument_id || "");
+            if (key) byId[key] = note;
+        });
+        return byId;
+    }
+
+    function myPortfolioNoteForRow(row) {
+        return myPortfolioState.notes[myPortfolioPinKey(row)] || myPortfolioState.notes[myPortfolioRowKey(row)] || null;
+    }
+
+    function myPortfolioNoteIsPresent(note) {
+        if (!note || note.present === false) return false;
+        return Boolean(
+            note.follow_up
+            || String(note.thesis || "").trim()
+            || String(note.watch_condition || "").trim()
+            || String(note.reminder || "").trim()
+            || String(note.review_comment || "").trim()
+        );
+    }
+
+    function myPortfolioNoteBadge(row) {
+        const note = myPortfolioNoteForRow(row);
+        if (!myPortfolioNoteIsPresent(note)) return "";
+        const label = note.follow_up ? "Follow-up" : "Note";
+        const title = note.follow_up
+            ? "Owner follow-up. This is your mark, not ATHENA guidance."
+            : "Owner note. This is your judgment, not ATHENA evidence.";
+        return `<span class="my-portfolio-note-badge${note.follow_up ? " is-follow-up" : ""}" title="${title}">${label}</span>`;
+    }
+
     function myPortfolioPinBadge(row) {
         if (!myPortfolioIsPinned(myPortfolioPinKey(row))) return "";
         return `<span class="my-portfolio-pin-badge" title="Owner-pinned. This is your pin, not ATHENA conviction or ranking.">Pinned</span>`;
@@ -2475,7 +2513,7 @@
             return `
             <tr class="my-portfolio-row-state state-muted${myPortfolioIsPinned(pinKey) ? " is-owner-pinned" : ""}" data-instrument-id="${escapeMyPortfolioHtml(pinKey)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
-                <td class="font-mono"><strong>${escapeMyPortfolioHtml(symbol)}</strong>${myPortfolioPinBadge(holding)}</td>
+                <td class="font-mono"><strong>${escapeMyPortfolioHtml(symbol)}</strong>${myPortfolioPinBadge(holding)}${myPortfolioNoteBadge(holding)}</td>
                 <td>${myPortfolioPrivateNumberCell(holding.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(holding.avg_price)}</td>
                 <td>${myPortfolioDash()}</td>
@@ -2516,7 +2554,7 @@
         myPortfolioHoldingsRows.innerHTML = sortedRows.map((row, index) => `
             <tr class="my-portfolio-row-state ${myPortfolioRowStateClass(row)}${myPortfolioIsPinned(myPortfolioRowKey(row)) ? " is-owner-pinned" : ""}" data-instrument-id="${escapeMyPortfolioHtml(myPortfolioRowKey(row))}" tabindex="0" role="button" aria-label="Open detail for ${escapeMyPortfolioHtml(row.symbol)}">
                 <td class="my-portfolio-row-index">${formatMyPortfolioNumber(index + 1)}</td>
-                <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong>${myPortfolioPinBadge(row)}${myPortfolioQueueReasonChips(row)}${myPortfolioChangeBadgeChips(row)}</td>
+                <td class="font-mono"><strong>${escapeMyPortfolioHtml(row.symbol)}</strong>${myPortfolioPinBadge(row)}${myPortfolioNoteBadge(row)}${myPortfolioQueueReasonChips(row)}${myPortfolioChangeBadgeChips(row)}</td>
                 <td>${myPortfolioPrivateNumberCell(row.qty ?? row.quantity)}</td>
                 <td class="font-mono">${myPortfolioMoneyCell(row.avg_price)}</td>
                 <td class="font-mono">${myPortfolioPriceToneCell(row.last_price, row.avg_price)}</td>
@@ -2805,7 +2843,110 @@
                 <h4>Structural Review / Levels</h4>
                 ${structuralSection}
             </div>
+            ${myPortfolioOwnerNoteSection(row)}
         `;
+        bindMyPortfolioNoteForm(myPortfolioPinKey(row) || myPortfolioRowKey(row));
+    }
+
+    function formatMyPortfolioNoteTime(value) {
+        if (!value) return "";
+        const dt = new Date(value);
+        if (Number.isNaN(dt.getTime())) return "";
+        return dt.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+    }
+
+    function myPortfolioOwnerNoteSection(row) {
+        const key = myPortfolioPinKey(row) || myPortfolioRowKey(row);
+        const note = myPortfolioState.notes[key] || {};
+        const present = myPortfolioNoteIsPresent(note);
+        const updated = formatMyPortfolioNoteTime(note.updated_at);
+        return `<div class="my-portfolio-detail-section my-portfolio-owner-note" data-detail-section="owner-note">
+            <h4>Owner note</h4>
+            <p class="metric-desc">Your judgment only. This never changes ATHENA Status, guidance, conviction, or scores.</p>
+            <label for="my-portfolio-note-thesis">Thesis</label>
+            <textarea id="my-portfolio-note-thesis" rows="3" maxlength="4000">${escapeMyPortfolioHtml(note.thesis || "")}</textarea>
+            <label for="my-portfolio-note-watch">Watch condition</label>
+            <textarea id="my-portfolio-note-watch" rows="2" maxlength="2000">${escapeMyPortfolioHtml(note.watch_condition || "")}</textarea>
+            <label for="my-portfolio-note-reminder">Reminder</label>
+            <textarea id="my-portfolio-note-reminder" rows="2" maxlength="2000">${escapeMyPortfolioHtml(note.reminder || "")}</textarea>
+            <label for="my-portfolio-note-comment">Review comment</label>
+            <textarea id="my-portfolio-note-comment" rows="2" maxlength="4000">${escapeMyPortfolioHtml(note.review_comment || "")}</textarea>
+            <label class="my-portfolio-owner-note-check">
+                <input id="my-portfolio-note-follow-up" type="checkbox"${note.follow_up ? " checked" : ""}>
+                Needs manual follow-up
+            </label>
+            <div class="my-portfolio-owner-note-actions">
+                <button id="my-portfolio-note-save" class="btn btn-primary" type="button">Save note</button>
+                <button id="my-portfolio-note-clear" class="btn" type="button"${present ? "" : " disabled"}>Clear note</button>
+            </div>
+            <p id="my-portfolio-note-status" class="metric-desc">${present && updated ? `Last saved ${escapeMyPortfolioHtml(updated)}.` : "No owner note saved yet."}</p>
+        </div>`;
+    }
+
+    function bindMyPortfolioNoteForm(instrumentId) {
+        document.getElementById("my-portfolio-note-save")?.addEventListener("click", () => {
+            saveMyPortfolioNote(instrumentId);
+        });
+        document.getElementById("my-portfolio-note-clear")?.addEventListener("click", () => {
+            clearMyPortfolioNote(instrumentId);
+        });
+    }
+
+    function rememberMyPortfolioNote(instrumentId, note) {
+        if (note && note.present !== false && myPortfolioNoteIsPresent(note)) {
+            myPortfolioState.notes[instrumentId] = note;
+        } else {
+            delete myPortfolioState.notes[instrumentId];
+        }
+        const openKey = myPortfolioState.detailOpenKey;
+        const openRow = openKey ? myPortfolioState.snapshotRowsByKey[openKey] : null;
+        renderMyPortfolioHoldings(myPortfolioSourceRows());
+        if (openRow) renderMyPortfolioDetail(openRow);
+    }
+
+    async function saveMyPortfolioNote(instrumentId) {
+        if (!instrumentId) return;
+        const status = document.getElementById("my-portfolio-note-status");
+        const saveBtn = document.getElementById("my-portfolio-note-save");
+        if (saveBtn) saveBtn.disabled = true;
+        try {
+            const response = await apiRequest(`/api/v1/my-portfolio/notes/${encodeURIComponent(instrumentId)}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    thesis: document.getElementById("my-portfolio-note-thesis")?.value || "",
+                    watch_condition: document.getElementById("my-portfolio-note-watch")?.value || "",
+                    reminder: document.getElementById("my-portfolio-note-reminder")?.value || "",
+                    review_comment: document.getElementById("my-portfolio-note-comment")?.value || "",
+                    follow_up: Boolean(document.getElementById("my-portfolio-note-follow-up")?.checked),
+                }),
+                skipToast: true,
+            });
+            rememberMyPortfolioNote(instrumentId, response?.data);
+            const nextStatus = document.getElementById("my-portfolio-note-status");
+            if (nextStatus) nextStatus.textContent = response?.data?.present ? "Owner note saved." : "Owner note cleared.";
+        } catch (err) {
+            if (status) status.textContent = "Could not save the owner note.";
+            showMyPortfolioAlert("Could not save the owner note.", "danger");
+        } finally {
+            if (saveBtn) saveBtn.disabled = false;
+        }
+    }
+
+    async function clearMyPortfolioNote(instrumentId) {
+        if (!instrumentId) return;
+        const status = document.getElementById("my-portfolio-note-status");
+        try {
+            const response = await apiRequest(`/api/v1/my-portfolio/notes/${encodeURIComponent(instrumentId)}`, {
+                method: "DELETE",
+                skipToast: true,
+            });
+            rememberMyPortfolioNote(instrumentId, response?.data);
+            const nextStatus = document.getElementById("my-portfolio-note-status");
+            if (nextStatus) nextStatus.textContent = "Owner note cleared.";
+        } catch (err) {
+            if (status) status.textContent = "Could not clear the owner note.";
+            showMyPortfolioAlert("Could not clear the owner note.", "danger");
+        }
     }
 
     function resetMyPortfolioDetailScroll() {

@@ -54,6 +54,7 @@ def test_my_portfolio_tables_are_created_in_athena_schema(tmp_path: Path) -> Non
         "portfolio_imports",
         "portfolio_import_rows",
         "portfolio_holdings",
+        "portfolio_holding_notes",
         "portfolio_reconciliations",
         "portfolio_sync_runs",
         "portfolio_analysis_snapshots",
@@ -66,7 +67,26 @@ def test_my_portfolio_tables_are_created_in_athena_schema(tmp_path: Path) -> Non
     }
 
     assert expected <= tables
+    assert SCHEMA_VERSION == 19
     assert repo._conn.execute("SELECT version FROM schema_version").fetchone()[0] == SCHEMA_VERSION
+    repo.close()
+
+
+def test_portfolio_holding_notes_columns(tmp_path: Path) -> None:
+    repo = SqliteRepository(tmp_path / "athena.db")
+    repo.initialize()
+
+    assert _columns(repo._conn, "portfolio_holding_notes") == {  # type: ignore[attr-defined]
+        "instrument_id",
+        "thesis",
+        "watch_condition",
+        "reminder",
+        "review_comment",
+        "follow_up",
+        "created_at",
+        "updated_at",
+        "provenance_json",
+    }
     repo.close()
 
 

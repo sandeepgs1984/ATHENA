@@ -1355,6 +1355,60 @@
     scroll-snap-stop: normal;
 }
 
+.my-portfolio-note-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: var(--space-6);
+    padding: 1px var(--space-6);
+    border: 1px dashed rgba(250, 204, 21, 0.45);
+    border-radius: 999px;
+    color: #facc15;
+    background: rgba(250, 204, 21, 0.08);
+    font-size: var(--text-0-68);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.my-portfolio-note-badge.is-follow-up {
+    border-color: rgba(251, 146, 60, 0.5);
+    color: #fb923c;
+    background: rgba(251, 146, 60, 0.1);
+}
+
+.my-portfolio-owner-note label {
+    display: block;
+    margin: var(--space-10) 0 var(--space-4);
+    color: var(--text-secondary);
+    font-size: var(--text-0-78);
+    font-weight: 700;
+}
+
+.my-portfolio-owner-note textarea {
+    width: 100%;
+    min-height: 4.5rem;
+    resize: vertical;
+    padding: var(--space-8) var(--space-10);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 8px;
+    background: rgba(8, 13, 24, 0.72);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.my-portfolio-owner-note-check {
+    display: flex !important;
+    align-items: center;
+    gap: var(--space-8);
+    font-weight: 600 !important;
+}
+
+.my-portfolio-owner-note-actions {
+    display: flex;
+    gap: var(--space-8);
+    margin-top: var(--space-12);
+}
+
 .my-portfolio-pin-badge {
     display: inline-flex;
     align-items: center;
@@ -2441,6 +2495,10 @@
     background: rgba(167, 139, 250, 0.48);
 }
 
+.my-portfolio-detail-section[data-detail-section="owner-note"]::before {
+    background: rgba(250, 204, 21, 0.45);
+}
+
 .my-portfolio-detail-section h4 {
     display: flex;
     align-items: center;
@@ -2486,6 +2544,10 @@
 
 .my-portfolio-detail-section[data-detail-section="review-timeline"] h4::before {
     content: "\f017";
+}
+
+.my-portfolio-detail-section[data-detail-section="owner-note"] h4::before {
+    content: "\f044";
 }
 
 .my-portfolio-review-timeline {

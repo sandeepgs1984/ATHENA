@@ -45,6 +45,7 @@ from athena.intraday.entry_qualification_models import EntryQualification
 from athena.portfolio.my_portfolio_contracts import (
     CanonicalPortfolioHolding,
     ImportStatus,
+    OwnerHoldingNote,
     ReconciliationAction,
     ReconciliationChange,
     SkippedImportRow,
@@ -1953,6 +1954,21 @@ class SqliteRepository:
                             from_instrument_id,
                         ),
                     )
+                    dest_note = self._conn.execute(
+                        "SELECT instrument_id FROM portfolio_holding_notes WHERE instrument_id=?",
+                        (to_instrument_id,),
+                    ).fetchone()
+                    if dest_note is not None:
+                        self._conn.execute(
+                            "DELETE FROM portfolio_holding_notes WHERE instrument_id=?",
+                            (from_instrument_id,),
+                        )
+                    else:
+                        self._conn.execute(
+                            "UPDATE portfolio_holding_notes SET instrument_id=? "
+                            "WHERE instrument_id=?",
+                            (to_instrument_id, from_instrument_id),
+                        )
         except sqlite3.Error as exc:
             raise RepositoryError(f"remap portfolio holding failed: {exc}") from exc
         refreshed = self.get_portfolio_holding(to_instrument_id)
@@ -1966,6 +1982,10 @@ class SqliteRepository:
         try:
             with self._lock:
                 with self._conn:
+                    self._conn.execute(
+                        "DELETE FROM portfolio_holding_notes WHERE instrument_id=?",
+                        (instrument_id,),
+                    )
                     cursor = self._conn.execute(
                         "DELETE FROM portfolio_holdings WHERE instrument_id=?",
                         (instrument_id,),
@@ -1980,6 +2000,7 @@ class SqliteRepository:
         tables = (
             "portfolio_analysis_snapshots",
             "portfolio_sync_runs",
+            "portfolio_holding_notes",
             "portfolio_holdings",
             "portfolio_reconciliations",
             "portfolio_import_rows",
@@ -1994,6 +2015,73 @@ class SqliteRepository:
                 return counts
         except sqlite3.Error as exc:
             raise RepositoryError(f"reset my portfolio failed: {exc}") from exc
+
+    def list_portfolio_holding_notes(self) -> list[OwnerHoldingNote]:
+        rows = self._query_all(
+            "SELECT instrument_id, thesis, watch_condition, reminder, review_comment, "
+            "follow_up, created_at, updated_at, provenance_json "
+            "FROM portfolio_holding_notes ORDER BY instrument_id"
+        )
+        return [self._portfolio_holding_note_from_row(row) for row in rows]
+
+    def get_portfolio_holding_note(self, instrument_id: str) -> OwnerHoldingNote | None:
+        row = self._query_one(
+            "SELECT instrument_id, thesis, watch_condition, reminder, review_comment, "
+            "follow_up, created_at, updated_at, provenance_json "
+            "FROM portfolio_holding_notes WHERE instrument_id=?",
+            (instrument_id,),
+        )
+        return self._portfolio_holding_note_from_row(row) if row else None
+
+    def upsert_portfolio_holding_note(self, note: OwnerHoldingNote) -> OwnerHoldingNote | None:
+        """Persist one owner note. Empty notes are deleted so the table stays sparse."""
+
+        if note.is_empty():
+            self.delete_portfolio_holding_note(note.instrument_id)
+            return None
+        if note.created_at is None or note.updated_at is None:
+            raise RepositoryError("NOTE_TIMESTAMPS_REQUIRED")
+        try:
+            with self._lock, self._conn:
+                self._conn.execute(
+                    "INSERT INTO portfolio_holding_notes ("
+                    "instrument_id, thesis, watch_condition, reminder, review_comment, "
+                    "follow_up, created_at, updated_at, provenance_json"
+                    ") VALUES (?,?,?,?,?,?,?,?,?) "
+                    "ON CONFLICT(instrument_id) DO UPDATE SET "
+                    "thesis=excluded.thesis, watch_condition=excluded.watch_condition, "
+                    "reminder=excluded.reminder, review_comment=excluded.review_comment, "
+                    "follow_up=excluded.follow_up, updated_at=excluded.updated_at, "
+                    "provenance_json=excluded.provenance_json",
+                    (
+                        note.instrument_id,
+                        note.thesis,
+                        note.watch_condition,
+                        note.reminder,
+                        note.review_comment,
+                        1 if note.follow_up else 0,
+                        note.created_at.isoformat(),
+                        note.updated_at.isoformat(),
+                        json.dumps(dict(note.provenance), sort_keys=True),
+                    ),
+                )
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"upsert portfolio holding note failed: {exc}") from exc
+        refreshed = self.get_portfolio_holding_note(note.instrument_id)
+        if refreshed is None:
+            raise RepositoryError("NOTE_NOT_FOUND")
+        return refreshed
+
+    def delete_portfolio_holding_note(self, instrument_id: str) -> bool:
+        try:
+            with self._lock, self._conn:
+                cursor = self._conn.execute(
+                    "DELETE FROM portfolio_holding_notes WHERE instrument_id=?",
+                    (instrument_id,),
+                )
+                return cursor.rowcount > 0
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"delete portfolio holding note failed: {exc}") from exc
 
     def portfolio_holdings_digest(self) -> str:
         """Deterministic digest of current canonical My Portfolio holdings."""
@@ -2387,6 +2475,10 @@ class SqliteRepository:
                             ),
                         )
                         if change.action is ReconciliationAction.REMOVED:
+                            self._conn.execute(
+                                "DELETE FROM portfolio_holding_notes WHERE instrument_id=?",
+                                (change.instrument_id,),
+                            )
                             self._conn.execute(
                                 "DELETE FROM portfolio_holdings WHERE instrument_id=?",
                                 (change.instrument_id,),
@@ -3021,6 +3113,19 @@ class SqliteRepository:
             "warnings": tuple(json.loads(row[11] or "[]")),
             "metadata": json.loads(row[12] or "{}"),
         }
+
+    def _portfolio_holding_note_from_row(self, row: tuple) -> OwnerHoldingNote:
+        return OwnerHoldingNote(
+            instrument_id=row[0],
+            thesis=row[1] or "",
+            watch_condition=row[2] or "",
+            reminder=row[3] or "",
+            review_comment=row[4] or "",
+            follow_up=bool(row[5]),
+            created_at=datetime.fromisoformat(row[6]),
+            updated_at=datetime.fromisoformat(row[7]),
+            provenance=json.loads(row[8] or "{}"),
+        )
 
     def _portfolio_holding_from_row(self, row: tuple) -> CanonicalPortfolioHolding:
         return CanonicalPortfolioHolding(

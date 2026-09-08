@@ -5169,8 +5169,8 @@ class TestOwnerValidationPipeline:
         PERSISTENCE_NOT_YET_REQUIRED): no `save_live_plan_supervision(`
         CALL exists anywhere (a prose comment naming the deliberate
         absence is fine and expected, mirroring ID-9's own analogous
-        proof), and `SCHEMA_VERSION` is unchanged at 18 -- ID-10 V0 is a
-        pure, non-persisted, every-cycle recomputation."""
+        proof). ID-10 V0 is a pure, non-persisted, every-cycle
+        recomputation; schema 19 is MP-NX6 notes, not this stage."""
         import inspect
 
         import athena.ops.owner_validation as ov
@@ -5179,7 +5179,9 @@ class TestOwnerValidationPipeline:
         source = inspect.getsource(ov)
         assert "save_live_plan_supervision(" not in source
         assert ".save_live_plan_supervision(" not in source
-        assert SCHEMA_VERSION == 18
+        # ID-10 itself did not add a table. Schema 19 is MP-NX6
+        # portfolio_holding_notes, not live-plan-supervision persistence.
+        assert SCHEMA_VERSION == 19
 
     def test_id10_stage_declared_last_depends_only_on_entry_actionability(self) -> None:
         """ID-10 (corrected 2026-09-08, Owner source-review Defect #2):

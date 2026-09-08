@@ -11,6 +11,7 @@ from athena.portfolio.my_portfolio_contracts import (
     PORTFOLIO_ANALYSIS_VERSION,
     CanonicalPortfolioHolding,
     ImportedHoldingRow,
+    OwnerHoldingNote,
     PortfolioAnalysisProvenance,
     PortfolioFreshness,
     PortfolioSnapshotRow,
@@ -42,6 +43,29 @@ def _holding(
         source_import_id="imp-1",
         source_row_id=source_row_id,
     )
+
+
+def test_owner_holding_note_is_empty_and_trims() -> None:
+    empty = OwnerHoldingNote(instrument_id="NSE:INFY", thesis="  ")
+    assert empty.is_empty() is True
+    assert empty.thesis == ""
+
+    present = OwnerHoldingNote(
+        instrument_id="NSE:INFY",
+        thesis="  Hold  ",
+        follow_up=False,
+        created_at=NOW,
+        updated_at=NOW,
+        provenance={"source": "owner", "authored": True},
+    )
+    assert present.is_empty() is False
+    assert present.thesis == "Hold"
+
+    follow_up_only = OwnerHoldingNote(instrument_id="NSE:INFY", follow_up=True)
+    assert follow_up_only.is_empty() is False
+
+    with pytest.raises(ValueError, match="canonical"):
+        OwnerHoldingNote(instrument_id="INFY")
 
 
 def test_imported_holding_row_validates_required_normalized_facts() -> None:
