@@ -1,11 +1,14 @@
 # ID-10 — Live Plan Supervision Discovery + V0 Contract
 
-Status: **VWAP COMPOSITION CONTRACT — READY FOR OWNER / CHIEF ARCHITECT
-FREEZE.** Read-only discovery/design only. Zero code changes, zero
-production impact, zero schema change. See §0 for the first correction
-round's record (path-dependence of invalidation/target progress); §9/§12
-for this third round's fix (VWAP is session-cumulative from canonical
-session start, never from the supervised `EntryActionability`'s own
+Status: **ID-10 V0 METHODOLOGY CONTRACT / OWNER FROZEN — 2026-09-08.**
+V0 core implementation is complete against this frozen contract — see
+§15 for the implementation record (files, tests, `PERSISTENCE_NOT_YET_
+REQUIRED`, production-safety confirmation). §0-§14 below are the design
+history that produced the frozen contract and remain unchanged from the
+Owner's freeze authorization. See §0 for the first correction round's
+record (path-dependence of invalidation/target progress); §9/§12 for the
+third round's fix (VWAP is session-cumulative from canonical session
+start, never from the supervised `EntryActionability`'s own
 `evidence_as_of` — the VWAP *source* window and the supervision *event*
 window are two different things and must never be merged); §1 for what
 survived Owner source review unchanged from the original pass.
@@ -266,6 +269,119 @@ No independent correctness blocker requiring a sub-milestone was found — this 
 
 Zero files edited other than this discovery document. Zero DB writes, zero restarts, zero code changes. No ID-6/7/8/9 methodology touched (§7 was a read, not a modification). EMR/DarvaX untouched.
 
+## 15. V0 core implementation record (2026-09-08, same day as freeze)
+
+The Owner froze the corrected §7-§12 contract and authorized immediate
+V0 implementation. This section records what was built against it —
+methodology is unchanged from §8-§12 above; this is implementation
+bookkeeping only.
+
+**Files created:**
+- `src/athena/intraday/live_plan_supervision_models.py` — domain
+  contracts: `LivePlanSupervisionState` (`NOT_APPLICABLE`/`VALID`/
+  `INVALIDATED`, no `WEAKENING`), `LivePlanSupervisionReasonCode`
+  (`UPSTREAM_NOT_ACTIONABLE`/`UNVALIDATED_DIRECTION`/
+  `UPSTREAM_NOT_CURRENT`/`VWAP_LOSS`), `TargetProgress`, the immutable
+  `VwapLossEvidence`/`TargetProgressEvidence` path-dependent evidence
+  objects, and the main `LivePlanSupervision` artifact (upstream
+  `EntryActionability` identity copied verbatim + its own
+  `supervision_as_of`/`supervision_methodology_version`,
+  `DEFAULT_METHODOLOGY_VERSION = "live-plan-supervision-v0"`). Full
+  `__post_init__` field-presence enforcement per the three rules in
+  §10/§12 (upstream-echoed risk-geometry fields present unless
+  `UPSTREAM_NOT_ACTIONABLE`; `currentness` always present; the two
+  path-dependent evidence objects present iff `state in (VALID,
+  INVALIDATED)`).
+- `src/athena/intraday/live_plan_supervision_engine.py` — pure
+  composers `compose_vwap_loss_evidence(session_completed_m5,
+  supervised_path, direction)` and
+  `compose_target_progress_evidence(supervised_path, reward,
+  direction)` implementing the frozen two-window contract exactly (the
+  VWAP source window is always session-start-truncated via the existing
+  `session.engine.completed_candles` + `indicators.calculations.vwap`
+  combination, never a new formula), plus the pure
+  `LivePlanSupervisionEngine.evaluate(...)` implementing gate order A
+  (upstream not ACTIONABLE) → B (direction not LONG) → C (currentness
+  not CURRENT) → D (VWAP-loss triggered → INVALIDATED) → E (else →
+  VALID), exactly as frozen in §10.
+
+**Files modified:**
+- `src/athena/ops/owner_validation.py` — new `live_plan_supervision`
+  `WorkflowStage` appended as the 14th and last stage in
+  `_scan_eligible`'s per-instrument DAG, `depends_on=("position_sizing",)`
+  purely to preserve declared-last DAG ordering (its true data
+  dependency is `entry_actionability` alone, read via
+  `ctx.get("entry_actionability")` — never a repository "latest"
+  re-query, mirroring `position_sizing_stage`'s own precedent). Reuses
+  the identical same-cycle `Decision`/`EntryQualification` closure
+  pattern and the existing `is_currently_usable` currentness call
+  (never re-implemented) with the SAME captured
+  `persistence_clock()` instant `position_sizing_stage` already uses.
+  Evidence composition (a bounded `repo.get_candles` read from
+  canonical session start through `ctx.as_of`, truncated via
+  `completed_candles`, then filtered to `supervised_path` via
+  `candle.ts_open >= entry_actionability.evidence_as_of`) runs only
+  when `entry_actionability.state is ACTIONABLE and direction is LONG
+  and currentness.status is CURRENT` — never for a row an earlier gate
+  already rejected.
+- `tests/ops/test_owner_validation.py` — `test_id7e1_no_dag_change`'s
+  literal `"entry_actionability"` count updated 9→12 (ID-10's own stage
+  legitimately references it); the ID-9 currentness-clock-reuse test
+  updated to expect 2 captured `now` reads (one per stage that now
+  calls `is_currently_usable`, both from the same injected clock) plus
+  7 new ID-10 workflow-integration tests covering test-matrix items
+  U (no evidence composition for a rejected WATCH row, proven via a
+  call-count spy on both composers), V (coexistence does not alter
+  ID-9's own frozen SIZED/98 result), W (DAG ordering + transitive-
+  dependency structural proofs, mirroring ID-9's own), X
+  (`LONG_VALIDATED_SHORT_UNVALIDATED` preserved end to end through the
+  real stage wiring, using a forced-SHORT `EntryActionability`), and Y
+  (no `save_live_plan_supervision(` call anywhere, `SCHEMA_VERSION`
+  unchanged at 18).
+
+**New test file:**
+- `tests/market_intel/test_live_plan_supervision_engine.py` — 23 pure
+  engine/composer tests covering test-matrix items A-J, K-O (upstream/
+  direction/currentness gates), P (frozen `operative_invalidation.level`
+  never used as the forward VWAP reference — proven by constructing a
+  case where the two disagree and the fresh evolving VWAP wins), Q/R
+  (first-trigger provenance exactness and permanence under path
+  extension), S (Decimal-only arithmetic), and T (timezone-aware
+  invariants), plus the two-window (item D) and event-boundary (item E)
+  and no-future-leakage (item F) proofs called out explicitly in the
+  frozen contract's own test-matrix.
+
+**Test results:** new files 23 + 7 = 30 new tests; full repository
+suite **3957 passed, 1 pre-existing unrelated skip, 0 failures**.
+`git diff --check`/`git status --short` clean, diff scoped to exactly
+the 2 new `intraday/` modules, `owner_validation.py`, and the 2 test
+files (plus this document).
+
+**Persistence:** `PERSISTENCE_NOT_YET_REQUIRED` (frozen, §15 of the
+Owner's implementation authorization) — no schema bump, no
+`live_plan_supervisions` table, no `save_live_plan_supervision`
+repository method, no persisted FSM. `SCHEMA_VERSION` stays 18. Every
+`LivePlanSupervision` evaluation is deterministically reconstructed
+from (the persisted `EntryActionability` identity + fresh currentness +
+freshly-fetched bounded candle windows) on every cycle; published into
+`WorkflowContext` for this cycle's own consumers only.
+
+**Production safety:** no migration, no production DB mutation, no
+service restart, no run-due/Validate-All invocation, no scheduler
+change, no broker/execution/order/EMR/DarvaX touch. `db/athena.db`
+confirmed unchanged (`integrity_check: ok`, no new table). The
+previously-restored production scheduler (PID 93394,
+`--with-cycles --cycle-interval 60.0`) was left completely untouched
+throughout this milestone.
+
+**Discrepancy from the frozen contract:** none found.
+
+**Recommended classification:** `ID10_V0_IMPLEMENTATION_COMPLETE_
+NO_PRODUCTION_ACTIVATION_JUDGMENT_YET` — the implementation is complete
+and self-validated against the frozen contract; it has not yet been
+source-reviewed by the Owner/Chief Architect, and (mirroring ID-9's own
+precedent) is not self-declared closed here.
+
 ---
 
-**ID-10 LIVE PLAN SUPERVISION VWAP COMPOSITION CONTRACT READY FOR OWNER / CHIEF ARCHITECT FREEZE**
+**ID-10 V0 IMPLEMENTATION READY FOR OWNER / CHIEF ARCHITECT SOURCE REVIEW**

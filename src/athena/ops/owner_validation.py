@@ -27,7 +27,7 @@ from athena.config.loader import (
 )
 from athena.data.ingestion.models import IngestionResult
 from athena.data.store.repository import SqliteRepository
-from athena.domain.enums import DecisionType, RunStatus, RunTrigger, Timeframe
+from athena.domain.enums import DecisionType, Direction, RunStatus, RunTrigger, Timeframe
 from athena.domain.market import Candle, Instrument, MarketSnapshot
 from athena.market_health.aggregates import (
     compute_gap_stability,
@@ -826,6 +826,7 @@ class OwnerValidationPipeline:
         from athena.intraday import (
             EntryActionabilityEngine,
             EntryActionabilityMarketEvidence,
+            EntryActionabilityState,
             EntryQualificationEngine,
             GapEngine,
             IntradayAnalyticsEngine,
@@ -836,8 +837,14 @@ class OwnerValidationPipeline:
             resolve_evidence_finality,
         )
         from athena.intraday.entry_actionability_currentness import (
+            EntryActionabilityCurrentness,
             EntryQualificationIdentity,
             is_currently_usable,
+        )
+        from athena.intraday.live_plan_supervision_engine import (
+            LivePlanSupervisionEngine,
+            compose_target_progress_evidence,
+            compose_vwap_loss_evidence,
         )
         from athena.intraday.position_sizing_engine import PositionSizingV0Engine
         from athena.market_health import MarketHealthEngine
@@ -873,6 +880,7 @@ class OwnerValidationPipeline:
         entry_qualification_engine = EntryQualificationEngine()
         entry_actionability_engine = EntryActionabilityEngine()
         position_sizing_engine = PositionSizingV0Engine()
+        live_plan_supervision_engine = LivePlanSupervisionEngine()
         gap_engine = GapEngine()
         risk_engine = RiskEngine(risk_cfg)
         evidence_engine = EvidenceAggregationEngine()
@@ -1678,6 +1686,137 @@ class OwnerValidationPipeline:
                 )
                 return {"position_sizing": sizing}
 
+            def live_plan_supervision_stage(ctx):
+                # ID-10: the first stage downstream of `position_sizing` --
+                # its TRUE methodology dependency is `entry_actionability`
+                # only (PositionSizing is never read here; it is not
+                # required for supervision identity or eligibility, per
+                # the frozen V0 contract -- see
+                # docs/research/ID-10-LIVE-PLAN-SUPERVISION-DISCOVERY.md).
+                # Declared last / depends_on=("position_sizing",) purely to
+                # preserve the existing thirteen stages' relative order,
+                # exactly mirroring ID-9's own precedent -- it does not
+                # read, and must never alter, PositionSizing's own output.
+                #
+                # "entry_actionability": the exact same-cycle artifact
+                # `entry_actionability_stage` produced from THIS Decision/
+                # EntryQualification pair -- read from WorkflowContext,
+                # never a repository "latest" query. `None` for any
+                # Decision type outside ID-7's own WATCH/TRADE funnel --
+                # gated here BEFORE any currentness/evidence composition,
+                # so an out-of-scope Decision can never reach supervision
+                # arithmetic at all.
+                entry_actionability = ctx.get("entry_actionability")
+                if entry_actionability is None:
+                    return {"live_plan_supervision": None}
+
+                # One captured wall-clock instant serves BOTH the
+                # currentness `now` and this artifact's own
+                # `evaluated_at`/`supervision_as_of` clock role -- never
+                # two independent `datetime.now()`-equivalent reads for
+                # one supervision decision, and never `ctx.as_of` as a
+                # wall clock, mirroring `position_sizing_stage`'s own
+                # `sizing_clock_instant` precedent exactly. Currentness
+                # itself is reused verbatim from the existing, unmodified
+                # `entry_actionability_currentness.is_currently_usable` --
+                # never re-implemented -- computed unconditionally
+                # (cheap, pure) whenever an EntryActionability exists,
+                # regardless of its own state/direction; the ENGINE, not
+                # this composition step, decides whether it is relevant.
+                decision = box["cap"].outcome.decision
+                entry_qualification = ctx.get("entry_qualification")
+                supervision_clock_instant = self._persistence_clock()
+                current_session_phase = classify_session_phase(
+                    calendar.context_for(supervision_clock_instant.astimezone(session_tzinfo).date()),
+                    cfg.market.sessions, as_of=supervision_clock_instant, tzinfo=session_tzinfo,
+                )
+                currentness = is_currently_usable(
+                    entry_actionability,
+                    current_decision_id=decision.decision_id,
+                    current_entry_qualification_identity=EntryQualificationIdentity(
+                        instrument_id=entry_qualification.instrument_id,
+                        session_date=entry_qualification.session_date,
+                        as_of=entry_qualification.as_of,
+                        decision_id=entry_qualification.decision_id,
+                        methodology_version=entry_qualification.methodology_version,
+                    ),
+                    current_session_phase=current_session_phase,
+                    now=supervision_clock_instant,
+                )
+
+                # Do NOT compose bounded-path evidence (repository reads)
+                # for a row an earlier deterministic gate will reject
+                # anyway (discovery document §13) -- only when upstream
+                # genuinely reached ACTIONABLE+LONG+CURRENT is the
+                # (session-history fetch + two pure folds) work performed
+                # at all. `vwap_loss_evidence`/`target_progress_evidence`
+                # stay `None` otherwise; the pure engine independently
+                # re-confirms the identical three gates before ever
+                # touching them (defense in depth, never trust-without-
+                # verify, mirroring every evaluator in this track).
+                vwap_loss_evidence = None
+                target_progress_evidence = None
+                if (
+                    entry_actionability.state is EntryActionabilityState.ACTIONABLE
+                    and entry_actionability.direction is Direction.LONG
+                    and currentness.status is EntryActionabilityCurrentness.CURRENT
+                ):
+                    # Two-window contract (non-negotiable, ID-10 V0):
+                    # `session_candles`/`session_completed_m5` is the VWAP
+                    # SOURCE window -- canonical session start through
+                    # this cycle's own `ctx.as_of` -- the exact same
+                    # shape/origin `ind_stage`'s own `vwap_raw` fetch
+                    # already uses (a SECOND, independent repository read
+                    # of already-ingested data, deliberately not a shared
+                    # WorkflowContext value -- `ind_stage` never publishes
+                    # its raw candle list, only derived scalars). Session-
+                    # cumulative VWAP must always be computed from this
+                    # session-start origin, never from the supervised
+                    # EntryActionability's own `evidence_as_of` -- doing
+                    # so would silently redefine "VWAP-loss" into a
+                    # different, unvalidated post-entry-window VWAP.
+                    #
+                    # `supervised_path` is the SUPERVISION EVENT window --
+                    # completed M5 candles with `ts_open >=
+                    # entry_actionability.evidence_as_of` (the candle
+                    # OPENING at-or-after the supervised checkpoint's own
+                    # completion instant is the first eligible event
+                    # candidate) -- used only to decide which checkpoints
+                    # may register a VWAP-loss/target-touch event for
+                    # THIS specific plan; it never governs what VWAP
+                    # itself equals.
+                    session_candles = self._repo.get_candles(
+                        instrument_id, Timeframe.M5,
+                        session_day_start(ctx.as_of, session_tzinfo), ctx.as_of,
+                    )
+                    session_completed_m5 = completed_candles(
+                        session_candles, Timeframe.M5, as_of=ctx.as_of
+                    )
+                    supervised_path = [
+                        c for c in session_completed_m5
+                        if c.ts_open >= entry_actionability.evidence_as_of
+                    ]
+                    vwap_loss_evidence = compose_vwap_loss_evidence(
+                        session_completed_m5, supervised_path, entry_actionability.direction,
+                    )
+                    target_progress_evidence = compose_target_progress_evidence(
+                        supervised_path, entry_actionability.reward, entry_actionability.direction,
+                    )
+
+                # ID-10 (PERSISTENCE_NOT_YET_REQUIRED, frozen): no
+                # `save_live_plan_supervision` call exists -- the pure
+                # result is published into WorkflowContext only, for this
+                # cycle's own consumers, mirroring exactly how
+                # PositionSizing itself first shipped (ID-9 §18/§21).
+                supervision = live_plan_supervision_engine.evaluate(
+                    entry_actionability=entry_actionability,
+                    currentness=currentness,
+                    vwap_loss_evidence=vwap_loss_evidence,
+                    target_progress_evidence=target_progress_evidence,
+                    evaluated_at=supervision_clock_instant,
+                )
+                return {"live_plan_supervision": supervision}
+
             defn = build_definition(
                 f"owner-val-{instrument_id}",
                 [
@@ -1819,6 +1958,20 @@ class OwnerValidationPipeline:
                         position_sizing_stage,
                         depends_on=("entry_actionability",),
                         produces=("position_sizing",),
+                    ),
+                    # ID-10: depends on "position_sizing" only to preserve
+                    # the existing thirteen stages' relative execution
+                    # order (mirroring every prior "declared last" stage
+                    # in this DAG) -- its TRUE data dependency is
+                    # "entry_actionability" alone; PositionSizing's own
+                    # output is never read here and is never altered by
+                    # this stage's presence. Declared last: nothing else
+                    # depends on it.
+                    WorkflowStage(
+                        "live_plan_supervision",
+                        live_plan_supervision_stage,
+                        depends_on=("position_sizing",),
+                        produces=("live_plan_supervision",),
                     ),
                 ],
             )

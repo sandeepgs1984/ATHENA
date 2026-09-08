@@ -6,6 +6,83 @@ status updated on approval.
 
 ---
 
+## ID-10 — Live Plan Supervision V0 (implementation)
+
+**Summary.** Owner-frozen V0 methodology (2026-09-08, after three
+discovery-correction rounds — see `docs/research/ID-10-LIVE-PLAN-SUPERVISION-DISCOVERY.md`)
+answers, for one already-persisted, exact `EntryActionability` identity:
+does this LONG opportunity still hold as the session evolves? New
+one-layer-downstream artifact `LivePlanSupervision`
+(`NOT_APPLICABLE`/`VALID`/`INVALIDATED`, no `WEAKENING`), V0 LONG-only
+(`LONG_VALIDATED_SHORT_UNVALIDATED` preserved — SHORT refused with
+`UNVALIDATED_DIRECTION`). Hard invalidation is the completed M5 close
+falling below the **evolving, session-cumulative VWAP recomputed at
+that same checkpoint** — never the frozen
+`EntryActionability.operative_invalidation.level` (a synchronous
+entry-checkpoint snapshot correct for ID-9's own risk math, wrong as a
+forward reference). Invalidation and target-progress are both
+path-dependent over the supervision event window (strictly after the
+supervised `EntryActionability`'s own `evidence_as_of`): once a
+qualifying VWAP-loss candle occurs anywhere in that window, the verdict
+stays `INVALIDATED` forever for that identity, even after a later
+recovery. A non-negotiable two-window contract keeps the VWAP source
+window (session-start → checkpoint, used only to compute the correct
+evolving VWAP) strictly separate from the supervision event window
+(post-`evidence_as_of` → now, used only to decide which checkpoints may
+register an event) — conflating them was the third correction round's
+own defect.
+
+**Implementation.** New `src/athena/intraday/live_plan_supervision_models.py`
+(domain contracts, `DEFAULT_METHODOLOGY_VERSION = "live-plan-supervision-v0"`)
+and `live_plan_supervision_engine.py` (pure composers
+`compose_vwap_loss_evidence`/`compose_target_progress_evidence` +
+`LivePlanSupervisionEngine.evaluate`, gate order: upstream not
+ACTIONABLE → direction not LONG → currentness not CURRENT → VWAP-loss
+triggered → VALID). New `live_plan_supervision` `WorkflowStage`
+appended as the 14th and last stage in `OwnerValidationPipeline._scan_eligible`,
+reading the same-cycle `entry_actionability` from `WorkflowContext`
+(never a repository "latest" re-query) and reusing the existing
+`is_currently_usable` currentness helper and captured
+`persistence_clock()` instant verbatim. `PERSISTENCE_NOT_YET_REQUIRED`
+— no schema bump, no table, no `save_live_plan_supervision` method;
+`SCHEMA_VERSION` stays 18. Evidence composition (a bounded
+session-start `repo.get_candles` read, truncated via
+`completed_candles`, filtered to the event window via
+`candle.ts_open >= entry_actionability.evidence_as_of`) runs only for a
+row that reaches ACTIONABLE+LONG+CURRENT — never for a row an earlier
+gate already rejected.
+
+**Tests.** 23 new pure engine/composer tests
+(`tests/market_intel/test_live_plan_supervision_engine.py`) covering
+the full frozen test matrix (VALID/INVALIDATED paths, path-dependence/
+permanence, the two-window contract, the exact post-`evidence_as_of`
+event boundary, no future-candle leakage, target-progress reachability,
+upstream/direction/currentness gating, proof the frozen
+`operative_invalidation.level` is never used as the forward VWAP line,
+trigger-provenance exactness, Decimal/timezone invariants). 7 new
+workflow-integration tests (`tests/ops/test_owner_validation.py`): no
+evidence composition for a rejected row, ID-9's own frozen SIZED result
+unperturbed by coexistence, DAG-ordering + transitive-dependency
+structural proofs, `LONG_VALIDATED_SHORT_UNVALIDATED` preserved through
+real stage wiring, and no persistence/schema change. Two pre-existing
+tests updated for the new stage's legitimate effects (a literal
+`"entry_actionability"` reference count, and a second legitimate
+`is_currently_usable` call per cycle). Full suite: **3957 passed, 1
+pre-existing unrelated skip, 0 failures**.
+
+**Production safety.** No migration, no DB mutation, no restart, no
+scheduler change, no broker/execution/order/EMR/DarvaX touch;
+`db/athena.db` confirmed unchanged (`integrity_check: ok`, no new
+table); the running production scheduler (PID 93394,
+`--with-cycles --cycle-interval 60.0`) was left untouched throughout.
+
+**Status.** ID-10 V0 core implementation complete against the Owner's
+frozen contract — not yet source-reviewed, not self-declared closed.
+See `docs/research/ID-10-LIVE-PLAN-SUPERVISION-DISCOVERY.md` §15 for
+the full implementation record.
+
+---
+
 ## Scheduler — orphaned RUNNING-row due-calculation correction
 
 **Summary.** Real production evidence (2026-09-08, while verifying ID-9's

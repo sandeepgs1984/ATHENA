@@ -3616,16 +3616,19 @@ class TestOwnerValidationPipeline:
         correction inside entry_actionability_stage, never a DAG
         redesign. The literal count grew from 4 (as of ID-7E.1) to 9
         after ID-9 legitimately added a new downstream `position_sizing`
-        stage that depends on and reads "entry_actionability" (its own
-        `depends_on=(...)` literal, `ctx.get(...)` call, and explanatory
-        comments) -- this assertion locks in that new, deliberate,
-        reviewed count, not the pre-ID-9 one."""
+        stage that depends on and reads "entry_actionability", and to 12
+        after ID-10 legitimately added a new downstream
+        `live_plan_supervision` stage that reads
+        `ctx.get("entry_actionability")` directly (its own out-of-scope
+        gate mirrors `position_sizing_stage`'s exactly) -- this assertion
+        locks in that new, deliberate, reviewed count, not an earlier
+        milestone's."""
         import inspect
 
         import athena.ops.owner_validation as ov
 
         source = inspect.getsource(ov)
-        assert source.count('"entry_actionability"') == 9, "stage/key name literal count changed"
+        assert source.count('"entry_actionability"') == 12, "stage/key name literal count changed"
         assert 'depends_on=("entry_qualification",)' in source
         assert 'produces=("entry_actionability",)' in source
 
@@ -4180,7 +4183,14 @@ class TestOwnerValidationPipeline:
         """Owner correction, 2026-09-07, issue 7: one explicitly captured
         wall-clock instant must serve BOTH the currentness `now` and this
         artifact's own `evaluated_at` -- never two independent clock
-        reads for one sizing decision."""
+        reads for one sizing decision. `is_currently_usable` is now
+        called twice per cycle for this instrument -- once by
+        `position_sizing_stage` (ID-9), once by
+        `live_plan_supervision_stage` (ID-10) -- each independently
+        capturing its OWN single wall-clock read via the SAME injected
+        `persistence_clock`; the invariant this test actually proves
+        (both calls see the identical instant, since the injected clock
+        is a fixed test double) holds regardless of the call count."""
         import dataclasses
 
         from athena.decision.engine import DecisionEngine
@@ -4256,8 +4266,8 @@ class TestOwnerValidationPipeline:
         )
         pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-ps-clock-reuse")
 
-        assert len(captured_now) == 1
-        assert captured_now[0] == clock_instant
+        assert len(captured_now) == 2
+        assert captured_now == [clock_instant, clock_instant]
 
         history = repo.list_entry_actionabilities_for_instrument_session(iid, AS_OF.date())
         assert len(history) == 1
@@ -4567,3 +4577,473 @@ class TestOwnerValidationPipeline:
             forbidden = ("athena.orders", "athena.brokers", "athena.execution")
             for mod in imported:
                 assert not mod.startswith(forbidden), f"{module.__name__} unexpectedly imports {mod}"
+
+    # ----------------------------------------------------------- ID-10
+
+    def test_id10_no_evidence_composition_for_rejected_rows(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-10 test-matrix item U: a row already rejected by an earlier
+        deterministic gate (upstream not ACTIONABLE here, via a genuine
+        WATCH Decision) must never trigger the bounded candle-path
+        evidence composition -- proven via a direct call-count spy on
+        both pure composers, never merely an absent VWAP-loss/target-
+        progress result (which a caught exception could also produce)."""
+        import dataclasses
+
+        import athena.intraday.live_plan_supervision_engine as lpe
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.enums import DecisionType as DT
+        from athena.intraday.live_plan_supervision_engine import LivePlanSupervisionEngine
+        from athena.intraday.live_plan_supervision_models import (
+            LivePlanSupervisionReasonCode,
+            LivePlanSupervisionState,
+        )
+
+        real_decide = DecisionEngine.decide
+
+        def forced_watch(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.WATCH, trade_plan=None, gate_results=()
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_watch)
+
+        # `live_plan_supervision_stage` performs its own deferred,
+        # per-call `from athena.intraday.live_plan_supervision_engine
+        # import compose_vwap_loss_evidence, compose_target_progress_evidence`
+        # (never a module-level name on `owner_validation` itself) --
+        # patching the SOURCE module's own attributes is what a spy must
+        # target for the stage's own deferred import to pick it up.
+        vwap_calls: list[object] = []
+        target_calls: list[object] = []
+        real_vwap_compose = lpe.compose_vwap_loss_evidence
+        real_target_compose = lpe.compose_target_progress_evidence
+
+        def spy_vwap(*args, **kwargs):
+            vwap_calls.append((args, kwargs))
+            return real_vwap_compose(*args, **kwargs)
+
+        def spy_target(*args, **kwargs):
+            target_calls.append((args, kwargs))
+            return real_target_compose(*args, **kwargs)
+
+        monkeypatch.setattr(lpe, "compose_vwap_loss_evidence", spy_vwap)
+        monkeypatch.setattr(lpe, "compose_target_progress_evidence", spy_target)
+
+        supervision_calls: list[object] = []
+        real_lp_evaluate = LivePlanSupervisionEngine.evaluate
+
+        def spy_lp(self, **kwargs):
+            result = real_lp_evaluate(self, **kwargs)
+            supervision_calls.append(result)
+            return result
+
+        monkeypatch.setattr(LivePlanSupervisionEngine, "evaluate", spy_lp)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-lp-watch-no-compose"
+        )
+
+        assert vwap_calls == [], "compose_vwap_loss_evidence must not be invoked for a rejected row"
+        assert target_calls == [], "compose_target_progress_evidence must not be invoked for a rejected row"
+        assert len(supervision_calls) == 1
+        assert supervision_calls[0].state is LivePlanSupervisionState.NOT_APPLICABLE
+        assert supervision_calls[0].reason_codes == (
+            LivePlanSupervisionReasonCode.UPSTREAM_NOT_ACTIONABLE,
+        )
+
+    def test_id10_coexistence_does_not_alter_position_sizing_output(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-10 test-matrix item V: adding `live_plan_supervision` --
+        which reads `entry_actionability` from the SAME WorkflowContext
+        `position_sizing_stage` already reads, never mutating it -- must
+        not perturb ID-9's own frozen sizing result on the identical real
+        TRADE+QUALIFIED+ACTIONABLE fixture the ID-9 SIZED test already
+        established (SIZED, quantity 98)."""
+        import dataclasses
+
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.decision import TradePlan
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.intraday import (
+            CapitalPolicy,
+            EntryQualificationEngine,
+            EntryQualificationState,
+            PositionSizingState,
+        )
+        from athena.intraday.live_plan_supervision_engine import LivePlanSupervisionEngine
+        from athena.intraday.live_plan_supervision_models import LivePlanSupervisionState
+        from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.TRADE, direction=Dir.LONG, gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"), risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_qualified(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            return dataclasses.replace(eq, state=EntryQualificationState.QUALIFIED, reason_codes=())
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_qualified)
+
+        sizing_calls: list[object] = []
+        real_sizing_evaluate = PositionSizingV0Engine.evaluate
+
+        def spy_sizing(self, *, entry_actionability, **kwargs):
+            result = real_sizing_evaluate(self, entry_actionability=entry_actionability, **kwargs)
+            sizing_calls.append(result)
+            return result
+
+        monkeypatch.setattr(PositionSizingV0Engine, "evaluate", spy_sizing)
+
+        supervision_calls: list[object] = []
+        real_lp_evaluate = LivePlanSupervisionEngine.evaluate
+
+        def spy_lp(self, **kwargs):
+            result = real_lp_evaluate(self, **kwargs)
+            supervision_calls.append(result)
+            return result
+
+        monkeypatch.setattr(LivePlanSupervisionEngine, "evaluate", spy_lp)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        policy = CapitalPolicy(
+            total_deployable_capital=Decimal("100000"), risk_budget_per_trade_pct=Decimal("1.0"),
+            max_position_value_pct=Decimal("10.0"), policy_version="test-policy-v1",
+        )
+        clock_instant = AS_OF.astimezone(ZoneInfo("UTC")) + timedelta(seconds=3)
+        pipe = OwnerValidationPipeline(
+            repo, config_dir, capital_policy=policy, persistence_clock=lambda: clock_instant,
+        )
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-lp-coexist")
+
+        assert len(sizing_calls) == 1
+        sizing = sizing_calls[0]
+        assert sizing.state is PositionSizingState.SIZED
+        assert sizing.recommended_quantity == Decimal("98")
+
+        assert len(supervision_calls) == 1
+        supervision = supervision_calls[0]
+        assert supervision.state in (LivePlanSupervisionState.VALID, LivePlanSupervisionState.INVALIDATED)
+
+    def test_id10_live_plan_supervision_stage_does_not_perturb_existing_stage_order(
+        self, repo: SqliteRepository, config_dir: Path
+    ) -> None:
+        """ID-10 test-matrix item W: the new `live_plan_supervision` stage
+        explicitly depends only on `position_sizing` -- and, since
+        nothing depends on IT, the fourteen pre-existing stages must keep
+        their exact relative order, mirroring ID-9's own analogous
+        proof."""
+        from athena.runtime.workflow import WorkflowStage, build_definition
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        detail = pipe.run(
+            RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-lp-stage-order"
+        )
+        assert detail["decision_reports"], "live_plan_supervision stage must not break the existing scan"
+
+        noop = lambda ctx: {}  # noqa: E731
+        stages = [
+            WorkflowStage("indicators", noop,
+                          produces=("indicators", "vwap", "confluence", "latest_completed_m5")),
+            WorkflowStage("regime", noop, produces=("regime", "market_health")),
+            WorkflowStage("scoring", noop, depends_on=("indicators", "regime"), produces=("scoring",)),
+            WorkflowStage("confidence", noop, depends_on=("scoring", "regime"),
+                          produces=("evidence_bundle", "confidence")),
+            WorkflowStage("risk", noop, depends_on=("indicators", "regime"), produces=("risk",)),
+            WorkflowStage("decision", noop, depends_on=("scoring", "confidence", "risk"),
+                          produces=("outcome",)),
+            WorkflowStage("session", noop, produces=("session_context",)),
+            WorkflowStage("relative_strength", noop, depends_on=("session",), produces=("relative_strength",)),
+            WorkflowStage("relative_volume", noop, depends_on=("session",), produces=("relative_volume",)),
+            WorkflowStage(
+                "intraday_analytics", noop,
+                depends_on=("session", "indicators", "relative_strength", "relative_volume"),
+                produces=("intraday_signal_set",),
+            ),
+            WorkflowStage(
+                "entry_qualification", noop, depends_on=("decision", "intraday_analytics"),
+                produces=("entry_qualification",),
+            ),
+            WorkflowStage(
+                "entry_actionability", noop, depends_on=("entry_qualification",),
+                produces=("entry_actionability",),
+            ),
+            WorkflowStage(
+                "position_sizing", noop, depends_on=("entry_actionability",),
+                produces=("position_sizing",),
+            ),
+        ]
+        original_order = build_definition("pre-id10", stages).execution_order
+        with_lp = build_definition(
+            "post-id10",
+            [*stages, WorkflowStage(
+                "live_plan_supervision", noop, depends_on=("position_sizing",),
+                produces=("live_plan_supervision",),
+            )],
+        ).execution_order
+        pre_existing_names = [n for n in with_lp if n != "live_plan_supervision"]
+        assert tuple(pre_existing_names) == original_order
+        assert "live_plan_supervision" in with_lp
+
+    def test_id10_transitive_dependency_is_structurally_guaranteed(self) -> None:
+        """ID-10 test-matrix item W (continued): proves -- from
+        WorkflowEngine's own generic failure-propagation mechanics, not
+        from insertion order -- that `live_plan_supervision` (depending
+        only on `position_sizing`) can safely read whatever
+        `entry_actionability_stage` itself relied on: if
+        `entry_actionability` had failed/been skipped, `position_sizing`
+        (and therefore `live_plan_supervision`) could never reach
+        COMPLETED either."""
+        from athena.runtime.models import ExecutionStatus
+        from athena.runtime.workflow import WorkflowEngine, WorkflowStage, build_definition
+
+        def boom(ctx):
+            raise ValueError("entry_qualification failed")
+
+        stages = [
+            WorkflowStage("entry_qualification", boom, produces=("entry_qualification",)),
+            WorkflowStage("entry_actionability", lambda ctx: {"entry_actionability": True},
+                          depends_on=("entry_qualification",), produces=("entry_actionability",)),
+            WorkflowStage("position_sizing", lambda ctx: {"position_sizing": True},
+                          depends_on=("entry_actionability",), produces=("position_sizing",)),
+            WorkflowStage("live_plan_supervision", lambda ctx: {"live_plan_supervision": True},
+                          depends_on=("position_sizing",), produces=("live_plan_supervision",)),
+        ]
+        execution = WorkflowEngine().execute(
+            build_definition("id10-transitive-proof", stages), as_of=AS_OF
+        )
+        by_name = {r.stage_name: r for r in execution.stage_results}
+        assert by_name["entry_actionability"].status is ExecutionStatus.SKIPPED
+        assert by_name["position_sizing"].status is ExecutionStatus.SKIPPED
+        assert by_name["live_plan_supervision"].status is ExecutionStatus.SKIPPED
+
+    def test_id10_short_direction_preserved_not_applicable(
+        self, repo: SqliteRepository, config_dir: Path, monkeypatch
+    ) -> None:
+        """ID-10 test-matrix item X: `LONG_VALIDATED_SHORT_UNVALIDATED` is
+        preserved end to end through the real workflow wiring -- a
+        genuine ACTIONABLE SHORT artifact (forced only at the
+        EntryActionability layer, never inventing SHORT
+        EntryActionability methodology here) reaches
+        `live_plan_supervision`=NOT_APPLICABLE/UNVALIDATED_DIRECTION,
+        with upstream risk-geometry fields still echoed for
+        explainability, and zero bounded candle-path evidence
+        composition -- mirroring the pure-engine proof but through the
+        real stage wiring and a real bounded candle read."""
+        import dataclasses
+
+        import athena.intraday.live_plan_supervision_engine as lpe
+        from athena.decision.engine import DecisionEngine
+        from athena.domain.decision import TradePlan
+        from athena.domain.enums import DecisionType as DT
+        from athena.domain.enums import Direction as Dir
+        from athena.intraday import (
+            EntryActionabilityEngine,
+            EntryActionabilityState,
+            EntryQualificationEngine,
+            EntryQualificationState,
+        )
+        from athena.intraday.entry_actionability_models import (
+            InvalidationBasis,
+            OperativeInvalidation,
+            RewardBasis,
+            RewardReference,
+        )
+        from athena.intraday.live_plan_supervision_engine import LivePlanSupervisionEngine
+        from athena.intraday.live_plan_supervision_models import (
+            LivePlanSupervisionReasonCode,
+            LivePlanSupervisionState,
+        )
+
+        real_decide = DecisionEngine.decide
+
+        def forced_trade(self, *args, **kwargs):
+            outcome = real_decide(self, *args, **kwargs)
+            forced_decision = dataclasses.replace(
+                outcome.decision, decision_type=DT.TRADE, direction=Dir.LONG, gate_results=(),
+                trade_plan=TradePlan(
+                    entry_low=Decimal("100"), entry_high=Decimal("103"),
+                    stop_loss=Decimal("95"), targets=(Decimal("110"),),
+                    position_size=1, risk_amount=Decimal("500"), risk_reward=Decimal("2"),
+                    valid_from=AS_OF, valid_until=AS_OF + timedelta(days=1),
+                ),
+            )
+            return dataclasses.replace(outcome, decision=forced_decision)
+
+        monkeypatch.setattr(DecisionEngine, "decide", forced_trade)
+
+        real_eq_evaluate = EntryQualificationEngine.evaluate
+
+        def forced_qualified(self, *args, **kwargs):
+            eq = real_eq_evaluate(self, *args, **kwargs)
+            return dataclasses.replace(eq, state=EntryQualificationState.QUALIFIED, reason_codes=())
+
+        monkeypatch.setattr(EntryQualificationEngine, "evaluate", forced_qualified)
+
+        real_ea_evaluate = EntryActionabilityEngine.evaluate
+
+        def forced_short(self, *args, **kwargs):
+            ea = real_ea_evaluate(self, *args, **kwargs)
+            if ea.state is not EntryActionabilityState.ACTIONABLE:
+                return ea
+            entry_price = ea.entry_reference.price
+            return dataclasses.replace(
+                ea, direction=Dir.SHORT,
+                operative_invalidation=OperativeInvalidation(
+                    level=entry_price + Decimal("2"), basis=InvalidationBasis.VWAP_LOSS,
+                ),
+                reward=RewardReference(
+                    t1_price=entry_price - Decimal("1"), t2_price=entry_price - Decimal("1.5"),
+                    basis=RewardBasis.GOAL_BANDS_ONLY,
+                    reward_risk_to_t1=ea.reward.reward_risk_to_t1,
+                    reward_risk_to_t2=ea.reward.reward_risk_to_t2,
+                ),
+            )
+
+        monkeypatch.setattr(EntryActionabilityEngine, "evaluate", forced_short)
+
+        vwap_calls: list[object] = []
+        target_calls: list[object] = []
+        real_vwap_compose = lpe.compose_vwap_loss_evidence
+        real_target_compose = lpe.compose_target_progress_evidence
+
+        def spy_vwap(*args, **kwargs):
+            vwap_calls.append((args, kwargs))
+            return real_vwap_compose(*args, **kwargs)
+
+        def spy_target(*args, **kwargs):
+            target_calls.append((args, kwargs))
+            return real_target_compose(*args, **kwargs)
+
+        monkeypatch.setattr(lpe, "compose_vwap_loss_evidence", spy_vwap)
+        monkeypatch.setattr(lpe, "compose_target_progress_evidence", spy_target)
+
+        supervision_calls: list[object] = []
+        real_lp_evaluate = LivePlanSupervisionEngine.evaluate
+
+        def spy_lp(self, **kwargs):
+            result = real_lp_evaluate(self, **kwargs)
+            supervision_calls.append(result)
+            return result
+
+        monkeypatch.setattr(LivePlanSupervisionEngine, "evaluate", spy_lp)
+
+        store = SqliteCandidateStore(repo)
+        store.upsert_candidate(symbol="AAA")
+        iid = "NSE:AAA"
+        repo.upsert_instrument(
+            Instrument(instrument_id=iid, symbol="AAA", exchange="NSE", series="EQ", status="ACTIVE")
+        )
+        repo.add_candles(_candles(iid, seed=100))
+        repo.add_candles(_intraday_candles(iid, AS_OF.date(), seed=100))
+
+        pipe = OwnerValidationPipeline(repo, config_dir)
+        ingestion = IngestionResult(
+            as_of=AS_OF, instruments_upserted=1, candles_fetched=86, candles_written=86,
+            quotes_fetched=0, quotes_written=0, datasets_validated=1, datasets_skipped_empty=0,
+        )
+        pipe.run(RunTrigger.PREMARKET, as_of=AS_OF, ingestion=ingestion, run_id="run-test-lp-short")
+
+        assert len(supervision_calls) == 1
+        supervision = supervision_calls[0]
+        assert supervision.state is LivePlanSupervisionState.NOT_APPLICABLE
+        assert supervision.reason_codes == (LivePlanSupervisionReasonCode.UNVALIDATED_DIRECTION,)
+        assert supervision.direction is Dir.SHORT
+        assert supervision.operative_invalidation_level is not None
+
+        assert vwap_calls == [], "compose_vwap_loss_evidence must not run for a SHORT-refused row"
+        assert target_calls == [], "compose_target_progress_evidence must not run for a SHORT-refused row"
+
+    def test_id10_no_persistence_no_schema_change(self) -> None:
+        """ID-10 test-matrix item Y (frozen contract §15,
+        PERSISTENCE_NOT_YET_REQUIRED): no `save_live_plan_supervision(`
+        CALL exists anywhere (a prose comment naming the deliberate
+        absence is fine and expected, mirroring ID-9's own analogous
+        proof), and `SCHEMA_VERSION` is unchanged at 18 -- ID-10 V0 is a
+        pure, non-persisted, every-cycle recomputation."""
+        import inspect
+
+        import athena.ops.owner_validation as ov
+        from athena.data.store.schema import SCHEMA_VERSION
+
+        source = inspect.getsource(ov)
+        assert "save_live_plan_supervision(" not in source
+        assert ".save_live_plan_supervision(" not in source
+        assert SCHEMA_VERSION == 18
+
+    def test_id10_stage_declared_last_depends_only_on_position_sizing(self) -> None:
+        """ID-10: structural proof the new stage's own name, dependency
+        set, and produced-key set are exactly as frozen -- declared last
+        in `_scan_eligible`'s stage list (14 `WorkflowStage(` occurrences
+        total), depending only on `position_sizing` even though its true
+        methodology dependency is `entry_actionability` (mirrors ID-9's
+        own precedent of depending on the immediately-prior stage purely
+        to preserve DAG ordering)."""
+        import inspect
+
+        import athena.ops.owner_validation as ov
+
+        source = inspect.getsource(ov)
+        assert source.count("WorkflowStage(") == 14
+        assert '"live_plan_supervision",\n                        live_plan_supervision_stage,' in source
+        assert 'depends_on=("position_sizing",)' in source
+        assert 'produces=("live_plan_supervision",)' in source
