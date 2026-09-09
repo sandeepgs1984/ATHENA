@@ -6,6 +6,80 @@ status updated on approval.
 
 ---
 
+## EM-7D — Evidence Readiness, Settled-M5 Repair, and Statistical Readiness
+
+**Summary.** Continuation of EM-7D0's own accepted
+`OPERATIONALLY_SOUND_BUT_NOT_YET_STATISTICALLY_READY` classification, as
+natural EMR accumulation grew to 3 sessions (`2026-09-04`/`07`/`08`).
+Root-caused the live EM-5 state machine's `STALE_DATA`→`INVALIDATED`
+dominance to a frozen-methodology terminal-state design (a transient
+staleness blip permanently locks a session, even after data recovers) —
+confirmed a genuine, existing, unmodified data-contract limitation, not
+an implementation defect; live `INVALIDATED` must never be used as a
+statistical negative label. Confirmed the frozen EM-1b forward-label
+functions (`evaluate_touch_label`/`evaluate_close_label`) can
+retrospectively reconstruct genuine `POSITIVE`/`NEGATIVE`/
+`ALREADY_OCCURRED` labels independent of the live state machine.
+
+**Settlement repair.** Owner-authorized, backed-up, using the existing
+unmodified `run_settlement_repair()` for all 3 sessions (517 instruments
+each; 516/517 succeeded every time, `NSE:HEG` failing identically with
+`"unknown instrument id"`). Off-grid rows eliminated from a 95–99.7%
+majority down to 0 (all 3 sessions) or 113 residual (`09-04`, all
+`NSE:HEG`). Canonical 75-slot completeness (exact `expected_intraday_opens`
+grid, no tolerance): **306/517 (59.19%) fully complete, 211/517
+incomplete, identically on all 3 independently repaired sessions** —
+missing the exact same 3 slots (`15:15`/`15:20`/`15:25`) every time.
+
+**Systematic investigation.** Exhaustive comparison across every
+instrument classification available to ATHENA (own tables,
+`symbol_master`, Kite's raw instrument CSV, D1/M5 volume) found no
+distinguishing property between the 306 and 211 cohorts. Direct,
+repeated live Kite historical queries proved the gap originates in
+Kite's own raw response (exact row-count match through the whole
+pipeline — nothing dropped by ATHENA code); repeated later queries
+across a 5-day elapsed window returned the identical result, providing
+strong evidence against ordinary short settlement lag. Frozen
+finding: `FINAL3_GAP_PRESENT_IN_KITE_HISTORICAL_PROVIDER_RESPONSE` — the
+gap is persistent across the observed re-query window and originates in
+the Kite historical response itself; ATHENA therefore treats the
+affected cohort as explicitly incomplete unless future provider evidence
+demonstrates otherwise. Underlying mechanism outside ATHENA's observable
+classification data.
+`NSE:HEG` separately root-caused to a real NSE series change (`HEG` →
+`HEG-BE`) ATHENA's instrument master hasn't been updated to reflect —
+flagged as separate operational debt, not fixed.
+
+**Episode-level statistical readiness.** Corrected a critical
+double-counting risk: the 9 frozen checkpoints per session are not
+independent observations of one `TOUCH`/`OPEN_TO_HIGH` fact — collapsed
+to 918 genuine instrument-session episodes (306 × 3) per family/
+threshold. Only the 5% threshold has meaningful two-class support (25–47
+positives, low instrument concentration); 8%+ thresholds are sparse to
+zero; all 3 sessions share `VOLATILITY_CALM` (no volatility-regime
+variation observed yet); with only 3 independent sessions, the frozen
+chronological/session-grouped methodology cannot yet form a credible
+discovery/validation structure (ID-7B.2's own materially deeper
+14-discovery/6-validation, 20-session split is cited only as historical
+context, not an EM-7D minimum-session rule).
+
+**Files.** Read-only investigation only; `docs/research/EM-7D-EVIDENCE-READINESS-AND-SETTLEMENT-INVESTIGATION.md`
+(new) records the full chain. `db/backups/athena-pre-em7d-m5-repair-*.db`
+(3 verified backups). No source code changed.
+
+**Status.** **Owner/Chief Architect decision (2026-09-09): frozen**
+`FINAL3_GAP_PRESENT_IN_KITE_HISTORICAL_PROVIDER_RESPONSE`,
+`RETROSPECTIVE_LABEL_RECONSTRUCTION_READY_WITH_EXPLICIT_INCOMPLETE_COHORT`,
+`OPERATIONALLY_SOUND_BUT_NOT_YET_STATISTICALLY_READY`,
+**`AUTHORIZE_EM7D_STATISTICAL_VALIDATION = NO`**. No new EM-7D.x
+milestone; no minimum-session-count rule introduced. Natural EMR
+accumulation continues unchanged; the identical repair/reconstruction/
+readiness sequence is to be repeated once materially new natural
+evidence (more independent sessions, and/or a differently-volatile
+session) accumulates.
+
+---
+
 ## MP-NX6C — Morning Triage Scan UX
 
 **Summary.** Owner asked to fix Morning triage crowding before any new
@@ -249,11 +323,32 @@ semantics, currentness reuse, `PERSISTENCE_NOT_YET_REQUIRED`, and
 schema 18 are all unchanged. Full suite after correction: **3963
 passed, 1 pre-existing unrelated skip, 0 failures**.
 
-**Status.** ID-10 V0 implementation corrected in place against the
-Owner's two source-review findings — not yet source-reviewed against
-this correction, not self-declared closed. See
-`docs/research/ID-10-LIVE-PLAN-SUPERVISION-DISCOVERY.md` §15/§16 for
-the full implementation and correction record.
+**Production-runtime closure (2026-09-09).** The corrected code was
+verified running in the sole canonical production process the next
+morning (restarted `07:35 IST` with the full `--with-cycles
+--cycle-interval 60.0` command, replacing a non-canonical process a
+separate session had started without cycles enabled). The natural
+`2026-09-09 08:15:17 IST` PREMARKET cycle fired **unforced** (no
+`run-due`, no manual trigger, no config/scheduler/code change) and
+completed cleanly (`scan_statistics: {failed: 0, skipped: 0,
+successful: 385, total: 385}` — zero stage failures across the
+universe). 127 `entry_actionabilities` persisted for this exact
+checkpoint prove `live_plan_supervision_stage` ran for every one of
+them, correctly resolving each to `NOT_APPLICABLE`/
+`UPSTREAM_NOT_ACTIONABLE` (no upstream artifact reached
+`ACTIONABLE`+`LONG` this cycle — all real `TRADE` decisions were
+`SHORT`, per the standing `LONG_VALIDATED_SHORT_UNVALIDATED` pattern).
+Corrected-code loading independently confirmed (source mtimes predate
+process start; live introspection confirmed the corrected `evaluate()`
+signature and DAG dependency). Zero tracebacks; `integrity_check: ok`
+throughout.
+
+**Status.** **ID-10 OWNER APPROVED / CLOSED — 2026-09-09.** Final
+classification: `ID10_V0_PRODUCTION_RUNTIME_ACTIVATED_AND_NATURAL_CYCLE_VERIFIED`
+— the natural cycle above is accepted as production-runtime closure
+proof; no `LONG`/`ACTIONABLE` sample required or waited for. See
+`docs/research/ID-10-LIVE-PLAN-SUPERVISION-DISCOVERY.md` §15/§16/§17
+for the full implementation, correction, and closure record.
 
 ---
 

@@ -1,15 +1,17 @@
 # ID-10 — Live Plan Supervision Discovery + V0 Contract
 
-Status: **ID-10 V0 METHODOLOGY CONTRACT / OWNER FROZEN — 2026-09-08.**
-V0 core implementation is complete against this frozen contract — see
-§15 for the original implementation record and §16 for the same-day
-Owner source-review correction (two implementation-level defects,
-methodology unchanged) that superseded it. §0-§14 below are the design
-history that produced the frozen contract and remain unchanged from the
-Owner's freeze authorization. See §0 for the first correction round's
-record (path-dependence of invalidation/target progress); §9/§12 for the
-third round's fix (VWAP is session-cumulative from canonical session
-start, never from the supervised `EntryActionability`'s own
+Status: **ID-10 OWNER APPROVED / CLOSED — 2026-09-09.** Final accepted
+classification: `ID10_V0_PRODUCTION_RUNTIME_ACTIVATED_AND_NATURAL_CYCLE_VERIFIED`
+— see §17 for the closure record (the natural 2026-09-09 08:15 IST
+PREMARKET cycle, unforced, accepted as production-runtime closure
+proof; no `LONG`/`ACTIONABLE` sample required or waited for). §15/§16
+record the V0 implementation and its same-day source-review correction
+(two implementation-level defects, methodology unchanged). §0-§14 are
+the design history that produced the Owner-frozen V0 contract
+(2026-09-08) and remain unchanged. See §0 for the first correction
+round's record (path-dependence of invalidation/target progress); §9/§12
+for the third round's fix (VWAP is session-cumulative from canonical
+session start, never from the supervised `EntryActionability`'s own
 `evidence_as_of` — the VWAP *source* window and the supervision *event*
 window are two different things and must never be merged); §1 for what
 survived Owner source review unchanged from the original pass.
@@ -559,12 +561,50 @@ test files (plus this document).
 implementation-level (a checkpoint-derivation bug and a DAG-modeling
 bug), not deviations from the Owner-frozen §7-§12 methodology contract.
 
-**Final recommended classification:**
+**Final recommended classification (superseded by §17):**
 `ID10_V0_IMPLEMENTATION_CORRECTED_NO_PRODUCTION_ACTIVATION_JUDGMENT_YET`
 — both source-review defects are corrected in place with regression
 coverage; the implementation has not yet been source-reviewed against
 this correction, and is not self-declared closed here.
 
+## 17. Owner/Chief Architect closure (2026-09-09)
+
+The night-of-2026-09-08 corrected code was verified running in the sole
+canonical production process the following morning
+(`2026-09-09`, restarted `07:35 IST` with the full canonical
+`--with-cycles --cycle-interval 60.0` command, replacing a non-canonical
+process a separate session had started without cycles enabled).
+
+**The natural `2026-09-09` `08:15:17 IST` PREMARKET cycle fired
+unforced** (no `run-due`, no manual trigger, no config/scheduler/code
+change) and completed cleanly ~9.4 minutes later
+(`run-premarket-20260909T081517`, `scan_statistics:
+{failed: 0, skipped: 0, successful: 385, total: 385}` — zero stage
+failures across the entire universe). `entry_actionabilities` persisted
+for this exact checkpoint (127 rows: 83 WATCH/`NOT_ACTIONABLE`, 44
+TRADE/`NOT_ACTIONABLE`/`SHORT`) proves `live_plan_supervision_stage` ran
+for every one of them, correctly resolving each to
+`NOT_APPLICABLE`/`UPSTREAM_NOT_ACTIONABLE` via its Gate A — the real
+bounded-candle evidence-composition path was correctly not entered,
+since no upstream artifact reached `ACTIONABLE`+`LONG` this cycle (all
+real `TRADE` decisions that day were `SHORT`, consistent with the
+long-standing `LONG_VALIDATED_SHORT_UNVALIDATED` production pattern).
+Corrected-code loading was independently confirmed (source-file mtimes
+predate the process start time; live introspection via the same
+interpreter confirmed the corrected `evaluate()` signature including
+`supervision_as_of`, the 14-stage DAG, and the corrected
+`depends_on=("entry_actionability",)` dependency). Zero tracebacks in
+the server log for the entire cycle window. `PRAGMA integrity_check: ok`
+throughout; `SCHEMA_VERSION` moved 18→20 for unrelated, separately
+authorized Portfolio work (MP-NX6C), not anything ID-10-related.
+
+**Owner/Chief Architect decision (2026-09-09): ID-10 OWNER APPROVED /
+CLOSED.** Final classification:
+`ID10_V0_PRODUCTION_RUNTIME_ACTIVATED_AND_NATURAL_CYCLE_VERIFIED`. The
+natural cycle above is accepted as the required production-runtime
+closure proof; no `LONG`/`ACTIONABLE` sample was required or waited for.
+ID-10 is not reopened for one. ID-11 not started.
+
 ---
 
-**ID-10 V0 SOURCE-REVIEW CORRECTIONS READY FOR OWNER / CHIEF ARCHITECT REVIEW**
+**ID-10 OWNER APPROVED / CLOSED — 2026-09-09**
