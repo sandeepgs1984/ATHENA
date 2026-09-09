@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -33,6 +33,15 @@ from athena.api.v1.dtos import (
     EligibilityRuleDTO,
     ExternalLinkDTO,
     GateResultDTO,
+    IntradayActionabilityDTO,
+    IntradayAsOfSummaryDTO,
+    IntradayIdentityDTO,
+    IntradayIntelligenceDTO,
+    IntradayOperativeInvalidationDTO,
+    IntradayQualificationDTO,
+    IntradaySizingDTO,
+    IntradaySupervisionDTO,
+    IntradayVwapLossEvidenceDTO,
     JournalEntryDTO,
     MarketHealthContextDTO,
     NearMissDigestDTO,
@@ -60,6 +69,21 @@ from athena.data.store.repository import SqliteRepository
 from athena.data.store.serialization import trade_outcome_id
 from athena.domain.decision import DecisionJournalEntry, TradeOutcome
 from athena.domain.enums import Direction, QualityGate, UserAction
+from athena.errors import AthenaError, RepositoryError
+from athena.intraday import entry_actionability_currentness
+from athena.intraday.entry_actionability_currentness import EntryQualificationIdentity
+from athena.intraday.entry_qualification_coherence import (
+    EntryQualificationCoherence,
+    resolve_entry_qualification_coherence,
+)
+from athena.intraday.intraday_composition import (
+    compose_live_plan_supervision,
+    compose_position_sizing,
+)
+from athena.intraday.live_plan_supervision_engine import LivePlanSupervisionEngine
+from athena.intraday.position_sizing_config import load_position_sizing_policy_config
+from athena.intraday.position_sizing_engine import PositionSizingV0Engine
+from athena.session.engine import classify_session_phase
 
 _RESET_CONFIRM_TOKEN = "CONFIRM"
 _BACKUP_PREFIX = "athena-pre-decisions-reset-"
@@ -87,11 +111,24 @@ class DecisionsService:
         db_path: Path | None = None,
         backup_dir: Path | None = None,
         repo: SqliteRepository | None = None,
+        now_fn: Callable[[], datetime] | None = None,
     ) -> None:
         self._provider = provider
         self._config_dir = Path(config_dir) if config_dir else Path("config")
         self._db_path = Path(db_path) if db_path else default_db_path()
         self._backup_dir = Path(backup_dir) if backup_dir else default_backup_dir()
+        # Injectable read-time clock -- currently used only by
+        # get_intraday_intelligence (ID-11 source-review correction): that
+        # endpoint is an Owner-facing CURRENT-Intraday-Plan read, never a
+        # caller-selected historical replay, so it deliberately has no
+        # public `as_of` parameter. Production always uses the real wall
+        # clock; deterministic tests inject a fixed instant via
+        # `request.app.state.decisions_clock` (see
+        # `api.dependencies.get_decisions_service`), mirroring the
+        # established `now_fn`/`get_emr_request_clock` convention already
+        # used by MarketHistoryService/AdvisoryFreshnessService/the EMR
+        # router.
+        self._now: Callable[[], datetime] = now_fn or (lambda: datetime.now(tz=timezone.utc))
         # Optional persistent repo for read-only instrument lookups (real
         # company name — see _lookup_instrument_name) — mirrors the same
         # optional-repo-alongside-primary-abstraction precedent already used
@@ -837,6 +874,230 @@ class DecisionsService:
             decay_fraction=decay_fraction,
             status=status,
             summary=self._freshness_summary(status, decay_fraction, remaining),
+        )
+
+    def get_intraday_intelligence(self, decision_id: str) -> IntradayIntelligenceDTO:
+        """ID-11: one coherent, read-only Owner-facing view over the
+        already-frozen EntryQualification -> EntryActionability ->
+        PositionSizing -> LivePlanSupervision chain, anchored on this exact
+        canonical Decision.
+
+        Read-only and composition-only: never invokes `DecisionEngine`/
+        `ScoringEngine`/`ConfidenceEngine`/`RiskEngine`/
+        `OwnerValidationPipeline`, never writes anything, and never
+        recomputes a Decision. `PositionSizing`/`LivePlanSupervision` are
+        recomputed on demand via the exact same shared composition
+        functions (`athena.intraday.intraday_composition`) the canonical
+        per-cycle `WorkflowStage`s call -- no duplicate methodology, both
+        frozen engines called unchanged.
+
+        This is a CURRENT-Intraday-Plan read, never a caller-selected
+        historical replay (ID-11 source-review correction): exactly one
+        read-time instant is captured here, via the injected `self._now()`
+        clock, and reused consistently for the EQ read_checkpoint, EA
+        currentness `now`, PositionSizing `now`/`evaluated_at`, the
+        on-demand LivePlanSupervision `market_checkpoint`/`evaluated_at`,
+        and the DTO's own `computed_at` -- never a second independent
+        `datetime.now()` read inside this method, and never a public
+        `as_of`/`checkpoint`/`replay` query parameter.
+
+        Frozen failure contract (ID-11 design contract §9): an unresolvable
+        `decision_id` is `DecisionNotFoundError` (404); a genuine repository/
+        instrument-catalog access failure is `RepositoryError` (503,
+        propagated automatically by the repository layer itself); a
+        canonical instrument/lot-size invariant violation is translated
+        HERE, at this application boundary only, into `AthenaError` (500) --
+        never a client-fault `ValueError`/400, and never silently rendered
+        as a domain `UNAVAILABLE` state.
+        """
+        decision = self._provider.get_decision(decision_id)
+        if decision is None:
+            raise DecisionNotFoundError(f"Decision '{decision_id}' not found")
+        if self._repo is None:
+            raise RepositoryError(
+                "get_intraday_intelligence requires a live repository connection"
+            )
+
+        now = self._now()
+        cfg = load_config(self._config_dir)
+        market_tzinfo = ZoneInfo(cfg.market.timezone)
+
+        eq = self._repo.latest_entry_qualification_for_decision(decision.decision_id)
+        coherence = resolve_entry_qualification_coherence(
+            eq, decision, read_checkpoint=now, market_timezone=market_tzinfo
+        )
+
+        identity = IntradayIdentityDTO(
+            decision_id=decision.decision_id,
+            instrument_id=decision.instrument_id,
+            decision_type=decision.decision_type.value,
+            direction=decision.direction.value,
+            session_date=eq.session_date if eq is not None else None,
+            run_id=decision.run_id,
+            cycle_id=decision.cycle_id,
+            eq_methodology_version=eq.methodology_version if eq is not None else None,
+        )
+
+        if eq is None:
+            qualification = IntradayQualificationDTO(state="UNAVAILABLE", coherence="UNAVAILABLE")
+        else:
+            qualification = IntradayQualificationDTO(
+                state=eq.state.value,
+                coherence=coherence.status.value,
+                reason_summary=", ".join(rc.value for rc in eq.reason_codes) or None,
+                evidence_summary=eq.explanation,
+                evidence_as_of=eq.as_of,
+            )
+
+        # A coherent EQ is a precondition for the rest of the chain to mean
+        # anything -- an incoherent (or absent) EQ never proceeds to
+        # EntryActionability resolution (ID-11 design contract §4/§5).
+        #
+        # EA is resolved by decision_id alone (ID-11 source-review
+        # correction), never by the current EQ's own exact identity: an
+        # EA bound to an OLDER EQ observation for this same Decision must
+        # remain reachable so `is_currently_usable` (below) can classify it
+        # SUPERSEDED against the current EQ identity -- looking it up
+        # scoped to the current EQ's identity would make such an EA
+        # unconditionally invisible (silently reported as UNAVAILABLE
+        # instead of the real SUPERSEDED verdict).
+        ea = None
+        if eq is not None and coherence.status is EntryQualificationCoherence.COHERENT:
+            ea = self._repo.latest_entry_actionability_for_decision(decision.decision_id)
+
+        if ea is None:
+            actionability = IntradayActionabilityDTO(state="UNAVAILABLE", currentness="UNAVAILABLE")
+            sizing = IntradaySizingDTO(state="UNAVAILABLE")
+            supervision = IntradaySupervisionDTO(state="UNAVAILABLE", target_progress="UNAVAILABLE")
+            freshest_evidence_as_of = eq.as_of if eq is not None else None
+        else:
+            calendar = CalendarEngine.from_config_dir(self._config_dir, cfg.market)
+            current_session_phase = classify_session_phase(
+                calendar.context_for(now.astimezone(market_tzinfo).date()),
+                cfg.market.sessions,
+                as_of=now,
+                tzinfo=market_tzinfo,
+            )
+            currentness = entry_actionability_currentness.is_currently_usable(
+                ea,
+                current_decision_id=decision.decision_id,
+                current_entry_qualification_identity=EntryQualificationIdentity(
+                    instrument_id=eq.instrument_id,
+                    session_date=eq.session_date,
+                    as_of=eq.as_of,
+                    decision_id=eq.decision_id,
+                    methodology_version=eq.methodology_version,
+                ),
+                current_session_phase=current_session_phase,
+                now=now,
+            )
+
+            operative_invalidation_dto = None
+            if ea.operative_invalidation is not None:
+                operative_invalidation_dto = IntradayOperativeInvalidationDTO(
+                    level=ea.operative_invalidation.level, basis=ea.operative_invalidation.basis.value
+                )
+            actionability = IntradayActionabilityDTO(
+                state=ea.state.value,
+                reason=", ".join(rc.value for rc in ea.reason_codes) or None,
+                entry_reference=ea.entry_reference.price if ea.entry_reference is not None else None,
+                operative_invalidation=operative_invalidation_dto,
+                t1=ea.reward.t1_price if ea.reward is not None else None,
+                t2=ea.reward.t2_price if ea.reward is not None else None,
+                reward_risk_informational=ea.reward.reward_risk_to_t1 if ea.reward is not None else None,
+                evidence_as_of=ea.evidence_as_of,
+                entry_actionability_as_of=ea.entry_actionability_as_of,
+                currentness=currentness.status.value,
+                currentness_explanation=currentness.explanation,
+            )
+
+            # Canonical instrument/lot-size resolution -- a genuine
+            # invariant violation here (never a client-input error) is
+            # translated into AthenaError at this application boundary
+            # only, never a silent UNAVAILABLE and never a client-fault
+            # ValueError/400 (ID-11 design contract §9).
+            instrument = self._repo.get_instrument(ea.instrument_id)
+            if instrument is None:
+                raise AthenaError(
+                    f"get_intraday_intelligence: no canonical Instrument metadata found for "
+                    f"{ea.instrument_id!r}"
+                )
+            if instrument.lot_size < 1:
+                raise AthenaError(
+                    f"get_intraday_intelligence: invalid canonical lot_size "
+                    f"({instrument.lot_size}) for {ea.instrument_id!r}"
+                )
+
+            capital_policy = load_position_sizing_policy_config(self._config_dir)
+            ps = compose_position_sizing(
+                decision=decision,
+                entry_actionability=ea,
+                entry_qualification=eq,
+                instrument_lot_size=instrument.lot_size,
+                capital_policy=capital_policy,
+                calendar=calendar,
+                sessions_cfg=cfg.market.sessions,
+                session_tzinfo=market_tzinfo,
+                engine=PositionSizingV0Engine(),
+                now=now,
+            )
+            sizing = IntradaySizingDTO(
+                state=ps.state.value,
+                reason=", ".join(rc.value for rc in ps.reason_codes) or None,
+                suggested_quantity=ps.recommended_quantity,
+                lot_size=instrument.lot_size,
+                binding_constraint=(
+                    ", ".join(c.value for c in ps.binding_constraints) or None
+                ),
+                policy_version=ps.policy_version,
+            )
+
+            ls = compose_live_plan_supervision(
+                decision=decision,
+                entry_actionability=ea,
+                entry_qualification=eq,
+                repo=self._repo,
+                calendar=calendar,
+                sessions_cfg=cfg.market.sessions,
+                session_tzinfo=market_tzinfo,
+                engine=LivePlanSupervisionEngine(),
+                market_checkpoint=now,
+                evaluated_at=now,
+            )
+            vwap_loss_dto = None
+            if ls.vwap_loss_evidence is not None:
+                vwap_loss_dto = IntradayVwapLossEvidenceDTO(
+                    triggered=ls.vwap_loss_evidence.triggered,
+                    first_triggered_as_of=ls.vwap_loss_evidence.first_triggered_as_of,
+                    trigger_close=ls.vwap_loss_evidence.trigger_close,
+                    trigger_vwap=ls.vwap_loss_evidence.trigger_vwap,
+                )
+            supervision = IntradaySupervisionDTO(
+                state=ls.state.value,
+                reason=", ".join(rc.value for rc in ls.reason_codes) or None,
+                target_progress=(
+                    ls.target_progress_evidence.status.value
+                    if ls.target_progress_evidence is not None
+                    else "UNAVAILABLE"
+                ),
+                vwap_loss_evidence=vwap_loss_dto,
+                supervision_as_of=ls.supervision_as_of,
+                evaluated_at=ls.evaluated_at,
+            )
+            identity = identity.model_copy(
+                update={"ea_methodology_version": ea.entry_actionability_methodology_version}
+            )
+            freshest_evidence_as_of = ea.evidence_as_of
+
+        return IntradayIntelligenceDTO(
+            identity=identity,
+            qualification=qualification,
+            actionability=actionability,
+            sizing=sizing,
+            supervision=supervision,
+            as_of_summary=IntradayAsOfSummaryDTO(
+                computed_at=now, freshest_evidence_as_of=freshest_evidence_as_of
+            ),
         )
 
     @staticmethod

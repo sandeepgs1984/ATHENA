@@ -18,6 +18,7 @@ from athena.api.v1.dtos import (
     DecisionDTO,
     DecisionFilterParams,
     DecisionTraceDTO,
+    IntradayIntelligenceDTO,
     JournalEntryDTO,
     NearMissDigestDTO,
     PaginationParams,
@@ -265,6 +266,37 @@ def get_decision_plan_freshness(
     return AthenaResponse(
         status="success",
         data=freshness,
+        meta=ResponseMeta(
+            request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
+        ),
+    )
+
+
+@router.get(
+    "/{decision_id}/intraday-intelligence",
+    response_model=AthenaResponse[IntradayIntelligenceDTO],
+    summary="Get the Owner-facing Intraday Plan (ID-11): qualification, actionability, sizing, and live supervision",
+    status_code=status.HTTP_200_OK,
+    operation_id="getDecisionIntradayIntelligence",
+)
+def get_decision_intraday_intelligence(
+    request: Request,
+    decision_id: str,
+    service: DecisionsService = Depends(get_decisions_service),  # noqa: B008
+    principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008
+) -> AthenaResponse[IntradayIntelligenceDTO]:
+    """Composes the already-frozen EntryQualification -> EntryActionability
+    -> PositionSizing -> LivePlanSupervision chain for this exact Decision,
+    read-only -- never a recomputed Decision, never a full validation cycle
+    (ID-11). This is a CURRENT Owner-facing read: it has no caller-selected
+    historical checkpoint -- there is deliberately no `as_of`/`checkpoint`/
+    `replay` query parameter -- and always evaluates against the service's
+    own current read-time instant."""
+    intraday = service.get_intraday_intelligence(decision_id)
+    request_id = getattr(request.state, "request_id", "unknown")
+    return AthenaResponse(
+        status="success",
+        data=intraday,
         meta=ResponseMeta(
             request_id=request_id, api_version="v1", as_of=datetime.now(tz=timezone.utc)
         ),

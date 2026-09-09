@@ -460,6 +460,7 @@
             );
         }
         resetCockpitGauges();
+        if (typeof resetIntradayPlanCard === "function") resetIntradayPlanCard();
         setHeaderRevalidateEnabled(false);
         setHeaderActionsEnabled(false);
         // Owner-reported: after "Clear all", the main brief correctly went
@@ -609,9 +610,13 @@
         const planLabel = formatTradePlanFreshnessBadge(planFreshness);
         const planTitle = formatTradePlanFreshnessTitle(planFreshness)
             || "TradePlan freshness uses the persisted validity window.";
+        // ID-11 presentation cleanup: this row is the legacy structural
+        // TradePlan's own decay clock (FRESH/AGING/STALE/EXPIRED), never the
+        // newer Intraday Plan's own currentness -- relabeled "Structural
+        // Plan Freshness" so the two are never confused.
         const planStatusRow = plan
-            ? `<div class="quick-summary-row quick-summary-plan-row"><span>Plan Status</span><strong class="quick-summary-plan-status tone-${escapeDecisionHtml(planTone)}" title="${escapeDecisionHtml(planTitle)}">${escapeDecisionHtml(planLabel)}</strong></div>`
-            : `<div class="quick-summary-row quick-summary-plan-row"><span>Plan Status</span><strong class="quick-summary-plan-status tone-no_plan">No plan</strong></div>`;
+            ? `<div class="quick-summary-row quick-summary-plan-row"><span>Structural Plan Freshness</span><strong class="quick-summary-plan-status tone-${escapeDecisionHtml(planTone)}" title="${escapeDecisionHtml(planTitle)}">${escapeDecisionHtml(planLabel)}</strong></div>`
+            : `<div class="quick-summary-row quick-summary-plan-row"><span>Structural Plan Freshness</span><strong class="quick-summary-plan-status tone-no_plan">No plan</strong></div>`;
 
         // Historical Analogs aggregate (UX-6) — explicitly labeled
         // "(Historical)" since there is no forward-looking, per-decision
@@ -769,7 +774,13 @@
         }
         decisionActionabilityBanner.hidden = false;
         decisionActionabilityBanner.className = `decision-actionability-banner tone-${view.tone}`;
-        if (decisionActionabilityLabel) decisionActionabilityLabel.textContent = "Advisor status";
+        // ID-11 presentation cleanup: this banner is entirely derived from
+        // the legacy TradePlan's own freshness window (decisionTradePlanFreshness/
+        // decisionHasCurrentActionableTradePlan below) -- it is the
+        // STRUCTURAL plan's status, never the newer VWAP/M5-anchored
+        // Intraday Plan's EntryActionability. Renamed from "Advisor status"
+        // to avoid being mistaken for that separate concept.
+        if (decisionActionabilityLabel) decisionActionabilityLabel.textContent = "Structural Plan Status";
         if (decisionActionabilityStatus) decisionActionabilityStatus.textContent = view.status;
         if (decisionActionabilityDetail) decisionActionabilityDetail.textContent = view.detail;
         if (decisionBriefRevalidateHeader) {
@@ -1196,6 +1207,7 @@
         loadDecisionAnalogs(meta.decision_id);
         loadDecisionCounterfactual(meta.decision_id);
         loadDecisionPlanFreshness(meta.decision_id);
+        if (typeof loadIntradayPlan === "function") loadIntradayPlan(meta.decision_id);
         setHeaderRevalidateEnabled(true);
         setHeaderActionsEnabled(true);
     }

@@ -1552,6 +1552,36 @@ class SqliteRepository:
         )
         return ser.row_to_entry_actionability(row) if row else None
 
+    def latest_entry_actionability_for_decision(
+        self, decision_id: str
+    ) -> EntryActionability | None:
+        """Most recent (latest ``entry_actionability_as_of``) observation
+        bound to one canonical Decision, across whichever upstream
+        EntryQualification identity it was originally evaluated against —
+        decision-anchored, never scoped to one exact EQ identity (ID-11
+        source-review correction). A caller that also holds the Decision's
+        *current* EntryQualification cannot assume this returns an
+        observation still bound to that same EQ identity: the append-only
+        historical record can genuinely hold an EntryActionability bound to
+        an older EQ observation for the same Decision. This mirrors
+        ``latest_entry_qualification_for_decision``'s own exact shape and
+        rationale.
+
+        Does NOT resolve currentness — a caller must separately evaluate
+        ``entry_actionability_currentness.is_currently_usable`` against the
+        Decision's current EntryQualification identity to determine whether
+        the returned observation is CURRENT/STALE/SUPERSEDED/
+        SESSION_CLOSED (that predicate, not this lookup, is what must ever
+        classify SUPERSEDED).
+        """
+        row = self._query_one(
+            f"SELECT {self._ENTRY_ACTIONABILITY_COLUMNS} FROM entry_actionabilities "
+            "WHERE decision_id=? ORDER BY entry_actionability_as_of DESC, "
+            "entry_actionability_methodology_version DESC LIMIT 1",
+            (decision_id,),
+        )
+        return ser.row_to_entry_actionability(row) if row else None
+
     def latest_entry_actionability_for_instrument_session(
         self, instrument_id: str, session_date: date
     ) -> EntryActionability | None:

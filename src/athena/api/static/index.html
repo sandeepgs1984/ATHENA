@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.204.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.205.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -1604,7 +1604,12 @@
                                                 <strong id="decision-brief-live-price-value" class="decision-brief-live-price-value">—</strong>
                                                 <span id="decision-brief-live-price-change" class="decision-brief-live-price-change"></span>
                                             </div>
-                                            <div id="decision-entry-readiness" class="decision-entry-readiness tone-neutral" hidden aria-live="polite">
+                                            <!-- ID-11 presentation cleanup: this badge reflects the legacy
+                                                 structural TradePlan's own entry zone, never the newer
+                                                 Intraday Plan's EntryActionability -- aria-label/title
+                                                 clarify it as "Structural Entry Zone" without changing the
+                                                 compact badge's own dynamic status text. -->
+                                            <div id="decision-entry-readiness" class="decision-entry-readiness tone-neutral" hidden aria-live="polite" aria-label="Structural Entry Zone" title="Structural Entry Zone">
                                                 <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
                                                 <span id="decision-entry-readiness-label">No current entry</span>
                                             </div>
@@ -1709,7 +1714,7 @@
                                             <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
                                         </div>
                                         <div class="decision-actionability-copy">
-                                            <span id="decision-actionability-label" class="decision-actionability-label">Advisor status</span>
+                                            <span id="decision-actionability-label" class="decision-actionability-label">Structural Plan Status</span>
                                             <strong id="decision-actionability-status" class="decision-actionability-status">Review required</strong>
                                             <p id="decision-actionability-detail" class="decision-actionability-detail"></p>
                                         </div>
@@ -1750,6 +1755,45 @@
                                     <span id="quick-summary-stance" class="stance-chip"></span>
                                 </div>
                                 <div id="dag-quick-summary" class="dag-quick-summary"></div>
+                            </div>
+                            <!-- ID-11: Owner-facing Intraday Plan -- one coherent surface over
+                                 EntryQualification -> EntryActionability -> PositionSizing ->
+                                 LivePlanSupervision, kept clearly distinct from the Structural
+                                 Plan (legacy TradePlan) shown above. Hidden until a decision with
+                                 real intraday-intelligence data is loaded. -->
+                            <div class="card intraday-plan-card" id="intraday-plan-card" style="display: none;">
+                                <div class="card-header">
+                                    <div class="card-header-title">
+                                        <div class="card-title-icon"><i class="fas fa-bullseye"></i></div>
+                                        <h3>Intraday Plan</h3>
+                                    </div>
+                                    <span id="intraday-plan-asof" class="intraday-plan-asof"></span>
+                                </div>
+                                <div id="intraday-plan-body" class="intraday-plan-body">
+                                    <div class="intraday-plan-row">
+                                        <span class="intraday-plan-row-label">Qualification</span>
+                                        <strong id="intraday-plan-qualification" class="intraday-plan-value tone-neutral">—</strong>
+                                    </div>
+                                    <div class="intraday-plan-row">
+                                        <span class="intraday-plan-row-label">Entry</span>
+                                        <strong id="intraday-plan-actionability" class="intraday-plan-value tone-neutral">—</strong>
+                                    </div>
+                                    <div class="intraday-plan-entry-details" id="intraday-plan-entry-details" hidden>
+                                        <span>Entry <strong id="intraday-plan-entry-price">—</strong></span>
+                                        <span>Invalidation <strong id="intraday-plan-invalidation">—</strong></span>
+                                        <span>T1 <strong id="intraday-plan-t1">—</strong></span>
+                                        <span>T2 <strong id="intraday-plan-t2">—</strong></span>
+                                    </div>
+                                    <div class="intraday-plan-row">
+                                        <span class="intraday-plan-row-label">Size</span>
+                                        <strong id="intraday-plan-sizing" class="intraday-plan-value tone-neutral">—</strong>
+                                    </div>
+                                    <div class="intraday-plan-row">
+                                        <span class="intraday-plan-row-label">Live Status</span>
+                                        <strong id="intraday-plan-supervision" class="intraday-plan-value tone-neutral">—</strong>
+                                    </div>
+                                    <p id="intraday-plan-freshness" class="intraday-plan-freshness"></p>
+                                </div>
                             </div>
                             <div class="card">
                                 <div class="card-header">
@@ -2428,7 +2472,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.204.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.205.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

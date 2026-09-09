@@ -6,6 +6,181 @@ status updated on approval.
 
 ---
 
+## ID-11 — Owner-Facing Intraday Intelligence Integration (source-review correction)
+
+**Summary.** Owner/Chief Architect source review of the ID-11 implementation
+(entry below) found two genuine source-level correctness defects, corrected
+in place under the same ID-11 milestone — no ID-11.1/ID-11A/new milestone
+created. Full detail: `docs/research/ID-11-OWNER-FACING-INTRADAY-INTELLIGENCE.md`
+§22.
+
+**Correction 1 — EA selection made `SUPERSEDED` unreachable.**
+`DecisionsService.get_intraday_intelligence` resolved `EntryActionability`
+scoped to the *current* EQ's own exact identity
+(`latest_entry_actionability_for_entry_qualification`), which can never
+disagree with itself — an EA bound to an OLDER EQ observation for the same
+Decision was therefore structurally invisible, silently reported
+`UNAVAILABLE` instead of the real `SUPERSEDED` verdict `is_currently_usable`
+exists to produce. Fixed with a new decision-anchored repository read,
+`SqliteRepository.latest_entry_actionability_for_decision(decision_id)`
+(mirrors `latest_entry_qualification_for_decision`'s own shape exactly), and
+switching the service to call it. `is_currently_usable` itself, and every
+other frozen contract, is unchanged — it now simply receives an EA the
+lookup previously hid from it.
+
+**Correction 2 — unauthorized public `?as_of=` replay parameter removed.**
+The endpoint accepted a caller-supplied `as_of` query parameter threaded
+into EQ coherence, EA currentness, PositionSizing, LivePlanSupervision, the
+session candle cutoff, and `computed_at` — a historical-replay capability
+never authorized for this Owner-facing CURRENT-Intraday-Plan endpoint.
+Removed from the router and from `get_intraday_intelligence`'s signature
+entirely (no `replay=`/`checkpoint=`/`debug=` substitute). `DecisionsService`
+gained an injectable `now_fn: Callable[[], datetime] | None` constructor
+parameter (mirrors the existing `MarketHistoryService`/
+`AdvisoryFreshnessService`/EMR-router `now_fn`/`get_emr_request_clock`
+convention), defaulting to the real wall clock;
+`api.dependencies.get_decisions_service` reads an optional
+`request.app.state.decisions_clock` for deterministic tests, exactly like
+the EMR router's `emr_clock`. Exactly one `self._now()` read happens per
+call, reused for every downstream consumer (EQ `read_checkpoint`, EA
+currentness, PositionSizing, LivePlanSupervision, `computed_at`) — never two
+independent clock reads in one response. Production `WorkflowStage` clock
+semantics (`ctx.as_of` / persistence clock) are completely untouched.
+
+**Tests.** Added `TestIntradayIntelligenceSupersededSemantics` (1 new HTTP
+integration test) proving the real endpoint returns
+`actionability.state == "ACTIONABLE"` (the older EA's real persisted
+verdict, preserved for explainability) with
+`actionability.currentness == "SUPERSEDED"`, and the frozen
+`sizing.state == "NOT_SIZED"`/`UPSTREAM_NOT_CURRENT` +
+`supervision.state == "NOT_APPLICABLE"`/`UPSTREAM_NOT_CURRENT` verdicts —
+never a fabricated `UNAVAILABLE`. `STALE`, `SESSION_CLOSED`, and missing-EA
+`UNAVAILABLE` remain distinct and pass unchanged (query-param mechanism in
+the test file's `_url()` replaced with a `_set_read_clock()` helper
+injecting `client.app.state.decisions_clock`). ID-11 API suite: **8 passed**
+(was 7). Focused ID-6/7/9/10/11 regression set (entry-actionability
+repository/currentness/engine/models, EQ coherence, intraday composition,
+`test_owner_validation.py`, ID-11 API): **369 passed, 0 failed.** Full
+repository suite, static/type checks: see the Status line below for exact
+counts.
+
+**OpenAPI.** `docs/api/openapi.yaml`'s `/intraday-intelligence` path: `as_of`
+query parameter removed, `description` corrected to state this is a
+current, non-replay read — verified via a live `app.openapi()` round-trip
+(`yaml.safe_load` equality on the path's `parameters`/`description`). No
+unrelated whole-file regeneration.
+
+**Files changed (this correction only).** New: none. Modified:
+`src/athena/data/store/repository.py` (new read-only
+`latest_entry_actionability_for_decision`), `src/athena/api/v1/services/decisions_service.py`
+(EA lookup switched; `now_fn` constructor param added; `as_of` param
+removed), `src/athena/api/dependencies.py` (`decisions_clock` wiring),
+`src/athena/api/v1/routers/decisions.py` (`as_of` query param removed),
+`tests/api/v1/test_decision_intraday_intelligence.py` (clock-injection
+helper; 1 new test), `docs/api/openapi.yaml` (1 path corrected),
+`docs/research/ID-11-OWNER-FACING-INTRADAY-INTELLIGENCE.md` (§22 appended,
+two stale statements corrected in place). Zero schema change, zero
+methodology change, zero UI/EQ-coherence/currentness-helper/engine change,
+zero EMR/DarvaX touch.
+
+**Status.** **`ID11_IMPLEMENTATION_REVIEW_READY` (2026-09-09).** Both
+source-review defects corrected; not yet marked Owner-approved/closed/
+frozen. No ID-11.1/ID-11A sub-milestone created.
+
+---
+
+## ID-11 — Owner-Facing Intraday Intelligence Integration (implementation)
+
+**Summary.** Implements the frozen ID-11 design contract
+(`docs/research/ID-11-OWNER-FACING-INTRADAY-INTELLIGENCE.md`) as one
+milestone, no sub-milestone created. Exposes the already-frozen
+EntryQualification → EntryActionability → PositionSizing →
+LivePlanSupervision chain to the Owner through one new read-only endpoint
+and one new "Intraday Plan" Decision Brief section, alongside the unchanged
+"Structural Plan" (legacy TradePlan, three labels relabeled for clarity:
+"Advisor status"→"Structural Plan Status", the Quick Summary "Plan
+Status" row→"Structural Plan Freshness", the entry-zone badge gained a
+"Structural Entry Zone" aria-label/title).
+
+**Implementation.** New `src/athena/intraday/entry_qualification_coherence.py`
+(`resolve_entry_qualification_coherence` — 8 identity/session/PIT checks,
+zero age threshold, semantics-extracted from `sync.py`'s own Portfolio
+logic) and `src/athena/intraday/intraday_composition.py`
+(`compose_position_sizing`/`compose_live_plan_supervision`, extracted
+behavior-preserving from the production `position_sizing_stage`/
+`live_plan_supervision_stage` bodies — both frozen engines called
+unchanged, both stages now call these same functions, proven
+behavior-preserving by the full pre-existing 92-test
+`test_owner_validation.py` suite passing unmodified). New
+`GET /api/v1/decisions/{decision_id}/intraday-intelligence` (new
+`DecisionsService.get_intraday_intelligence`, sibling route to
+`/plan-freshness`) composing a new `IntradayIntelligenceDTO` — never
+triggers `DecisionEngine`/`Scoring`/`Confidence`/`Risk`/full validation,
+never writes, `total_deployable_capital` never exposed. Non-current
+EntryActionability (`STALE`/`SUPERSEDED`/`SESSION_CLOSED`) correctly
+renders the engines' own real `NOT_SIZED`/`NOT_APPLICABLE` +
+`UPSTREAM_NOT_CURRENT` verdicts, never a fabricated `UNAVAILABLE` — the
+central correction from the design's own error-semantics rounds, now
+proven in code and live in a browser. Canonical instrument/lot-size
+invariant failures are translated to `AthenaError`→500 at the service
+boundary (never a client-fault 400, never silently rendered as a domain
+state); genuine repository failures propagate as the existing
+`RepositoryError`→503; an unresolvable `decision_id` is `DecisionNotFoundError`→404 —
+`AthenaExceptionMapper` itself untouched. New Decision Brief "Intraday
+Plan" card (`19b-decision-brief-intraday.js`, `14-intraday-plan.css`)
+fetches once when a brief opens (never attached to the existing 10s
+quote-poll), rendering Qualification/Entry (with Entry/Invalidation/T1/T2)/Size/Live
+Status through a small deterministic label table — no raw enum dump, no
+generative text.
+
+**Tests.** 27 new tests (13 EQ-coherence unit tests, 7 composition-function
+tests including a real VWAP-loss-invalidation-permanence-after-recovery
+proof, 7 HTTP integration tests covering the full ACTIONABLE/current path,
+`STALE`→correct-non-current-verdicts, WATCH-bound `NOT_ACTIONABLE`,
+missing-EQ→`UNAVAILABLE`, missing-repository→503, missing-instrument→500,
+and unknown-decision→404). Full repository suite: **4009 passed, 1
+pre-existing unrelated skip, 0 failures** (up from a pre-ID-11 baseline of
+3982 passed/1 skipped — includes all 27 new tests plus 2 pre-existing
+hardcoded-dashboard-version assertions corrected for the mandatory
+asset-version bump, `9.204.0`→`9.205.0`). Full accounting in the design
+doc's own §21.
+
+**Live verification.** An isolated, throwaway server (separate port,
+separate temp DB, throwaway owner credentials — the real production
+server was never touched) was seeded with a real ACTIONABLE
+Decision/EntryQualification/EntryActionability triple and exercised in a
+real browser: labels render correctly, the Intraday Plan card renders
+real Entry/Invalidation/T1/T2 values, and — because the browser's wall
+clock was naturally later than the seeded evidence checkpoint —
+currentness correctly resolved to `STALE` and Size/Live Status correctly
+rendered "Not sized"/"Not applicable," proving the frozen non-current
+contract live. Exactly one API call per brief-open (network-trace
+confirmed), zero JS console errors attributable to the new code.
+
+**Files.** New: `src/athena/intraday/entry_qualification_coherence.py`,
+`src/athena/intraday/intraday_composition.py`,
+`src/athena/api/v1/dtos/intraday_intelligence.py`,
+`src/athena/api/static/js/19b-decision-brief-intraday.js`,
+`src/athena/api/static/css/14-intraday-plan.css`, 3 new test files.
+Modified: `src/athena/ops/owner_validation.py` (call-site only),
+`src/athena/api/v1/services/decisions_service.py`,
+`src/athena/api/v1/routers/decisions.py`, `src/athena/api/v1/dtos/__init__.py`,
+`src/athena/api/app.py` (new `DASHBOARD_JS_PARTS` entry),
+`src/athena/api/static/index.html`, `src/athena/api/static/js/13-decision-brief-core.js`,
+`src/athena/api/static/dashboard.css`, `docs/api/openapi.yaml` (scoped,
+hand-verified addition — not a full mechanical regeneration), 2
+pre-existing tests (version-string fix only). Zero diff to
+`PositionSizingV0Engine`, `LivePlanSupervisionEngine`, any domain model,
+`schema.py`, `repository.py`'s write paths, `AthenaExceptionMapper`,
+EMR, or DarvaX. Full detail and the complete source-review checklist:
+`docs/research/ID-11-OWNER-FACING-INTRADAY-INTELLIGENCE.md` §21.
+
+**Status.** **`ID11_IMPLEMENTATION_REVIEW_READY` (2026-09-09).** Not marked
+Owner-approved/closed/frozen — awaiting Owner/Chief Architect source
+review. No ID-11.1/ID-11A sub-milestone created.
+
+---
+
 ## ID-11 — Owner-Facing Intraday Intelligence Integration (design)
 
 **Summary.** A source-backed ID-6→ID-10 Owner/UI Exposure Audit

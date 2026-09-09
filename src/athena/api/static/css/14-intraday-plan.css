@@ -1,0 +1,85 @@
+/* ID-11: Owner-facing Intraday Plan card — one coherent surface over
+   EntryQualification -> EntryActionability -> PositionSizing ->
+   LivePlanSupervision, deliberately styled to sit alongside (never replace)
+   the existing Quick Summary card. Reuses the same tone-* design tokens the
+   Structural Plan's own Quick Summary row already uses (13-context-history.css)
+   so both read as one visual system. */
+
+.intraday-plan-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.intraday-plan-asof {
+    font-size: var(--text-0-62);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.intraday-plan-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    padding: var(--space-8);
+}
+
+.intraday-plan-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-8);
+    font-size: var(--text-0-72);
+}
+
+.intraday-plan-row-label {
+    color: var(--text-muted);
+}
+
+.intraday-plan-value {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    border-radius: 999px;
+    padding: var(--space-2) var(--space-7);
+    white-space: nowrap;
+}
+
+.intraday-plan-value.tone-neutral {
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-muted);
+}
+
+.intraday-plan-value.tone-good {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--tone-good-text);
+}
+
+.intraday-plan-value.tone-warn {
+    background: rgba(56, 189, 248, 0.1);
+    color: var(--tone-info-text);
+}
+
+.intraday-plan-value.tone-bad {
+    background: rgba(248, 113, 113, 0.1);
+    color: var(--tone-bad-text);
+}
+
+.intraday-plan-entry-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-7);
+    font-size: var(--text-0-62);
+    color: var(--text-muted);
+    padding-left: var(--space-4);
+}
+
+.intraday-plan-entry-details strong {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    margin-left: var(--space-2);
+}
+
+.intraday-plan-freshness {
+    margin: 0;
+    font-size: var(--text-0-62);
+    color: var(--text-muted);
+}

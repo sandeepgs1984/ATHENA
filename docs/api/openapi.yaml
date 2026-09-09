@@ -581,6 +581,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/decisions/{decision_id}/intraday-intelligence:
+    get:
+      tags:
+      - Decisions
+      summary: 'Get the Owner-facing Intraday Plan (ID-11): qualification, actionability, sizing, and live
+        supervision'
+      description: 'Composes the already-frozen EntryQualification -> EntryActionability
+
+        -> PositionSizing -> LivePlanSupervision chain for this exact Decision,
+
+        read-only -- never a recomputed Decision, never a full validation cycle
+
+        (ID-11). This is a CURRENT Owner-facing read: it has no caller-selected
+
+        historical checkpoint -- there is deliberately no `as_of`/`checkpoint`/
+
+        `replay` query parameter -- and always evaluates against the service''s
+
+        own current read-time instant.'
+      operationId: getDecisionIntradayIntelligence
+      security:
+      - HTTPBearer: []
+      - APIKeyHeader: []
+      parameters:
+      - name: decision_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Decision Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AthenaResponse_IntradayIntelligenceDTO_'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/decisions/{decision_id}/context:
     get:
       tags:
@@ -3559,6 +3602,33 @@ components:
       - data
       - meta
       title: AthenaResponse[InstrumentQuoteDTO]
+    AthenaResponse_IntradayIntelligenceDTO_:
+      properties:
+        status:
+          type: string
+          const: success
+          title: Status
+          default: success
+        data:
+          $ref: '#/components/schemas/IntradayIntelligenceDTO'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+        pagination:
+          anyOf:
+          - $ref: '#/components/schemas/PaginationMeta'
+          - type: 'null'
+        links:
+          anyOf:
+          - additionalProperties:
+              type: string
+            type: object
+          - type: 'null'
+          title: Links
+      type: object
+      required:
+      - data
+      - meta
+      title: AthenaResponse[IntradayIntelligenceDTO]
     AthenaResponse_JournalEntryDTO_:
       properties:
         status:
@@ -6505,6 +6575,337 @@ components:
         newest persisted SQLite quote. Every numeric field is ``None`` when no real
 
         value exists (ADR-005 — never fabricate 0).'
+    IntradayActionabilityDTO:
+      properties:
+        state:
+          type: string
+          enum:
+          - UNKNOWN
+          - NOT_ACTIONABLE
+          - ACTIONABLE
+          - UNAVAILABLE
+          title: State
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        entry_reference:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Entry Reference
+        operative_invalidation:
+          anyOf:
+          - $ref: '#/components/schemas/IntradayOperativeInvalidationDTO'
+          - type: 'null'
+        t1:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: T1
+        t2:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: T2
+        reward_risk_informational:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Reward Risk Informational
+        evidence_as_of:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Evidence As Of
+        entry_actionability_as_of:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Entry Actionability As Of
+        currentness:
+          type: string
+          enum:
+          - CURRENT
+          - STALE
+          - SUPERSEDED
+          - SESSION_CLOSED
+          - METHODOLOGY_NOT_ACTIONABLE
+          - UNAVAILABLE
+          title: Currentness
+        currentness_explanation:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currentness Explanation
+      type: object
+      required:
+      - state
+      - currentness
+      title: IntradayActionabilityDTO
+    IntradayAsOfSummaryDTO:
+      properties:
+        computed_at:
+          type: string
+          format: date-time
+          title: Computed At
+        freshest_evidence_as_of:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Freshest Evidence As Of
+      type: object
+      required:
+      - computed_at
+      title: IntradayAsOfSummaryDTO
+    IntradayIdentityDTO:
+      properties:
+        decision_id:
+          type: string
+          title: Decision Id
+        instrument_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Instrument Id
+        decision_type:
+          type: string
+          title: Decision Type
+        direction:
+          type: string
+          title: Direction
+        session_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Session Date
+        run_id:
+          type: string
+          title: Run Id
+        cycle_id:
+          type: string
+          title: Cycle Id
+        eq_methodology_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Eq Methodology Version
+        ea_methodology_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ea Methodology Version
+      type: object
+      required:
+      - decision_id
+      - instrument_id
+      - decision_type
+      - direction
+      - session_date
+      - run_id
+      - cycle_id
+      title: IntradayIdentityDTO
+    IntradayIntelligenceDTO:
+      properties:
+        identity:
+          $ref: '#/components/schemas/IntradayIdentityDTO'
+        qualification:
+          $ref: '#/components/schemas/IntradayQualificationDTO'
+        actionability:
+          $ref: '#/components/schemas/IntradayActionabilityDTO'
+        sizing:
+          $ref: '#/components/schemas/IntradaySizingDTO'
+        supervision:
+          $ref: '#/components/schemas/IntradaySupervisionDTO'
+        as_of_summary:
+          $ref: '#/components/schemas/IntradayAsOfSummaryDTO'
+      type: object
+      required:
+      - identity
+      - qualification
+      - actionability
+      - sizing
+      - supervision
+      - as_of_summary
+      title: IntradayIntelligenceDTO
+      description: 'One coherent Owner-facing read model for the entire ID-6->ID-10
+
+        Intraday Plan chain, anchored on a single canonical `decision_id`.'
+    IntradayOperativeInvalidationDTO:
+      properties:
+        level:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Level
+        basis:
+          type: string
+          title: Basis
+      type: object
+      required:
+      - level
+      - basis
+      title: IntradayOperativeInvalidationDTO
+    IntradayQualificationDTO:
+      properties:
+        state:
+          type: string
+          enum:
+          - OUT_OF_SCOPE
+          - UNKNOWN
+          - NOT_YET
+          - QUALIFIED
+          - DISQUALIFIED_FOR_SESSION
+          - EXPIRED
+          - UNAVAILABLE
+          title: State
+        coherence:
+          type: string
+          enum:
+          - COHERENT
+          - INCOHERENT
+          - UNAVAILABLE
+          title: Coherence
+        reason_summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason Summary
+        evidence_summary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Evidence Summary
+        evidence_as_of:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Evidence As Of
+      type: object
+      required:
+      - state
+      - coherence
+      title: IntradayQualificationDTO
+    IntradaySizingDTO:
+      properties:
+        state:
+          type: string
+          enum:
+          - SIZED
+          - NOT_SIZED
+          - ZERO_QUANTITY_UNDER_POLICY
+          - UNAVAILABLE
+          title: State
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        suggested_quantity:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Suggested Quantity
+        lot_size:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Lot Size
+        binding_constraint:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Binding Constraint
+        policy_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Version
+      type: object
+      required:
+      - state
+      title: IntradaySizingDTO
+    IntradaySupervisionDTO:
+      properties:
+        state:
+          type: string
+          enum:
+          - NOT_APPLICABLE
+          - VALID
+          - INVALIDATED
+          - UNAVAILABLE
+          title: State
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        target_progress:
+          type: string
+          enum:
+          - NONE_REACHED
+          - T1_REACHED
+          - T2_REACHED
+          - UNAVAILABLE
+          title: Target Progress
+        vwap_loss_evidence:
+          anyOf:
+          - $ref: '#/components/schemas/IntradayVwapLossEvidenceDTO'
+          - type: 'null'
+        supervision_as_of:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Supervision As Of
+        evaluated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Evaluated At
+      type: object
+      required:
+      - state
+      - target_progress
+      title: IntradaySupervisionDTO
+    IntradayVwapLossEvidenceDTO:
+      properties:
+        triggered:
+          type: boolean
+          title: Triggered
+        first_triggered_as_of:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: First Triggered As Of
+        trigger_close:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Trigger Close
+        trigger_vwap:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Trigger Vwap
+      type: object
+      required:
+      - triggered
+      title: IntradayVwapLossEvidenceDTO
     JournalEntryDTO:
       properties:
         decision_id:

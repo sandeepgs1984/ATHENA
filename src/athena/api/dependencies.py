@@ -257,12 +257,20 @@ def get_decisions_service(request: Request) -> DecisionsService:
     db_path = getattr(request.app.state, "ops_db_path", None)
     backup_dir = getattr(request.app.state, "ops_backup_dir", None)
     repo = getattr(request.app.state, "sqlite_repo", None)
+    # ID-11 source-review correction: get_intraday_intelligence has no
+    # public `as_of` parameter (it is a CURRENT-Intraday-Plan read, never a
+    # caller-selected replay) -- `decisions_clock` lets tests inject a
+    # deterministic read-time instant, mirroring `get_emr_request_clock`'s
+    # own `emr_clock`/`request.app.state` convention. Production falls
+    # back to the real wall clock (DecisionsService's own default).
+    now_fn = getattr(request.app.state, "decisions_clock", None)
     return DecisionsService(
         provider,
         config_dir=_resolve_config_dir(),
         db_path=db_path,
         backup_dir=backup_dir,
         repo=repo,
+        now_fn=now_fn,
     )
 
 

@@ -76,6 +76,7 @@ DASHBOARD_JS_PARTS: tuple[str, ...] = (
     "17-decision-compare.js",
     "18-decision-brief-trace.js",
     "19-decision-brief-history.js",
+    "19b-decision-brief-intraday.js",
     "20-operations.js",
     "21-bootstrap.js",
     "_footer.js",
