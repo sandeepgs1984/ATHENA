@@ -6,6 +6,43 @@ status updated on approval.
 
 ---
 
+## MP-NX6C — Morning Triage Scan UX
+
+**Summary.** Owner asked to fix Morning triage crowding before any new
+track. Presentation-only restack of the NX1 command dashboard so the
+section can be scanned in one glance. Predicates, Action Queue membership,
+Smart Filter values, and Review Session behavior are unchanged.
+
+**What changed.** The eight equal chips became four metric tiles (Review /
+Hold Tight, Exit Risk, Stale Data, Evidence gap). Needs Review moved onto
+the Queue toggle as a count. Start review sits in the header. Smart Filters
+start collapsed behind Filters and open as a labeled two-column list.
+Near Trigger / Near Support / Fresh Breakout left the primary row and sit
+as an honest unavailable footnote. Dashboard assets `9.204.0`. No ADR.
+
+**Tests.** Hosting locks the Filters toggle, filters panel, four-column
+metric grid, disclosure helper, and `9.204.0` assets. Existing NX1
+data-triage-filter / smart-group / unavailable-chip contracts remain.
+
+**Files created:** none.
+
+**Files modified:** `src/athena/api/static/index.html`,
+`src/athena/api/static/css/05b-my-portfolio.css`,
+`src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/dashboard.css`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/MILESTONES.md`,
+`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
+`ATHENA_BRIEFING.md`, this file.
+
+**Status:** Implementation complete 2026-09-09; ready for Owner / Chief
+Architect review. Do not start another milestone until this scan UX is
+approved.
+
+---
+
 ## MP-NX6B — Review Session Mode
 
 **Summary.** Authorized after MP-NX6 Owner Notes approval ("start next").

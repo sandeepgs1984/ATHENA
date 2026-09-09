@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.203.0" in html
-    assert "dashboard.js?v=9.203.0" in html
+    assert "dashboard.css?v=9.204.0" in html
+    assert "dashboard.js?v=9.204.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -404,6 +404,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'data-triage-filter="stale_data"' in html
     assert 'data-triage-filter="unavailable_evidence"' in html
     assert 'data-triage-filter="needs_review"' in html
+    assert 'id="my-portfolio-triage-filters-toggle"' in html
+    assert 'id="my-portfolio-smart-filters-panel"' in html
     assert 'class="my-portfolio-smart-filters" aria-label="Smart filters"' in html
     assert 'data-smart-group="status"' in html
     assert 'data-smart-group="daily_review"' in html
@@ -556,7 +558,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css?v=9.203.0");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.204.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
@@ -577,6 +579,9 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-freshness-item" in my_portfolio_css
     assert ".my-portfolio-command-dashboard" in my_portfolio_css
     assert ".my-portfolio-triage-chip" in my_portfolio_css
+    assert ".my-portfolio-smart-filters-panel" in my_portfolio_css
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in my_portfolio_css
+    assert "function renderMyPortfolioTriageFiltersDisclosure" in js
     assert ".my-portfolio-smart-filters" in my_portfolio_css
     assert ".my-portfolio-smart-chip" in my_portfolio_css
     assert ".my-portfolio-queue-toggle" in my_portfolio_css

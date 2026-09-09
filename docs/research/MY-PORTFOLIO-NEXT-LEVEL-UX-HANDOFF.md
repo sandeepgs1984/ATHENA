@@ -85,7 +85,12 @@ header and aborting Portfolio Sync refresh.
   index at all stay UNRESOLVED at preview and still use the BSE catalog
   fallback at confirm.
 - Live LTP on this page still needs a separate ADR. Do not add it here.
-- Dashboard assets: `9.203.0` after MP-NX6B Review Session. Owner Notes form stays at the bottom of the holding-detail overlay. Risk concentration and Portfolio heatmap start collapsed. Morning triage actions scroll Current Holdings into view.
+- Dashboard assets: `9.204.0` after MP-NX6C Morning Triage Scan UX. Morning
+  triage is a four-metric scan row plus collapsed Filters; Start review is
+  in the header; Queue carries the Needs Review count. Owner Notes form
+  stays at the bottom of the holding-detail overlay. Risk concentration and
+  Portfolio heatmap start collapsed. Morning triage actions scroll Current
+  Holdings into view.
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.
@@ -352,7 +357,9 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-The 14-item next-level UX sequence is complete (MP-NX1 through MP-NX6B).
+Review and approve MP-NX6C Morning Triage Scan UX.
+
+The 14-item next-level UX sequence remains complete (MP-NX1 through MP-NX6B).
 There is no MP-NX7.
 
 Authorize the next piece of work explicitly. Remaining My Portfolio options

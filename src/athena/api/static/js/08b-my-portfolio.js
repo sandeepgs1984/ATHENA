@@ -143,6 +143,7 @@
         },
         riskExpanded: false,
         heatmapExpanded: false,
+        triageFiltersExpanded: false,
         historyExpanded: false,
         valuesHidden: (() => {
             try {
@@ -961,6 +962,33 @@
         myPortfolioState.heatmapExpanded = Boolean(expanded);
         persistMyPortfolioSectionExpanded("athena.myPortfolio.heatmapExpanded", myPortfolioState.heatmapExpanded);
         renderMyPortfolioHeatmapDisclosure();
+    }
+
+    function myPortfolioSmartFilterCount() {
+        return Object.values(myPortfolioState.triage.smart).reduce((total, values) => total + (values || []).length, 0);
+    }
+
+    function renderMyPortfolioTriageFiltersDisclosure() {
+        const panel = document.getElementById("my-portfolio-smart-filters-panel");
+        const toggle = document.getElementById("my-portfolio-triage-filters-toggle");
+        const expanded = Boolean(myPortfolioState.triageFiltersExpanded);
+        if (panel) {
+            panel.hidden = !expanded;
+            panel.classList.toggle("collapsed", !expanded);
+        }
+        if (!toggle) return;
+        toggle.setAttribute("aria-expanded", String(expanded));
+        const label = toggle.querySelector("span");
+        if (label) label.textContent = expanded ? "Hide filters" : "Filters";
+    }
+
+    function setMyPortfolioTriageFiltersExpanded(expanded) {
+        myPortfolioState.triageFiltersExpanded = Boolean(expanded);
+        persistMyPortfolioSectionExpanded(
+            "athena.myPortfolio.triageFiltersExpanded",
+            myPortfolioState.triageFiltersExpanded
+        );
+        renderMyPortfolioTriageFiltersDisclosure();
     }
 
     function myPortfolioRowStateClass(row) {
@@ -1818,6 +1846,9 @@
         if (current.has(value)) current.delete(value);
         else current.add(value);
         myPortfolioState.triage.smart[group] = [...current];
+        if (current.size && !myPortfolioState.triageFiltersExpanded) {
+            setMyPortfolioTriageFiltersExpanded(true);
+        }
         renderMyPortfolioHoldings(myPortfolioSourceRows());
         scrollMyPortfolioHoldingsIntoView();
     }
@@ -1836,12 +1867,18 @@
         });
         document.querySelectorAll(".my-portfolio-triage-chip[data-triage-available='true']").forEach(chip => {
             const filterId = chip.getAttribute("data-triage-filter");
-            const active = filterId === "needs_review"
-                ? myPortfolioState.triage.queueView
-                : myPortfolioState.triage.attention.includes(filterId);
+            const active = myPortfolioState.triage.attention.includes(filterId);
             chip.classList.toggle("active", active);
+            chip.classList.toggle("is-quiet", !active && !Number(counts[filterId]));
             chip.setAttribute("aria-pressed", String(active));
         });
+        const smartCount = myPortfolioSmartFilterCount();
+        const filterCount = document.getElementById("my-portfolio-triage-filter-count");
+        if (filterCount) {
+            filterCount.textContent = formatMyPortfolioNumber(smartCount);
+            filterCount.hidden = smartCount === 0;
+        }
+        renderMyPortfolioTriageFiltersDisclosure();
         document.querySelectorAll(".my-portfolio-smart-chip").forEach(chip => {
             const group = chip.getAttribute("data-smart-group");
             const value = chip.getAttribute("data-smart-value");
@@ -3728,6 +3765,9 @@
     myPortfolioQueueAll?.addEventListener("click", () => setMyPortfolioQueueView(false));
     myPortfolioQueueOnly?.addEventListener("click", () => setMyPortfolioQueueView(true));
     myPortfolioTriageClear?.addEventListener("click", clearMyPortfolioTriage);
+    document.getElementById("my-portfolio-triage-filters-toggle")?.addEventListener("click", () => {
+        setMyPortfolioTriageFiltersExpanded(!myPortfolioState.triageFiltersExpanded);
+    });
     document.getElementById("my-portfolio-review-start")?.addEventListener("click", startMyPortfolioReviewSession);
     document.getElementById("my-portfolio-review-prev")?.addEventListener("click", () => stepMyPortfolioReviewSession(-1));
     document.getElementById("my-portfolio-review-next")?.addEventListener("click", () => stepMyPortfolioReviewSession(1));
@@ -3861,6 +3901,9 @@
             const savedHeatmapExpanded = window.localStorage.getItem("athena.myPortfolio.heatmapExpanded");
             if (savedHeatmapExpanded === "false") myPortfolioState.heatmapExpanded = false;
             if (savedHeatmapExpanded === "true") myPortfolioState.heatmapExpanded = true;
+            const savedTriageFiltersExpanded = window.localStorage.getItem("athena.myPortfolio.triageFiltersExpanded");
+            if (savedTriageFiltersExpanded === "false") myPortfolioState.triageFiltersExpanded = false;
+            if (savedTriageFiltersExpanded === "true") myPortfolioState.triageFiltersExpanded = true;
         } catch (err) {
             // Browser privacy/storage restrictions should not break rendering.
         }
@@ -3870,6 +3913,7 @@
     renderMyPortfolioDensityControls();
     renderMyPortfolioRiskDisclosure();
     renderMyPortfolioHeatmapDisclosure();
+    renderMyPortfolioTriageFiltersDisclosure();
     renderMyPortfolioExportColumns();
     scheduleMyPortfolioHoldingsScrollChrome();
     window.addEventListener("scroll", scheduleMyPortfolioHoldingsScrollChrome, { passive: true });
