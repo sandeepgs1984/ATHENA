@@ -6,6 +6,59 @@ status updated on approval.
 
 ---
 
+## ID-11 — Owner-Facing Intraday Intelligence Integration (design)
+
+**Summary.** A source-backed ID-6→ID-10 Owner/UI Exposure Audit
+(2026-09-09) traced every completed Intraday Intelligence capability from
+domain computation through persistence, API, and dashboard, proving a
+genuine Owner-facing exposure gap: ID-6 EntryQualification
+`PARTIALLY_EXPOSED` (one binary tooltip only); ID-7 EntryActionability,
+ID-9 PositionSizing, and ID-10 LivePlanSupervision all `BACKEND_ONLY`
+(fully computed and, for ID-7, persisted — zero API/DTO/dashboard
+reference). ID-8 remains `ID8_V0_ENTRY_RISK_PARTIALLY_SUPPORTED`; only its
+narrow production-absorbed concepts (VWAP-loss invalidation, T1/T2 goal
+bands, risk geometry) are in scope via ID-7, never its research
+diagnostics. Owner/Chief Architect authorized ID-11 same day; two design
+rounds plus two source-verification correction rounds followed, each
+resolving a specific over-assumption before freeze (ID-9 proven to need
+**zero** fresh M5/VWAP/OR15 recomputation; ID-10's candle window proven
+session-bounded, not unbounded; non-current EntryActionability's
+`PositionSizing`/`LivePlanSupervision` outputs corrected to their real
+frozen engine verdicts, `NOT_SIZED`/`NOT_APPLICABLE` +
+`UPSTREAM_NOT_CURRENT`, never `UNAVAILABLE`; infrastructure-error mapping
+corrected to the exact existing `AthenaExceptionMapper` contract).
+
+**Design (frozen).** New concept split: **Structural Plan** (existing,
+unchanged `TradePlan`) vs. **Intraday Plan** (new: EntryQualification →
+EntryActionability → PositionSizing → LivePlanSupervision) — both may be
+simultaneously valid for the same Decision, presented as one coherent
+"Intraday Plan" section inside the existing Decision Brief, not five
+separate ID-6/7/8/9/10 panels. Canonical anchor: `decision_id` (globally
+unique PK). New read-only endpoint:
+`GET /api/v1/decisions/{decision_id}/intraday-intelligence`, sibling to the
+existing `/plan-freshness`/`/depth`/`/context`/`/trace` "Decision detail,
+without recomputation" route family — never triggers
+DecisionEngine/Scoring/Confidence/Risk/full-validation. New
+`EntryQualification` **coherence** contract (not currentness — no age
+threshold exists or is invented), extracted from
+`sync.py::_latest_coherent_entry_qualification`'s own identity/session/PIT
+checks, minus its Portfolio-specific precondition. `EntryActionability`
+currentness reuses `is_currently_usable(...)` verbatim. `PositionSizing`
+and `LivePlanSupervision` remain derived-only, no persistence, no schema
+change, engines unchanged — both to be reused via one shared composition
+function each (production `WorkflowStage` + new read service, no duplicate
+math). Full design, contracts, DTO shape, failure-semantics table, and test
+contract: `docs/research/ID-11-OWNER-FACING-INTRADAY-INTELLIGENCE.md`.
+
+**Files.** New: `docs/research/ID-11-OWNER-FACING-INTRADAY-INTELLIGENCE.md`.
+Zero source/schema/config/test/API/dashboard changes — design only.
+
+**Status.** **Owner/Chief Architect decision (2026-09-09): ID-11 OWNER
+APPROVED / DESIGN FROZEN.** Implementation NOT STARTED. No ID-11.1/ID-11A
+sub-milestone created.
+
+---
+
 ## EM-7D — Evidence Readiness, Settled-M5 Repair, and Statistical Readiness
 
 **Summary.** Continuation of EM-7D0's own accepted
