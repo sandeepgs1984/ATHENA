@@ -339,9 +339,7 @@ data-triage-filter / smart-group / unavailable-chip contracts remain.
 `docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`,
 `ATHENA_BRIEFING.md`, this file.
 
-**Status:** Implementation complete 2026-09-09; ready for Owner / Chief
-Architect review. Do not start another milestone until this scan UX is
-approved.
+**Status:** Owner/Chief Architect approved and closed 2026-09-11.
 
 ---
 

@@ -357,10 +357,11 @@ For every milestone:
 
 ## Suggested Next Owner Decision
 
-Review and approve MP-NX6C Morning Triage Scan UX.
+MP-NX6C Morning Triage Scan UX is Owner/Chief Architect approved and closed
+(2026-09-11).
 
-The 14-item next-level UX sequence remains complete (MP-NX1 through MP-NX6B).
-There is no MP-NX7.
+The 14-item next-level UX sequence is complete end to end (MP-NX1 through
+MP-NX6C). There is no MP-NX7.
 
 Authorize the next piece of work explicitly. Remaining My Portfolio options
 that still need their own authorization:

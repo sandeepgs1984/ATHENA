@@ -46,7 +46,7 @@ This roadmap covers the full 14-item next-level UX inventory:
 
 | Feature | Milestone | Notes |
 |---|---|---|
-| Portfolio Command Dashboard | MP-NX1 / MP-NX6C | Implemented 2026-09-07; MP-NX6C restacked the scan surface 2026-09-09 (four live metrics, collapsed Filters). |
+| Portfolio Command Dashboard | MP-NX1 / MP-NX6C | Implemented 2026-09-07; MP-NX6C restacked the scan surface 2026-09-09 (four live metrics, collapsed Filters) — Owner/Chief Architect approved and closed 2026-09-11. |
 | Action Queue View | MP-NX1 | Implemented 2026-09-07: dedicated actionable-holdings list scope over existing snapshot fields. |
 | Smart Filters | MP-NX1 | Implemented 2026-09-07: filter chips for review, trend, status, P&L state, evidence availability, and currentness. |
 | Change Since Last Sync | MP-NX2 | Owner/Chief Architect approved and closed 2026-09-07. |
