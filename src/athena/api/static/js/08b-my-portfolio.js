@@ -85,6 +85,9 @@
     const myPortfolioExportPresetPrivate = document.getElementById("my-portfolio-export-preset-private");
     const myPortfolioHoldingsTable = document.getElementById("my-portfolio-holdings-table");
     const myPortfolioHoldingsCard = document.querySelector(".my-portfolio-holdings-card");
+    const myPortfolioUploadPanel = document.getElementById("my-portfolio-upload-panel");
+    const myPortfolioUploadShortcut = document.getElementById("my-portfolio-upload-shortcut");
+    const myPortfolioUploadPanelClose = document.getElementById("my-portfolio-upload-panel-close");
     const myPortfolioHoldingsHeader = document.querySelector(".my-portfolio-holdings-card > .card-header");
     const myPortfolioHoldingsScroll = document.querySelector(".my-portfolio-holdings-scroll");
     const myPortfolioTheadDock = document.getElementById("my-portfolio-holdings-thead-dock");
@@ -145,6 +148,7 @@
         heatmapExpanded: false,
         triageFiltersExpanded: false,
         historyExpanded: false,
+        uploadPanelOpen: false,
         valuesHidden: (() => {
             try {
                 return window.localStorage.getItem("athena.myPortfolio.valuesHidden") === "true";
@@ -1799,7 +1803,7 @@
     function myPortfolioTriageEmptyMessage(totalCount) {
         if (!totalCount) return "No holdings imported yet. Upload Portfolio to begin.";
         if (myPortfolioState.triage.queueView && !myPortfolioTriageContext().hasSnapshot) {
-            return "Sync Existing Holdings to build the action queue.";
+            return "Sync Portfolio to build the action queue.";
         }
         const refining = myPortfolioState.triage.attention.length
             || Object.values(myPortfolioState.triage.smart).some(values => values.length);
@@ -1817,6 +1821,29 @@
             myPortfolioHoldingsCard?.scrollIntoView({ block: "start", behavior: "smooth", inline: "nearest" });
             scheduleMyPortfolioHoldingsScrollChrome();
         });
+    }
+
+    function setMyPortfolioUploadPanelOpen(open) {
+        myPortfolioState.uploadPanelOpen = Boolean(open);
+        const panel = myPortfolioUploadPanel;
+        if (panel) {
+            if (myPortfolioState.uploadPanelOpen) {
+                panel.removeAttribute("inert");
+                panel.style.height = `${panel.scrollHeight}px`;
+                window.requestAnimationFrame(() => panel.classList.add("open"));
+                window.setTimeout(() => {
+                    if (myPortfolioState.uploadPanelOpen) panel.style.height = "auto";
+                }, 340);
+            } else {
+                panel.style.height = `${panel.scrollHeight}px`;
+                panel.setAttribute("inert", "");
+                window.requestAnimationFrame(() => {
+                    panel.classList.remove("open");
+                    panel.style.height = "0px";
+                });
+            }
+        }
+        myPortfolioUploadShortcut?.setAttribute("aria-expanded", String(myPortfolioState.uploadPanelOpen));
     }
 
     function setMyPortfolioQueueView(queueView) {
@@ -1919,7 +1946,7 @@
                 : myPortfolioTriageContext().hasSnapshot
                     ? "No holdings currently need attention."
                     : totalCount
-                        ? "Sync Existing Holdings to generate the action queue."
+                        ? "Sync Portfolio to generate the action queue."
                         : "See what deserves attention before scanning the full book.";
         }
         myPortfolioCommandDashboard?.classList.toggle("queue-active", myPortfolioState.triage.queueView);
@@ -2320,7 +2347,7 @@
         if (myPortfolioSync) {
             myPortfolioSync.disabled = myPortfolioState.syncing;
             const label = myPortfolioSync.querySelector("span");
-            if (label) label.textContent = myPortfolioState.syncing ? "Syncing Portfolio" : "Sync Existing Holdings";
+            if (label) label.textContent = myPortfolioState.syncing ? "Syncing Portfolio" : "Sync Portfolio";
         }
         if (myPortfolioResetOpen) {
             myPortfolioResetOpen.disabled = myPortfolioState.syncing || myPortfolioState.previewing || myPortfolioState.confirming;
@@ -3768,6 +3795,10 @@
     document.getElementById("my-portfolio-triage-filters-toggle")?.addEventListener("click", () => {
         setMyPortfolioTriageFiltersExpanded(!myPortfolioState.triageFiltersExpanded);
     });
+    myPortfolioUploadShortcut?.addEventListener("click", () => {
+        setMyPortfolioUploadPanelOpen(!myPortfolioState.uploadPanelOpen);
+    });
+    myPortfolioUploadPanelClose?.addEventListener("click", () => setMyPortfolioUploadPanelOpen(false));
     document.getElementById("my-portfolio-review-start")?.addEventListener("click", startMyPortfolioReviewSession);
     document.getElementById("my-portfolio-review-prev")?.addEventListener("click", () => stepMyPortfolioReviewSession(-1));
     document.getElementById("my-portfolio-review-next")?.addEventListener("click", () => stepMyPortfolioReviewSession(1));

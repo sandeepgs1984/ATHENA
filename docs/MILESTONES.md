@@ -89,6 +89,23 @@ ScoringEngine/DecisionEngine methodology.
 | MP-NX6B | My Portfolio Review Session Mode — walk the current visible/sorted Morning triage list one holding at a time; persist owner `reviewed_at` / `deferred` marks on the existing notes row (schema 20) with IST `reviewed_today`; Start review / Previous / Reviewed today / Defer / Next / Exit; list chips Reviewed / Deferred; marks never change ATHENA Status, scores, or guidance; session walk state is not persisted | ✅ Owner/Chief Architect approved and closed 2026-09-08 — My Portfolio next-level UX track complete |
 | MP-NX6C | My Portfolio Morning Triage Scan UX — presentation-only restack of the NX1 command dashboard: four live attention metrics, Queue count on the list toggle, Start review in the header, Smart Filters collapsed behind Filters, unavailable Near Trigger / Near Support / Fresh Breakout moved to an honest footnote; no predicate, methodology, interpretation-version, or schema change | ✅ Owner/Chief Architect approved and closed 2026-09-11 |
 
+## My Portfolio Dashboard Revamp Track (MP-RV, authorized 2026-09-11, design: `docs/design/MY-PORTFOLIO-DASHBOARD-REVAMP.md`)
+
+Owner-authorized after a five-screenshot UX critique of the live page and a
+clickable-prototype design-canvas exploration; a full re-audit of the real
+production code found several of the original critique points already
+shipped by MP-NX1/MP-NX2/MP-NX6C (dropped from scope). Five small,
+presentation-only, independently reviewable milestones remain — one in
+flight at a time, never auto-continued.
+
+| ID | Scope | Status |
+|---|---|---|
+| MP-RV1 | Header actions restyled and reordered to match the clickable prototype pixel-for-pixel: Privacy (eye) → Export → Sync Portfolio (renamed) → Upload Holdings (promoted, accent-filled, opens the relocated Update Holdings panel with a smooth JS-driven height expand/collapse animation, no scroll jump, collapsed `inert` by default) → Reset (icon-only, moved last); zero change to the upload/preview/confirm pipeline's ids or logic | ✅ Owner/Chief Architect approved and closed 2026-09-11 |
+| MP-RV2 | Sticky in-page sub-nav (Overview / Triage / Risk & Heatmap / Holdings) over existing sections, click-to-scroll | ⏳ Planned |
+| MP-RV3 | Copy-only pass replacing leaked engineering-process phrasing ("Counts not invented:", "Server-owned holding math", export-panel copy) with owner-facing phrasing of the same meaning; add a triage-tiles overlap caption | ⏳ Planned |
+| MP-RV4 | Collapse up-to-four independent per-row change badges into one compact indicator with the detail reachable on hover; pin/note badges stay separate (owner-authored state, per MP-NX6's separation guardrail) | ⏳ Planned |
+| MP-RV5 | Route heatmap tile secondary-label text through the existing `--tone-good-text`/`--tone-warn-text`/`--tone-bad-text` tokens instead of flat `--text-muted`, for real contrast against tinted tile backgrounds | ⏳ Planned |
+
 ## Intraday Intelligence Track (ID-0 started 2026-08-29)
 
 **Source:** Owner assignment dated 2026-08-29

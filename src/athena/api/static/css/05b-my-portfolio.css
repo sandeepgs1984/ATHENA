@@ -36,6 +36,28 @@
     justify-content: flex-end;
 }
 
+.my-portfolio-actions .btn {
+    border-radius: 8px;
+}
+
+.my-portfolio-upload-shortcut {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #04222a;
+    font-weight: 700;
+    box-shadow: 0 0 0 1px var(--border-hover), 0 4px 14px var(--accent-glow);
+}
+
+.my-portfolio-upload-shortcut i {
+    color: #04222a;
+}
+
+.my-portfolio-upload-shortcut:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--border-hover), 0 6px 18px var(--accent-glow);
+}
+
 .my-portfolio-export-menu {
     position: relative;
 }
@@ -1245,17 +1267,62 @@
 
 .my-portfolio-secondary-grid {
     display: grid;
-    grid-template-columns: minmax(460px, 1.08fr) minmax(360px, 0.92fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-16);
     align-items: start;
 }
 
-.my-portfolio-upload-panel,
 .my-portfolio-history-panel {
     border-color: rgba(148, 163, 184, 0.16);
 }
 
-.my-portfolio-upload-panel .card-header,
+#my-portfolio-upload-panel {
+    height: 0;
+    margin-bottom: 0;
+    opacity: 0;
+    border-color: rgba(148, 163, 184, 0.16);
+    box-shadow: none;
+    transition:
+        height 0.32s ease,
+        opacity 0.26s ease,
+        margin-bottom 0.32s ease,
+        border-color 0.26s ease,
+        box-shadow 0.26s ease;
+}
+
+#my-portfolio-upload-panel.open {
+    margin-bottom: var(--space-16);
+    opacity: 1;
+    border-color: var(--border-hover);
+    box-shadow: 0 0 0 1px var(--accent-glow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #my-portfolio-upload-panel {
+        transition-duration: 0.01ms;
+    }
+}
+
+.my-portfolio-upload-panel .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-12);
+    padding-top: var(--space-16);
+    padding-bottom: var(--space-14);
+}
+
+.my-portfolio-upload-panel .card-header > div:first-child {
+    min-width: 0;
+}
+
+.my-portfolio-upload-panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-12);
+    flex: 0 0 auto;
+}
+
 .my-portfolio-history-panel .card-header {
     padding-top: var(--space-16);
     padding-bottom: var(--space-14);

@@ -6,6 +6,285 @@ status updated on approval.
 
 ---
 
+## MP-RV1 — My Portfolio Dashboard Revamp: Upload Holdings Header Shortcut
+
+**Objective.** First milestone of the newly-authorized My Portfolio
+Dashboard Revamp track (`docs/design/MY-PORTFOLIO-DASHBOARD-REVAMP.md`):
+fix the "Upload Holdings is buried one full scroll below the fold, not
+co-located with the header command-center actions" gap found in a
+2026-09-11 code audit, without touching the existing upload/preview/confirm
+pipeline at all.
+
+**Scope completed.** Added a promoted `"Upload Holdings"` button to the My
+Portfolio header actions row (leftmost, `btn-primary`), mirroring the
+already-shipped `#my-portfolio-review-start` → holdings-card pattern
+exactly: click → smooth-scroll the existing "Update Holdings" card into
+view → apply a 1.6s cyan glow highlight (`--accent-glow`/`--border-hover`
+tokens, `prefers-reduced-motion`-aware) so the destination is unmistakable.
+Zero change to the upload/preview/confirm pipeline, its DOM ids, or its
+JS functions — purely additive.
+
+**Files modified.**
+- `src/athena/api/static/index.html` — new header button; `id` added to
+  the existing `.my-portfolio-upload-panel` card so it can be targeted.
+- `src/athena/api/static/js/08b-my-portfolio.js` — one new DOM ref
+  (`myPortfolioUploadPanel`), one new function
+  (`scrollMyPortfolioUploadPanelIntoView`), one new click-listener
+  registration.
+- `src/athena/api/static/css/05b-my-portfolio.css` — `.jump-highlight`
+  keyframe animation + reduced-motion override.
+- `src/athena/api/static/index.html` — dashboard asset cache-buster bumped
+  `9.205.0` → `9.206.0` (both `dashboard.css`/`dashboard.js` links), per
+  the standing asset-version-bump convention.
+- `tests/api/platform/test_dashboard_hosting.py`,
+  `tests/api/platform/test_decision_chart_release_gate.py` — two
+  pre-existing hardcoded-dashboard-version assertions corrected
+  `9.205.0` → `9.206.0` (expected consequence of the version bump, not a
+  behavior change — same pattern ID-11 recorded for `9.204.0` → `9.205.0`).
+
+**Files created.** `docs/design/MY-PORTFOLIO-DASHBOARD-REVAMP.md` (the
+5-milestone MP-RV1–MP-RV5 design document).
+
+**Public APIs added.** None. No DTO, schema, methodology, or endpoint
+change.
+
+**Tests.** Full repository suite: **4014 passed, 1 pre-existing unrelated
+skip, 3 failed → 2 fixed in this milestone (the hardcoded version
+assertions above), 1 pre-existing and unrelated**
+(`tests/ops/test_macos_launcher.py::test_installer_builds_configured_app_bundle`,
+a macOS `.app` bundle installer test with zero shared files with this
+diff — confirmed unrelated by inspection, not investigated further since
+out of scope). Final state after the two corrections: relevant test files
+green (13/13 in the two corrected files); `ruff check` clean.
+
+**Live verification.** An isolated, throwaway verification server (separate
+port 8010, a disposable copy of `db/athena.db` under `ATHENA_DB_PATH`, a
+throwaway `ATHENA_OWNER_PASSWORD_HASH` via
+`python -m athena.cli set-owner-password` — the real production server on
+port 8000, PID 2258, was never touched, restarted, or queried for
+credentials) was exercised through a real browser:
+- The new button renders in the correct position with the correct label
+  ("Upload Holdings") ahead of Export/Privacy/Sync/Reset, confirmed via the
+  live accessibility tree.
+- Clicking it scrolls the "Update Holdings" card into the viewport
+  (confirmed via `getBoundingClientRect()` before/after) and applies the
+  `.jump-highlight` class with the designed cyan glow (confirmed via
+  `getComputedStyle` — `box-shadow: rgba(0, 242, 254, 0.15) 0px 0px 0px
+  ~3px`, `border-color: rgba(0, 242, 254, 0.3)`), which auto-clears after
+  1.6s (confirmed absent on a follow-up check).
+- Zero new console errors: one pre-existing, unrelated console error was
+  observed (`event.target.closest is not a function`, from an unrelated
+  decision-chart module's global click listener) — reproduced on a fresh
+  page load with zero interaction with My Portfolio, confirming it
+  predates this change; flagged as a background task
+  (`task_70873e91`), not fixed here (out of scope for MP-RV1).
+- Scratch DB copy and throwaway server torn down after verification; real
+  production server confirmed unaffected (same PID before/after).
+
+**Architecture / ADR compliance.** No architecture change. No order-
+placement code. No secrets outside `.env` (throwaway password hash used
+only as an env var for the disposable verification process, never written
+to `.env` or committed). Presentation-only, per the design document's
+non-goals.
+
+**Risks discovered.** None new. The pre-existing `event.target.closest`
+console error (above) was discovered incidentally, not introduced.
+
+**Technical debt introduced.** None.
+
+**Remaining work.** MP-RV2 (sticky in-page sub-nav) through MP-RV5
+(heatmap tile contrast) — not started, per the "one milestone in flight,
+never auto-continue" rule. Design for all five is already frozen in
+`docs/design/MY-PORTFOLIO-DASHBOARD-REVAMP.md`.
+
+**Suggested commit message** (not committed — AI does not run git actions
+unless explicitly asked):
+```
+feat(portfolio): promote Upload Holdings to a header shortcut (MP-RV1)
+
+- Add a header "Upload Holdings" button that smooth-scrolls to and
+  highlights the existing Update Holdings card, mirroring the shipped
+  Start-review header-shortcut pattern; zero change to the upload/
+  preview/confirm pipeline itself.
+- Bump the dashboard asset cache-buster (9.205.0 -> 9.206.0) and correct
+  the two tests that hardcode that version string.
+- Add docs/design/MY-PORTFOLIO-DASHBOARD-REVAMP.md, the 5-milestone
+  (MP-RV1-MP-RV5) design document for this track, and record MP-RV1's
+  status in docs/MILESTONES.md and this log.
+
+Per docs/design/MY-PORTFOLIO-DASHBOARD-REVAMP.md, Owner-authorized
+2026-09-11 after a five-screenshot UX critique and clickable-prototype
+review.
+```
+
+**Status.** Implementation complete, self-validated, ready for
+Owner/Chief Architect review. Not yet marked approved/closed.
+
+**Correction round (same day, same milestone, no MP-RV1.1 created).** The
+owner reviewed the shipped scroll-and-highlight approach and asked for a
+"pixel by pixel" match to the clickable-prototype design instead — the
+prototype opens an inline panel directly under the header, not a jump to
+an unchanged, buried card. Revised MP-RV1 to actually relocate the
+existing "Update Holdings" card:
+
+- **Moved** `#my-portfolio-upload-panel` in `index.html` from inside
+  `.my-portfolio-secondary-grid` (buried below the holdings table) to
+  directly after the `#my-portfolio-alert` banner and before the KPI
+  strip — matching the prototype's header → upload-panel → overview
+  ordering. `.my-portfolio-secondary-grid` now holds only the History
+  ("Recent Imports") panel; its CSS changed from a 2-column grid to a
+  single column accordingly.
+- **Behavior change (deliberate, not silent):** the panel is now `hidden`
+  by default (was always visible) and opens/closes via the header
+  "Upload Holdings" button (`aria-expanded`/`aria-controls` wired) or a
+  new in-panel close (✕) button — mirroring the prototype's `uploadOpen`
+  toggle state exactly. `setMyPortfolioUploadPanelOpen(open)` replaces
+  the prior `scrollMyPortfolioUploadPanelIntoView`; new
+  `myPortfolioState.uploadPanelOpen` field (mirrors the existing
+  `historyExpanded`/`triageFiltersExpanded` state-field pattern).
+- **Zero change** to the upload/preview/confirm pipeline's ids, markup
+  structure, or JS functions — the exact same card content (3-step flow,
+  file input, inline preview, confirm actions) was relocated verbatim,
+  not rebuilt, so every existing wiring (`setMyPortfolioUploadStage`,
+  `renderMyPortfolioPreview`, etc.) is untouched.
+- **CSS:** the old temporary `.jump-highlight` pulse-and-fade animation
+  (no longer applicable once the panel doesn't need "finding" via a long
+  scroll) was replaced with a persistent open-state treatment while
+  visible — `border-color: var(--border-hover)` + a 1px `--accent-glow`
+  ring, plus a brief 0.3s open-in fade/slide, `prefers-reduced-motion`-aware.
+- **Tests corrected:** `tests/api/platform/test_dashboard_hosting.py`'s
+  DOM-order assertions for the My Portfolio tab updated to match the new
+  structure (alert < upload-panel < KPI-strip < holdings-card <
+  secondary-grid, upload-panel asserted `hidden` by default) — an
+  expected consequence of the deliberate relocation, not a regression.
+  Dashboard asset version bumped again, `9.206.0` → `9.207.0` (same
+  convention, same two test files' hardcoded assertions corrected again).
+- **Tests:** full suite **4016 passed**, 1 pre-existing unrelated skip, 1
+  pre-existing unrelated failure (the same macOS installer test flagged
+  in the original MP-RV1 entry, still unrelated — confirmed via
+  `git diff` hunk boundaries that no line touched by this correction
+  falls anywhere near it). `ruff check` clean (one genuine E501 from this
+  correction's own new line fixed; two pre-existing, untouched E501
+  violations elsewhere in the same test file left alone, out of scope).
+- **Live-verified** against a second isolated throwaway server (same
+  established pattern: separate port 8011, disposable DB copy, throwaway
+  password — production port 8000/PID 2258 confirmed unaffected
+  before/after): panel hidden on load, correct DOM order
+  (`compareDocumentPosition` proof), opens with the exact designed
+  `box-shadow`/`border-color` on click, closes via the new ✕ button,
+  `.my-portfolio-secondary-grid` correctly renders as a single column
+  holding just the history panel, zero console errors.
+
+**Second correction round (same day, same milestone, no MP-RV1.2
+created).** The owner reported the `scrollIntoView` call on open was a bad
+experience (an unwanted scroll jump every time) and asked for it to be
+removed in favor of a smooth expand/collapse animation instead of the
+instant `hidden` toggle.
+
+- Removed the `scrollIntoView` call entirely — opening the panel no
+  longer moves the page.
+- Replaced the instant `hidden`-attribute show/hide with a real animated
+  expand/collapse. First attempt used the CSS `grid-template-rows: 0fr
+  <-> 1fr` trick, but empirical testing (see below) found it collapsed to
+  0 in BOTH states on this markup — grid items with non-visible overflow
+  get CSS Grid's "automatic minimum size: 0" rule applied to their
+  max-content contribution too, so the `1fr` track never gained real
+  height. Replaced with the standard, more robust technique instead:
+  explicit pixel-height transitions driven from JS
+  (`element.scrollHeight`, which correctly reports true content height
+  even while the element is visually clipped at `height:0` — the element
+  is never `display:none`/`hidden`, just height-clipped), settling to
+  `height:auto` once fully open so later content growth (e.g. an inline
+  preview appearing) isn't stuck at a stale pixel value. Closing first
+  pins the current pixel height (no jump from `auto`), then animates to
+  0 on the next frame. `inert` (not `hidden`) now marks the collapsed
+  state, added/removed in step with the animation, so the panel stays
+  keyboard/AT-inert while collapsed without needing `display:none`
+  (which would block the CSS transition).
+- `#my-portfolio-upload-panel` test assertion corrected from `hidden` to
+  `inert` (`tests/api/platform/test_dashboard_hosting.py`); comment
+  updated from "hidden by default" to "collapsed (inert, zero height) by
+  default."
+- Dashboard asset version bumped again, `9.207.0` → `9.208.0`, both
+  hardcoded test assertions corrected again.
+- **Live-verified** against a third isolated throwaway server — this
+  time against a brand-new, unpopulated `ATHENA_DB_PATH` (no copy of the
+  real 5.7 GB `db/athena.db`, since the real machine's disk was found to
+  be at 99% capacity with only ~8 GB free; repeatedly copying the full
+  production DB for verification was an unnecessary, avoidable risk to
+  the owner's disk headroom once discovered — this and all future
+  presentation-only verifications on this machine should default to a
+  fresh empty DB path unless the milestone specifically needs real data).
+  Sampled the panel's rendered height every ~40ms through the full
+  transition: opening ran smoothly 2px → 17 → 83 → 157 → 206 → 237 → 256
+  → 266 → 269 → 271px (then settled to `auto`); closing ran smoothly
+  269 → 252 → 199 → 123 → 70 → 36 → 16 → 4 → 2px, with `inert` reapplied
+  at completion — genuine eased animation in both directions, not an
+  instant jump. Zero console errors attributable to this change (a
+  handful of expected 503s came from the fresh empty DB having no My
+  Portfolio state yet, unrelated to the animation).
+- Tests: full suite **4016 passed**, 1 pre-existing unrelated failure
+  (same macOS installer test); `ruff check` clean (same two pre-existing,
+  untouched E501 lines elsewhere in the same test file, unrelated).
+
+**Third correction round (same day, same milestone, no MP-RV1.3
+created).** The owner attached a screenshot of the prototype's exact
+header button treatment and asked for the real header to match it
+pixel-for-pixel (placement, style, text), plus asked to keep the Reset
+button (not shown in the prototype crop) styled consistently — then,
+mid-turn, to move Reset to the very end and make it icon-only.
+
+- **Discovered `.btn-primary` does not exist anywhere in the CSS** — every
+  button already using that class app-wide (Start review, Download
+  Export, Confirm & Sync Portfolio, the first-pass Upload Holdings
+  button) has always rendered as a plain dark button, never actually
+  "primary"-colored. Rather than adding a global `.btn-primary` rule
+  (which would ripple a new look onto every one of those unrelated
+  buttons across the whole dashboard, far outside this milestone's
+  scope), scoped the accent-glow treatment to a new
+  `.my-portfolio-upload-shortcut` class used only by this one button.
+- **Reordered** the header actions to: Privacy (eye, icon-only) → Export →
+  Sync Portfolio → **Upload Holdings** (promoted, rightmost, solid
+  `var(--accent)` fill + glow, matching the attached mock exactly) →
+  **Reset** (icon-only, moved to the very end, danger-tinted, same pill
+  shape as the others).
+- **Renamed** the Sync button's label from "Sync Existing Holdings" to
+  "Sync Portfolio" everywhere it appears — the static markup, the
+  render function that overwrites it at runtime
+  (`renderMyPortfolioActionsState` in `08b-my-portfolio.js`, which would
+  otherwise have silently reverted an HTML-only rename), and two
+  instructional copy strings that referenced the old button name
+  (`myPortfolioTriageEmptyMessage`, `renderMyPortfolioTriage`).
+- Added a scoped `.my-portfolio-actions .btn { border-radius: 8px; }`
+  rule (only these five header buttons, not the global `.btn` used
+  everywhere else) to match the mock's more rounded corners.
+- Reset changed from `<button>...<span>Reset</span></button>` to
+  icon-only (`btn-icon` class, `aria-label` added since the visible text
+  is gone) — confirmed no JS reads/writes a text span inside it (only
+  `.disabled` is toggled).
+- Dashboard asset version bumped again, `9.208.0` → `9.209.0`, both
+  hardcoded test assertions corrected; three "Sync Existing Holdings"
+  test assertions corrected to "Sync Portfolio" in
+  `tests/api/platform/test_dashboard_hosting.py`.
+- **Live-verified** against a fourth isolated throwaway server (fresh
+  empty DB again): read every header button's computed
+  background/color/border-radius directly — Privacy/Export/Sync render
+  as dark pills (`rgba(255,255,255,0.05)`, 8px radius); Upload Holdings
+  renders solid `rgb(0, 242, 254)` fill with dark `rgb(4, 34, 42)` text;
+  Reset renders icon-only with `rgb(252, 165, 165)` danger-tinted text,
+  positioned last; clicking Reset still correctly opens the reset
+  confirmation modal (no regression from removing its text span). Zero
+  console errors attributable to this change (one expected 404 from the
+  fresh empty DB having no snapshot yet).
+- Tests: full suite run once more to confirm the final state; production
+  server (port 8000, PID 2258) confirmed unaffected throughout.
+
+**Status.** Full suite: **4016 passed, 1 pre-existing unrelated failure**
+(macOS installer test). **Owner/Chief Architect decision (2026-09-11):
+MP-RV1 OWNER APPROVED / CLOSED.**
+
+---
+
 ## ID-11 — Owner-Facing Intraday Intelligence Integration (source-review correction)
 
 **Summary.** Owner/Chief Architect source review of the ID-11 implementation

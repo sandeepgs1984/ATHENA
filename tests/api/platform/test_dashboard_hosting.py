@@ -303,8 +303,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.205.0" in html
-    assert "dashboard.js?v=9.205.0" in html
+    assert "dashboard.css?v=9.209.0" in html
+    assert "dashboard.js?v=9.209.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -361,7 +361,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Choose Holdings File" in html
     assert html.count("Choose Holdings File") == 1
     assert 'id="my-portfolio-sync" class="btn" type="button"' in html
-    assert "Sync Existing Holdings" in html
+    assert "Sync Portfolio" in html
     assert 'id="my-portfolio-reset-open"' in html
     assert 'id="my-portfolio-reset-modal"' in html
     assert "Delete My Portfolio" in html
@@ -478,21 +478,25 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Private Sharing" in html
     assert 'id="my-portfolio-mini-profile"' in html
     assert 'class="my-portfolio-secondary-grid"' in html
-    assert 'class="card my-portfolio-upload-panel"' in html
+    assert 'id="my-portfolio-upload-panel" class="card my-portfolio-upload-panel" inert' in html
     assert 'class="card my-portfolio-history-panel"' in html
     assert 'class="card-header my-portfolio-history-header"' in html
     assert 'class="my-portfolio-history-actions"' in html
     assert 'id="my-portfolio-history-toggle"' in html
     assert 'id="my-portfolio-history-body" class="card-body" hidden' in html
-    assert html.find('id="my-portfolio-alert"') < html.find('class="my-portfolio-summary my-portfolio-kpi-strip"')
+    # Upload panel is promoted next to the header (MP-RV1 revision): collapsed
+    # (inert, zero height) by default, expanded via a smooth animation when
+    # the header shortcut button is clicked, positioned before the KPI strip
+    # and the holdings card rather than buried in the secondary grid.
+    assert html.find('id="my-portfolio-alert"') < html.find('id="my-portfolio-upload-panel"')
+    assert html.find('id="my-portfolio-upload-panel"') < html.find(
+        'class="my-portfolio-summary my-portfolio-kpi-strip"'
+    )
     assert html.find('class="my-portfolio-summary my-portfolio-kpi-strip"') < html.find(
         'class="card my-portfolio-holdings-card"'
     )
     assert html.find('class="card my-portfolio-holdings-card"') < html.find(
         'class="my-portfolio-secondary-grid"'
-    )
-    assert html.find('class="card my-portfolio-upload-panel"') > html.find(
-        'class="card my-portfolio-holdings-card"'
     )
     assert "Confirm &amp; sync" in html
     assert "ATHENA replaces holdings, then refreshes analysis automatically." in html
@@ -886,7 +890,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'status === "CAUTION"' in js
     assert 'filterId === "near_trigger"' in js
     assert "No new distance threshold was invented." in html
-    assert "Sync Existing Holdings to build the action queue." in js
+    assert "Sync Portfolio to build the action queue." in js
     assert "No holdings need attention." in js
     assert "No holdings match the current triage filters." in js
     assert "Showing all ${formatMyPortfolioNumber(visibleCount)} holdings." in js
@@ -999,7 +1003,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Confirm & Sync will replace holdings and refresh analysis in one step" in js
     assert "Starting Portfolio Sync now" in js
     assert "Portfolio updated and synced. Choose another holdings file to update again." in js
-    assert "Sync Existing Holdings" in js
+    assert "Sync Portfolio" in js
     assert 'myPortfolioPreviewOpen?.addEventListener("click", () => openModal(myPortfolioPreview))' in js
     assert 'myPortfolioPreviewClose?.addEventListener("click", () => closeModal(myPortfolioPreview))' in js
     assert "function myPortfolioPreviewIssueSummary(preview)" in js
