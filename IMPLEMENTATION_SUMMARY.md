@@ -6,6 +6,42 @@ status updated on approval.
 
 ---
 
+## MP-RV4 — Compact Row Change Indicators
+
+**Objective.** Reduce holdings-row badge clutter without losing sync-change
+reasons, per the approved dashboard-revamp roadmap. MP-RV3 was explicitly
+Owner approved/closed on 2026-09-12; MP-RV4 authorized next.
+
+**Scope completed.** Replace repeated row change badges with one N changes
+indicator. Hover title and accessible label preserve every existing displayed
+reason after privacy masking and HTML escaping. Singular/empty behavior is
+explicit. Keyboard focus is visible. Full detail/timeline reasons, pins,
+owner notes and queue reasons remain separate and unchanged.
+
+**Files.** Modified portfolio JS/CSS, index and stylesheet cache keys, two
+hosting/version test files, revamp design, milestones, handoff and this log.
+Created `tests/api/platform/test_portfolio_change_indicator.py` with a direct
+Node execution test for four-reason preservation, empty/singular cases,
+privacy masking, escaping and owner-badge separation. No public APIs added.
+
+**Validation.** Full suite: 4019 passed, one existing macOS launcher failure
+(`test_installer_builds_configured_app_bundle`), 111.15s. Direct four-reason
+preservation test, new-test Ruff and JavaScript syntax pass.
+Live authenticated UI validation remains pending. Prior unrelated macOS
+launcher failure and hosting-test E501 findings are not changed by this work.
+
+**Compliance and risks.** Presentation-only under ATHENA-002 reporting
+boundary; no DTO/schema/configuration, provider, financial calculation,
+methodology, replay or determinism changes. No ADR or new dependency needed.
+Native title is a desktop hover affordance; touch users retain the existing
+symbol-detail route to full reasons. No module-map change or new technical
+debt. MP-RV4 ready for Owner review with the existing gate failure disclosed.
+MP-RV5 remains pending MP-RV4 Owner approval, not started.
+
+**Commit message.** `fix(portfolio): condense row changes without losing reasons`
+
+---
+
 ## MP-RV3 — My Portfolio Dashboard Revamp: Copy and Filter Navigation
 
 **Objective and scope.** Continue the approved revamp after the latest
@@ -69,9 +105,9 @@ issues. Production runtime was not restarted or mutated.
 **Architecture and review.** Presentation-only per ATHENA-002 reporting
 boundary and the revamp design. No public API, DTO, schema, methodology,
 interpretation, configuration, determinism, or replay changes. No ADR or
-technical debt introduced. MP-RV3 ready for Owner review with the existing
-validation failures disclosed;
-MP-RV4 and MP-RV5 remain planned. Git inspection was explicitly requested;
+technical debt introduced. MP-RV3 Owner approved and closed 2026-09-12 with
+the existing validation failures disclosed; MP-RV4 authorized next.
+Git inspection was explicitly requested during MP-RV3;
 no git mutation or commit performed.
 
 **Commit message.** `fix(portfolio): keep triage filters in place with explicit navigation`

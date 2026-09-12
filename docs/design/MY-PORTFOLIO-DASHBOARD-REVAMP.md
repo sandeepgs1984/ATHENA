@@ -1,7 +1,7 @@
 # My Portfolio Dashboard Revamp
 
-**Status: MP-RV1 and MP-RV2 Owner/Chief Architect approved and closed
-(2026-09-11 and 2026-09-12). MP-RV3 implemented and ready for Owner review.**
+**Status: MP-RV1, MP-RV2 and MP-RV3 Owner/Chief Architect approved and closed
+(2026-09-11 and 2026-09-12). MP-RV4 ready for Owner review.**
 Authorized after the 14-item Next-Level UX roadmap closed with MP-NX6C
 (`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`). This is a **new**,
 separately-authorized track — not a reopening of Portfolio Intelligence V2
@@ -114,7 +114,19 @@ overlap caption are complete, with all unavailable filter keys/disabled
 states and private-export disclosure preserved. Static browser preview
 verified text wrapping. Full suite after navigation extension: 4018 passed, one pre-existing macOS
 launcher failure; three pre-existing hosting-test E501 lint findings remain.
-Assets: 9.228.0. Owner approval pending; MP-RV4/MP-RV5 not started.
+MP-RV3 approved and closed 2026-09-12. MP-RV4 authorized next; MP-RV5 not started.
+
+MP-RV4: only the holdings-row change-badge renderer is condensed. Zero
+reasons render nothing, one renders "1 change", and multiple render "N changes".
+All existing reasons (except the already-excluded Removed holding label) remain
+in the escaped native hover title and accessible label. Keyboard focus has a
+visible outline; full reasons remain in the existing symbol detail/timeline.
+Private P&L amounts are masked before both labels are built. Pins, owner notes,
+queue reasons, comparison logic and detail rendering are untouched. Asset
+cache keys advance together to 9.229.0. Direct renderer tests compare all four
+original reasons, singular/empty cases, privacy masking and HTML escaping.
+Validation: 4019 tests passed; one pre-existing macOS launcher failure remains.
+New-test lint and JS syntax pass. Live UI validation pending; MP-RV5 not started.
 
 Owner-authorized navigation extension (2026-09-12): changing filters never
 requests a scroll or moves keyboard focus. The existing expanded filter panel

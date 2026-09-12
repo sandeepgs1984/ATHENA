@@ -1034,6 +1034,18 @@
     margin-top: 2px;
 }
 
+.my-portfolio-change-count {
+    min-height: 22px;
+    padding: 3px 8px;
+    font-variant-numeric: tabular-nums;
+    cursor: help;
+}
+
+.my-portfolio-change-count:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 .my-portfolio-change-delta {
     color: var(--text-primary);
     font-variant-numeric: tabular-nums;

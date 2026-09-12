@@ -1385,9 +1385,10 @@
         const change = myPortfolioChangeForRow(row);
         const badges = (change?.badges || []).filter(badge => badge !== "Removed holding");
         if (!badges.length) return "";
-        return `<span class="my-portfolio-change-badges">${badges.map(badge =>
-            `<span class="my-portfolio-change-badge">${escapeMyPortfolioHtml(myPortfolioDisplayChangeBadge(badge))}</span>`
-        ).join("")}</span>`;
+        const label = `${badges.length} change${badges.length === 1 ? "" : "s"}`;
+        const reasons = badges.map(badge => myPortfolioDisplayChangeBadge(badge)).join("; ");
+        const description = escapeMyPortfolioHtml(`${label}: ${reasons}`);
+        return `<span class="my-portfolio-change-badges"><span class="my-portfolio-change-badge my-portfolio-change-count" tabindex="0" role="img" title="${description}" aria-label="${description}">${label}</span></span>`;
     }
 
     function myPortfolioChangeFieldValueHtml(field, side) {

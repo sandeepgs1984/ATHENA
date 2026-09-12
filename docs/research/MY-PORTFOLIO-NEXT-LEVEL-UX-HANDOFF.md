@@ -100,6 +100,10 @@ header and aborting Portfolio Sync refresh.
   Trend and Setup have distinct labels: selections across those groups
   combine with AND. Daily Review includes Review / Hold Tight via its
   existing predicate. Zero-count tiles remain readable and actionable.
+  MP-RV3 is Owner approved/closed. MP-RV4 condenses row-level sync changes
+  to N changes, preserving all privacy-safe reasons in title/accessibility
+  text and full symbol details. Pins/notes remain separate. Assets 9.229.0;
+  MP-RV4 review pending, MP-RV5 must not start without approval.
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.
