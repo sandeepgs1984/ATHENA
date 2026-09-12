@@ -114,7 +114,7 @@ overlap caption are complete, with all unavailable filter keys/disabled
 states and private-export disclosure preserved. Static browser preview
 verified text wrapping. Full suite after navigation extension: 4018 passed, one pre-existing macOS
 launcher failure; three pre-existing hosting-test E501 lint findings remain.
-Assets: 9.226.0. Owner approval pending; MP-RV4/MP-RV5 not started.
+Assets: 9.228.0. Owner approval pending; MP-RV4/MP-RV5 not started.
 
 Owner-authorized navigation extension (2026-09-12): changing filters never
 requests a scroll or moves keyboard focus. The existing expanded filter panel
@@ -128,6 +128,25 @@ Start review and section navigation retain their existing explicit behavior.
 No scroll geometry, filter predicates, financial methodology or API changes.
 Behavior regression coverage executes the production handlers with Node and
 isolated DOM dependencies, including empty results and pinned exceptions.
+
+Owner reference-mock refinement (2026-09-12, within MP-RV3): four quiet
+tiles use orange/red/blue/neutral counts and matching dots, with pill-shaped
+scope and filter controls. Status and Currentness are always visible;
+More/Fewer filters exposes a three-column advanced grid (two/one columns
+on smaller viewports). Trend and Setup share visual space but retain their
+separate predicates; Breakdown remains available. View Holdings (x) is the
+cyan-filled primary header action; Start review is secondary. Live result
+feedback and Clear sit below the filters. Quick filters do not open the
+advanced grid. No new criteria or synthetic counts are introduced.
+
+Production screenshot audit (2026-09-12): zero-count tiles use readable
+neutral tones rather than whole-tile opacity; quick-filter labels center
+against their pills; header action buttons share a 40px minimum height.
+Daily Review now exposes the existing REVIEW_HOLD_TIGHT predicate alongside
+Hold Strong/Hold. Trend and Setup have distinct subgroup labels because
+their predicates combine with AND, unlike choices within one group. No
+predicate or methodology was changed. Regression coverage executes both
+the restored Daily Review choice and cross-group conjunction semantics.
 
 - No change to Status / Conviction / Trend / Setup / Daily Review / Next
   Action / Structural Review / EXIT_RISK methodology, or any interpretation

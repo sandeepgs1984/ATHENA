@@ -93,7 +93,13 @@ header and aborting Portfolio Sync refresh.
   scrolling: attention filters, Smart Filters, All/Queue and Clear update
   in place. View holdings explicitly navigates with a live displayed count;
   the status announces matching rows and separate pinned exceptions. Empty
-  displayed results disable navigation, not Clear. Assets now `9.226.0`.
+  displayed results disable navigation, not Clear. Assets now `9.228.0`.
+  Reference-mock styling keeps Status/Currentness visible, moves the remaining
+  filters to More/Fewer filters, and highlights View Holdings in the header.
+  Quick filters must not auto-expand advanced filters or auto-scroll.
+  Trend and Setup have distinct labels: selections across those groups
+  combine with AND. Daily Review includes Review / Hold Tight via its
+  existing predicate. Zero-count tiles remain readable and actionable.
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.

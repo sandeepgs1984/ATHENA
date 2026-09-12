@@ -1069,7 +1069,9 @@
         if (!toggle) return;
         toggle.setAttribute("aria-expanded", String(expanded));
         const label = toggle.querySelector("span");
-        if (label) label.textContent = expanded ? "Hide filters" : "Filters";
+        if (label) label.textContent = expanded ? "Fewer filters" : "More filters";
+        const icon = toggle.querySelector("i");
+        if (icon) icon.className = `fa-solid fa-chevron-${expanded ? "up" : "down"}`;
     }
 
     function setMyPortfolioTriageFiltersExpanded(expanded) {
@@ -1961,7 +1963,7 @@
         if (current.has(value)) current.delete(value);
         else current.add(value);
         myPortfolioState.triage.smart[group] = [...current];
-        if (current.size && !myPortfolioState.triageFiltersExpanded) {
+        if (current.size && group !== "status" && group !== "currentness" && !myPortfolioState.triageFiltersExpanded) {
             setMyPortfolioTriageFiltersExpanded(true);
         }
         renderMyPortfolioHoldings(myPortfolioSourceRows());

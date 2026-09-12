@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.226.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.228.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -680,6 +680,7 @@
                                 <div>
                                     <h3 id="my-portfolio-triage-heading">Morning triage</h3>
                                     <p id="my-portfolio-triage-lead" class="metric-desc">See what deserves attention before scanning the full book.</p>
+                                    <p class="metric-desc my-portfolio-triage-overlap">A holding can appear in more than one category.</p>
                                 </div>
                                 <div class="my-portfolio-triage-header-actions">
                                     <div class="my-portfolio-queue-toolbar" aria-label="Holdings list scope">
@@ -688,7 +689,11 @@
                                             <button id="my-portfolio-queue-only" class="btn btn-secondary btn-sm" type="button" aria-pressed="false" aria-label="Action Queue" data-triage-filter="needs_review" data-triage-available="true" title="Action Queue: Status Caution/At Risk, Next Action Exit/Watch/Add, Review / Hold Tight, or Exit Risk.">Queue <strong id="my-portfolio-triage-count-needs_review" class="my-portfolio-queue-count">0</strong></button>
                                         </div>
                                     </div>
-                                    <button id="my-portfolio-review-start" class="btn btn-primary btn-sm" type="button">Start review</button>
+                                    <button id="my-portfolio-review-start" class="btn btn-secondary btn-sm" type="button">Start review <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+                                    <button id="my-portfolio-view-holdings" class="btn btn-primary btn-sm" type="button" disabled>
+                                        <span>View Holdings (<span id="my-portfolio-view-holdings-count">0</span>)</span>
+                                        <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
+                                    </button>
                                 </div>
                             </div>
                             <div class="my-portfolio-triage-attention" role="toolbar" aria-label="Attention counts">
@@ -700,7 +705,7 @@
                                     <strong id="my-portfolio-triage-count-exit_risk">0</strong>
                                     <span>Exit Risk</span>
                                 </button>
-                                <button type="button" class="my-portfolio-triage-chip tone-warning" data-triage-filter="stale_data" data-triage-available="true" title="Snapshot currentness is stale or unknown, or the row carries STALE provenance.">
+                                <button type="button" class="my-portfolio-triage-chip tone-accent" data-triage-filter="stale_data" data-triage-available="true" title="Snapshot currentness is stale or unknown, or the row carries STALE provenance.">
                                     <strong id="my-portfolio-triage-count-stale_data">0</strong>
                                     <span>Stale Data</span>
                                 </button>
@@ -709,24 +714,7 @@
                                     <span>Evidence gap</span>
                                 </button>
                             </div>
-                            <p class="metric-desc">A holding can appear in more than one category.</p>
-                            <div class="my-portfolio-triage-footer">
-                                <p id="my-portfolio-triage-summary" role="status" aria-live="polite" aria-atomic="true">Showing all holdings.</p>
-                                <div class="my-portfolio-triage-footer-actions">
-                                    <button id="my-portfolio-triage-filters-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="false" aria-controls="my-portfolio-smart-filters-panel">
-                                        <i class="fa-solid fa-sliders" aria-hidden="true"></i>
-                                        <span>Filters</span>
-                                        <strong id="my-portfolio-triage-filter-count" class="my-portfolio-triage-filter-count" hidden>0</strong>
-                                    </button>
-                                    <button id="my-portfolio-triage-clear" class="btn btn-sm" type="button" hidden>Clear</button>
-                                    <button id="my-portfolio-view-holdings" class="btn btn-secondary btn-sm" type="button" disabled>
-                                        <span>View holdings (<span id="my-portfolio-view-holdings-count">0</span>)</span>
-                                        <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div id="my-portfolio-smart-filters-panel" class="my-portfolio-smart-filters-panel collapsed" hidden>
-                                <div class="my-portfolio-smart-filters" aria-label="Smart filters">
+                            <div class="my-portfolio-triage-quick-filters">
                                     <div class="my-portfolio-smart-filter-group" data-smart-group="status">
                                         <span>Status</span>
                                         <div class="my-portfolio-smart-filter-options">
@@ -736,11 +724,28 @@
                                             <button type="button" class="my-portfolio-smart-chip" data-smart-group="status" data-smart-value="AT_RISK">At Risk</button>
                                         </div>
                                     </div>
+                                    <div class="my-portfolio-smart-filter-group" data-smart-group="currentness">
+                                        <span>Currentness</span>
+                                        <div class="my-portfolio-smart-filter-options">
+                                            <button type="button" class="my-portfolio-smart-chip" data-smart-group="currentness" data-smart-value="CURRENT">Current</button>
+                                            <button type="button" class="my-portfolio-smart-chip" data-smart-group="currentness" data-smart-value="STALE">Stale</button>
+                                            <button type="button" class="my-portfolio-smart-chip" data-smart-group="currentness" data-smart-value="UNKNOWN">Unknown</button>
+                                        </div>
+                                    </div>
+                                    <button id="my-portfolio-triage-filters-toggle" class="btn btn-sm" type="button" aria-expanded="false" aria-controls="my-portfolio-smart-filters-panel">
+                                        <span>More filters</span>
+                                        <strong id="my-portfolio-triage-filter-count" class="my-portfolio-triage-filter-count" hidden>0</strong>
+                                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                    </button>
+                            </div>
+                            <div id="my-portfolio-smart-filters-panel" class="my-portfolio-smart-filters-panel collapsed" hidden>
+                                <div class="my-portfolio-smart-filters" aria-label="Smart filters">
                                     <div class="my-portfolio-smart-filter-group" data-smart-group="daily_review">
                                         <span>Daily Review</span>
                                         <div class="my-portfolio-smart-filter-options">
                                             <button type="button" class="my-portfolio-smart-chip" data-smart-group="daily_review" data-smart-value="HOLD_STRONG">Hold Strong</button>
                                             <button type="button" class="my-portfolio-smart-chip" data-smart-group="daily_review" data-smart-value="HOLD">Hold</button>
+                                            <button type="button" class="my-portfolio-smart-chip" data-smart-group="daily_review" data-smart-value="REVIEW_HOLD_TIGHT">Review / Hold Tight</button>
                                         </div>
                                     </div>
                                     <div class="my-portfolio-smart-filter-group" data-smart-group="next_action">
@@ -752,6 +757,7 @@
                                             <button type="button" class="my-portfolio-smart-chip" data-smart-group="next_action" data-smart-value="HOLD">Hold</button>
                                         </div>
                                     </div>
+                                    <div class="my-portfolio-trend-setup-filters">
                                     <div class="my-portfolio-smart-filter-group" data-smart-group="trend">
                                         <span>Trend</span>
                                         <div class="my-portfolio-smart-filter-options">
@@ -767,20 +773,13 @@
                                             <button type="button" class="my-portfolio-smart-chip" data-smart-group="setup" data-smart-value="BREAKDOWN">Breakdown</button>
                                         </div>
                                     </div>
+                                    </div>
                                     <div class="my-portfolio-smart-filter-group" data-smart-group="pnl">
                                         <span>P&amp;L</span>
                                         <div class="my-portfolio-smart-filter-options">
                                             <button type="button" class="my-portfolio-smart-chip" data-smart-group="pnl" data-smart-value="winner">Winner</button>
                                             <button type="button" class="my-portfolio-smart-chip" data-smart-group="pnl" data-smart-value="loser">Loser</button>
                                             <button type="button" class="my-portfolio-smart-chip" data-smart-group="pnl" data-smart-value="unpriced">Unpriced</button>
-                                        </div>
-                                    </div>
-                                    <div class="my-portfolio-smart-filter-group" data-smart-group="currentness">
-                                        <span>Currentness</span>
-                                        <div class="my-portfolio-smart-filter-options">
-                                            <button type="button" class="my-portfolio-smart-chip" data-smart-group="currentness" data-smart-value="CURRENT">Current</button>
-                                            <button type="button" class="my-portfolio-smart-chip" data-smart-group="currentness" data-smart-value="STALE">Stale</button>
-                                            <button type="button" class="my-portfolio-smart-chip" data-smart-group="currentness" data-smart-value="UNKNOWN">Unknown</button>
                                         </div>
                                     </div>
                                     <div class="my-portfolio-smart-filter-group" data-smart-group="evidence">
@@ -790,13 +789,19 @@
                                             <button type="button" class="my-portfolio-smart-chip" data-smart-group="evidence" data-smart-value="structural">Structural</button>
                                         </div>
                                     </div>
-                                </div>
                                 <p class="my-portfolio-triage-unavailable-note">
-                                    Not available:
+                                    <span>Not available:</span>
                                     <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="near_trigger" data-triage-available="false" disabled title="Unavailable: proximity to a trigger is not currently assessed.">Near Trigger</button>
                                     <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="near_support" data-triage-available="false" disabled title="Unavailable: proximity to support is not currently assessed.">Near Support</button>
                                     <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="fresh_breakout" data-triage-available="false" disabled title="Unavailable: breakout freshness is not currently assessed. Opening Range Setup Breakout is available in Smart Filters.">Fresh Breakout</button>
                                 </p>
+                                </div>
+                            </div>
+                            <div class="my-portfolio-triage-footer">
+                                <p id="my-portfolio-triage-summary" role="status" aria-live="polite" aria-atomic="true">Showing all holdings.</p>
+                                <div class="my-portfolio-triage-footer-actions">
+                                    <button id="my-portfolio-triage-clear" class="btn btn-sm" type="button" hidden>Clear</button>
+                                </div>
                             </div>
                         </section>
 
@@ -2495,7 +2500,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.226.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.228.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

@@ -21,17 +21,29 @@ prices"; export reads "Download your portfolio data. Exports include private
 values."; unavailable filters use "Not available" and explanatory tooltips.
 A caption beneath the four triage metrics reads "A holding can appear in
 more than one category." Corrected the design document's stale MP-RV2 status
-to match Owner approval. Asset cache keys advanced together to 9.226.0.
+to match Owner approval. Asset cache keys advanced together to 9.228.0.
 Attention, Smart Filters, All/Queue and Clear no longer request scrolling.
 View holdings explicitly navigates with the existing sticky-aware helper.
 Live status reports matches and separately identifies pinned exceptions;
 navigation is disabled only when no rows are displayed. Filter disclosure
 remains open while combining or clearing filters. Explicit section navigation
 and Start review retain their existing behavior.
+Owner reference mocks subsequently refined the same milestone: colored
+count/dot tiles, pill scope/filter controls, always-visible Status/Currentness,
+responsive advanced grid, and prominent cyan View Holdings header action.
+Quick filters leave advanced disclosure closed; Trend/Setup are visually
+grouped without merging predicates or dropping Breakdown. Live counts/Clear
+sit below the grid. Browser screenshot of an isolated real-HTML/CSS fixture
+verified the desktop layout; fixture values are synthetic, not portfolio data.
+Follow-up production screenshot audit corrected low-contrast zero tiles,
+vertically misaligned quick-filter labels and mismatched header button heights.
+Restored Review / Hold Tight under Daily Review using the existing predicate.
+Separated Trend/Setup labels to accurately represent cross-group AND logic.
+Extended behavior checks cover that predicate and cross-group conjunction.
 
 **Files.** Added `tests/api/platform/test_portfolio_filter_navigation.py`.
 Modified `src/athena/api/static/js/08b-my-portfolio.js`,
-`src/athena/api/static/css/05b-my-portfolio.css` (wrapping action controls),
+`src/athena/api/static/css/05b-my-portfolio.css` (reference-mock triage layout),
 `src/athena/api/static/index.html`,
 `src/athena/api/static/dashboard.css` (cache key only),
 `tests/api/platform/test_dashboard_hosting.py`,
@@ -49,7 +61,7 @@ Preview scripts were removed, so this verifies presentation, not runtime
 interaction. New navigation controls have isolated behavior coverage; live
 authenticated browser verification remains pending. JavaScript syntax and
 new-test Ruff checks pass. Full suite: **4018 passed, 1 pre-existing macOS launcher failure**
-(`test_installer_builds_configured_app_bundle`), 110.28s. Ruff retains the
+(`test_installer_builds_configured_app_bundle`), 107.49s after production screenshot corrections. Ruff retains the
 same three pre-existing E501 assertions in the hosting test (978/979/1014).
 No new failures observed; repository gates remain non-green on those known
 issues. Production runtime was not restarted or mutated.

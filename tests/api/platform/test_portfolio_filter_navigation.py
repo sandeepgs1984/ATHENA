@@ -15,6 +15,10 @@ def test_filters_update_in_place_and_navigation_is_explicit() -> None:
     source = (static / "js/08b-my-portfolio.js").read_text()
     start = source.index("    function setMyPortfolioQueueView(")
     end = source.index("    function myPortfolioSyncFailureSummary(", start)
+    predicates = source[
+        source.index("    function myPortfolioRowMatchesSmartGroup("):
+        source.index("    function myPortfolioRowVisible(")
+    ]
     binding = next(
         line for line in source.splitlines()
         if '"my-portfolio-view-holdings")?.addEventListener' in line
@@ -43,7 +47,7 @@ const MY_PORTFOLIO_ATTENTION_FILTERS = ['stale'];
 const myPortfolioSourceRows = () => rows;
 const renderMyPortfolioHoldings = () => { renders++; };
 const scrollMyPortfolioHoldingsIntoView = () => { scrolls++; };
-const setMyPortfolioTriageFiltersExpanded = () => {};
+const setMyPortfolioTriageFiltersExpanded = value => { myPortfolioState.triageFiltersExpanded = value; };
 const myPortfolioTriageCounts = () => ({});
 const myPortfolioSmartFilterCount = () => 0;
 const renderMyPortfolioTriageFiltersDisclosure = () => {};
@@ -55,6 +59,8 @@ const myPortfolioTriageSummary = {};
 const myPortfolioHasActiveTriage = () => true;
 const myPortfolioTriageContext = () => ({});
 const myPortfolioRowVisible = row => row.matches;
+const myPortfolioDailyStatus = row => row.daily;
+const myPortfolioTrendParts = row => row;
 const formatMyPortfolioNumber = value => String(value);
 """
     checks = r"""
@@ -84,11 +90,35 @@ renderMyPortfolioTriage(2, 1);
 assert.match(myPortfolioTriageSummary.textContent, /1 pinned holding remains visible/);
 assert.equal(jump.disabled, false);
 assert.equal(scrolls, 1);
+myPortfolioState.triageFiltersExpanded = false;
+toggleMyPortfolioSmartFilter('status', 'STRONG');
+assert.equal(myPortfolioState.triageFiltersExpanded, false);
+toggleMyPortfolioSmartFilter('currentness', 'CURRENT');
+assert.equal(myPortfolioState.triageFiltersExpanded, false);
+toggleMyPortfolioSmartFilter('trend', 'UPTREND');
+assert.equal(myPortfolioState.triageFiltersExpanded, true);
+assert.equal(myPortfolioRowMatchesSmartGroup(
+    { daily: 'REVIEW_HOLD_TIGHT' }, 'daily_review', ['REVIEW_HOLD_TIGHT'], {}
+), true);
+myPortfolioState.triage.smart = { trend: ['UPTREND'], setup: ['BREAKOUT'] };
+assert.equal(myPortfolioRowMatchesSmartFilters({ trend: 'UPTREND', setup: 'BREAKOUT' }, {}), true);
+assert.equal(myPortfolioRowMatchesSmartFilters({ trend: 'UPTREND', setup: 'BREAKDOWN' }, {}), false);
 """
     subprocess.run(
-        [node, "-e", harness + source[start:end] + binding + checks],
+        [node, "-e", harness + predicates + source[start:end] + binding + checks],
         check=True, capture_output=True, text=True,
     )
     html = (static / "index.html").read_text()
     assert 'id="my-portfolio-triage-summary" role="status" aria-live="polite"' in html
     assert 'id="my-portfolio-view-holdings"' in html
+    assert html.count('id="my-portfolio-view-holdings"') == 1
+    quick = html.split('class="my-portfolio-triage-quick-filters"')[1].split(
+        '<div id="my-portfolio-smart-filters-panel"'
+    )[0]
+    assert 'data-smart-group="status"' in quick
+    assert 'data-smart-group="currentness"' in quick
+    assert 'data-smart-group="setup" data-smart-value="BREAKDOWN"' in html
+    assert 'id="my-portfolio-view-holdings" class="btn btn-primary btn-sm"' in html
+    assert 'data-smart-group="daily_review" data-smart-value="REVIEW_HOLD_TIGHT"' in html
+    assert '<span>Trend</span>' in html
+    assert '<span>Setup</span>' in html
