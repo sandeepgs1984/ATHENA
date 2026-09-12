@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.225.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.226.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -711,7 +711,7 @@
                             </div>
                             <p class="metric-desc">A holding can appear in more than one category.</p>
                             <div class="my-portfolio-triage-footer">
-                                <p id="my-portfolio-triage-summary">Showing all holdings.</p>
+                                <p id="my-portfolio-triage-summary" role="status" aria-live="polite" aria-atomic="true">Showing all holdings.</p>
                                 <div class="my-portfolio-triage-footer-actions">
                                     <button id="my-portfolio-triage-filters-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="false" aria-controls="my-portfolio-smart-filters-panel">
                                         <i class="fa-solid fa-sliders" aria-hidden="true"></i>
@@ -719,6 +719,10 @@
                                         <strong id="my-portfolio-triage-filter-count" class="my-portfolio-triage-filter-count" hidden>0</strong>
                                     </button>
                                     <button id="my-portfolio-triage-clear" class="btn btn-sm" type="button" hidden>Clear</button>
+                                    <button id="my-portfolio-view-holdings" class="btn btn-secondary btn-sm" type="button" disabled>
+                                        <span>View holdings (<span id="my-portfolio-view-holdings-count">0</span>)</span>
+                                        <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
+                                    </button>
                                 </div>
                             </div>
                             <div id="my-portfolio-smart-filters-panel" class="my-portfolio-smart-filters-panel collapsed" hidden>
@@ -2491,7 +2495,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.225.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.226.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

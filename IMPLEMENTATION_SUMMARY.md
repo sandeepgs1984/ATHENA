@@ -6,35 +6,50 @@ status updated on approval.
 
 ---
 
-## MP-RV3 — My Portfolio Dashboard Revamp: Owner-Facing Copy
+## MP-RV3 — My Portfolio Dashboard Revamp: Copy and Filter Navigation
 
 **Objective and scope.** Continue the approved revamp after the latest
 commit `48e02d0` recorded MP-RV2 Owner approval. Replace the three scoped
 engineering descriptions with plain product language and explain overlapping
 triage categories. Export still explicitly discloses private values; the
 three unavailable filters retain disabled state and their existing keys.
-No new count, threshold, financial calculation, or filter behavior.
+Owner subsequently authorized in-place filtering and explicit navigation as
+part of MP-RV3. No new threshold, financial calculation or filter predicate.
 
 **Changes.** Investment now reads "Based on confirmed quantities and average
 prices"; export reads "Download your portfolio data. Exports include private
 values."; unavailable filters use "Not available" and explanatory tooltips.
 A caption beneath the four triage metrics reads "A holding can appear in
 more than one category." Corrected the design document's stale MP-RV2 status
-to match Owner approval. Asset cache keys advanced together to 9.225.0.
+to match Owner approval. Asset cache keys advanced together to 9.226.0.
+Attention, Smart Filters, All/Queue and Clear no longer request scrolling.
+View holdings explicitly navigates with the existing sticky-aware helper.
+Live status reports matches and separately identifies pinned exceptions;
+navigation is disabled only when no rows are displayed. Filter disclosure
+remains open while combining or clearing filters. Explicit section navigation
+and Start review retain their existing behavior.
 
-**Files.** No new repository files. Modified `src/athena/api/static/index.html`,
+**Files.** Added `tests/api/platform/test_portfolio_filter_navigation.py`.
+Modified `src/athena/api/static/js/08b-my-portfolio.js`,
+`src/athena/api/static/css/05b-my-portfolio.css` (wrapping action controls),
+`src/athena/api/static/index.html`,
 `src/athena/api/static/dashboard.css` (cache key only),
 `tests/api/platform/test_dashboard_hosting.py`,
 `tests/api/platform/test_decision_chart_release_gate.py`,
-`docs/design/MY-PORTFOLIO-DASHBOARD-REVAMP.md`, `docs/MILESTONES.md`, and this log.
+`docs/design/MY-PORTFOLIO-DASHBOARD-REVAMP.md`, `docs/MILESTONES.md`,
+`docs/research/MY-PORTFOLIO-NEXT-LEVEL-UX-HANDOFF.md`, and this log.
 No module-map change, so no briefing-map update is required.
 
-**Validation and coverage.** Updated existing copy/version assertions; no
-new tests for static prose. Screenshot-checked an isolated static copy of
+**Validation and coverage.** Added a Node-driven test executing production
+filter handlers and explicit navigation binding with isolated DOM dependencies:
+five filter actions, disabled filters, empty matches, pinned exceptions and
+live count updates. Updated existing copy/version assertions. Screenshot-checked an isolated static copy of
 the real HTML/CSS, including the caption and wrapping investment description.
 Preview scripts were removed, so this verifies presentation, not runtime
-interaction. Full suite: **4017 passed, 1 pre-existing macOS launcher failure**
-(`test_installer_builds_configured_app_bundle`), 118.69s. Ruff retains the
+interaction. New navigation controls have isolated behavior coverage; live
+authenticated browser verification remains pending. JavaScript syntax and
+new-test Ruff checks pass. Full suite: **4018 passed, 1 pre-existing macOS launcher failure**
+(`test_installer_builds_configured_app_bundle`), 110.28s. Ruff retains the
 same three pre-existing E501 assertions in the hosting test (978/979/1014).
 No new failures observed; repository gates remain non-green on those known
 issues. Production runtime was not restarted or mutated.
@@ -47,7 +62,7 @@ validation failures disclosed;
 MP-RV4 and MP-RV5 remain planned. Git inspection was explicitly requested;
 no git mutation or commit performed.
 
-**Commit message.** `fix(portfolio): clarify dashboard copy and triage counts`
+**Commit message.** `fix(portfolio): keep triage filters in place with explicit navigation`
 
 ---
 

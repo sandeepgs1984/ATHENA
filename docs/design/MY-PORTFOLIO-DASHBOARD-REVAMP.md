@@ -103,7 +103,7 @@ Owner/Chief Architect review before the next starts.
 |---|---|---|---|
 | **MP-RV1** | Promote "Upload Holdings" to a header button (rightmost, accent-filled, matching the prototype's exact style) that opens/closes the existing Update Holdings card as an inline panel directly under the header, with a smooth JS height-driven expand/collapse animation (no scroll jump) — relocates the real card, does not rebuild it. Full header reorder to match the prototype: Privacy → Export → Sync Portfolio (renamed) → Upload Holdings → Reset (icon-only, last). Zero change to the upload/preview/confirm pipeline's ids or logic. | `index.html` (header reorder + relocated panel + close button), `08b-my-portfolio.js` (open/close state, label rename, animation), `05b-my-portfolio.css` (scoped button styling, expand/collapse animation, single-column secondary grid) | Low — real DOM relocation/reorder and a real default-visibility behavior change, but zero functional-pipeline logic touched; covered by DOM-order tests |
 | **MP-RV2** | Add a lightweight sticky in-page sub-nav (Overview / Triage / Risk & Heatmap / Holdings) above the KPI strip, click-to-scroll to existing section anchors. No new data, no new sections — just navigation over what already exists. | `index.html` (nav markup + 4 anchor ids on existing sections), `08b-my-portfolio.js` (scroll handler + active-section highlighting), `05b-my-portfolio.css` (sticky nav styles) | Low — additive; must verify it doesn't collide with the existing sticky holdings-table thead dock |
-| **MP-RV3** | Copy-only pass: replace `"Counts not invented:"`, `"Server-owned holding math"`, and `"Download server-owned My Portfolio data."` with owner-facing phrasing that keeps the same meaning (still never inventing data) without engineering-process language; add one short caption near the Morning Triage tiles noting the four categories can overlap on a holding. | `index.html` only (static text) | Trivial — zero logic change |
+| **MP-RV3** | Owner-facing investment/export/unavailable-filter copy and overlapping-category caption. Owner-approved scope extension: attention filters, Smart Filters, All/Queue and Clear update in place; explicit View holdings navigates to results with live counts. | HTML, portfolio JS/CSS, cache keys, behavior/hosting tests and milestone docs | Low: navigation and presentation only; filter predicates and analysis contracts unchanged |
 | **MP-RV4** | Collapse the up-to-four independent per-row change badges into one compact `"N changes"` indicator per row, with the individual change reasons reachable via a hover title/small popover — no information is dropped, only the default visual footprint. Pin badge and note badge stay separate (they are owner-authored state, not sync-detected change state, and conflating them would blur MP-NX6's "visually and contractually separate from ATHENA evidence" guardrail). | `08b-my-portfolio.js` (`myPortfolioChangeBadgeChips`), `05b-my-portfolio.css` (new indicator style) | Medium — must prove zero information loss with a direct before/after test on a multi-change row |
 | **MP-RV5** | Route the heatmap tile's secondary label text through `--tone-good-text`/`--tone-warn-text`/`--tone-bad-text` (matching the tile's own tone) instead of the flat `--text-muted`, for real contrast against tinted backgrounds. Pure CSS token substitution — zero tone-selection logic change. | `05b-my-portfolio.css` only | Low — must screenshot-verify contrast on all five tones (positive/negative/danger/neutral/default) before/after |
 
@@ -112,9 +112,22 @@ Owner/Chief Architect review before the next starts.
 MP-RV3 implementation (2026-09-12): scoped copy replacements and triage
 overlap caption are complete, with all unavailable filter keys/disabled
 states and private-export disclosure preserved. Static browser preview
-verified text wrapping. Full suite: 4017 passed, one pre-existing macOS
+verified text wrapping. Full suite after navigation extension: 4018 passed, one pre-existing macOS
 launcher failure; three pre-existing hosting-test E501 lint findings remain.
-Assets: 9.225.0. Owner approval pending; MP-RV4/MP-RV5 not started.
+Assets: 9.226.0. Owner approval pending; MP-RV4/MP-RV5 not started.
+
+Owner-authorized navigation extension (2026-09-12): changing filters never
+requests a scroll or moves keyboard focus. The existing expanded filter panel
+stays open after Clear. A polite live result summary reports matches immediately;
+pinned exceptions are counted separately, not mislabeled as matches. View
+holdings shows the displayed-row count and uses the existing sticky-aware
+navigation helper only on explicit activation. With no displayed rows it is
+disabled and Clear remains available for active filters. If only pinned rows
+remain, navigation stays available and the summary explains that exception.
+Start review and section navigation retain their existing explicit behavior.
+No scroll geometry, filter predicates, financial methodology or API changes.
+Behavior regression coverage executes the production handlers with Node and
+isolated DOM dependencies, including empty results and pinned exceptions.
 
 - No change to Status / Conviction / Trend / Setup / Daily Review / Next
   Action / Structural Review / EXIT_RISK methodology, or any interpretation

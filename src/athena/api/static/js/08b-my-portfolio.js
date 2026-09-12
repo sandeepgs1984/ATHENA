@@ -1939,7 +1939,6 @@
     function setMyPortfolioQueueView(queueView) {
         myPortfolioState.triage.queueView = Boolean(queueView);
         renderMyPortfolioHoldings(myPortfolioSourceRows());
-        scrollMyPortfolioHoldingsIntoView();
     }
 
     function toggleMyPortfolioAttentionFilter(filterId) {
@@ -1955,7 +1954,6 @@
         else selected.add(filterId);
         myPortfolioState.triage.attention = MY_PORTFOLIO_ATTENTION_FILTERS.filter(id => selected.has(id));
         renderMyPortfolioHoldings(myPortfolioSourceRows());
-        scrollMyPortfolioHoldingsIntoView();
     }
 
     function toggleMyPortfolioSmartFilter(group, value) {
@@ -1967,13 +1965,11 @@
             setMyPortfolioTriageFiltersExpanded(true);
         }
         renderMyPortfolioHoldings(myPortfolioSourceRows());
-        scrollMyPortfolioHoldingsIntoView();
     }
 
     function clearMyPortfolioTriage() {
         resetMyPortfolioTriageState();
         renderMyPortfolioHoldings(myPortfolioSourceRows());
-        scrollMyPortfolioHoldingsIntoView();
     }
 
     function renderMyPortfolioTriage(totalCount, visibleCount) {
@@ -2023,6 +2019,21 @@
             summary = `Showing ${formatMyPortfolioNumber(visibleCount)} of ${formatMyPortfolioNumber(totalCount)} holdings.`;
         }
         if (myPortfolioTriageSummary) myPortfolioTriageSummary.textContent = summary;
+        const context = myPortfolioTriageContext();
+        const matchCount = myPortfolioSourceRows().filter(row => myPortfolioRowVisible(row, context)).length;
+        const pinnedExtras = Math.max(0, visibleCount - matchCount);
+        if (active && myPortfolioTriageSummary) {
+            myPortfolioTriageSummary.textContent = matchCount
+                ? `${formatMyPortfolioNumber(matchCount)} of ${formatMyPortfolioNumber(totalCount)} holdings match.`
+                : "No matching holdings.";
+            if (pinnedExtras) {
+                myPortfolioTriageSummary.textContent += ` ${formatMyPortfolioNumber(pinnedExtras)} pinned holding${pinnedExtras === 1 ? " remains" : "s remain"} visible.`;
+            }
+        }
+        const viewHoldings = document.getElementById("my-portfolio-view-holdings");
+        if (viewHoldings) viewHoldings.disabled = visibleCount === 0;
+        const viewCount = document.getElementById("my-portfolio-view-holdings-count");
+        if (viewCount) viewCount.textContent = formatMyPortfolioNumber(visibleCount);
         if (myPortfolioMiniTriage) {
             myPortfolioMiniTriage.textContent = myPortfolioState.triage.queueView
                 ? `Queue · ${formatMyPortfolioNumber(visibleCount)}`
@@ -3894,6 +3905,7 @@
     myPortfolioQueueAll?.addEventListener("click", () => setMyPortfolioQueueView(false));
     myPortfolioQueueOnly?.addEventListener("click", () => setMyPortfolioQueueView(true));
     myPortfolioTriageClear?.addEventListener("click", clearMyPortfolioTriage);
+    document.getElementById("my-portfolio-view-holdings")?.addEventListener("click", scrollMyPortfolioHoldingsIntoView);
     document.getElementById("my-portfolio-triage-filters-toggle")?.addEventListener("click", () => {
         setMyPortfolioTriageFiltersExpanded(!myPortfolioState.triageFiltersExpanded);
     });

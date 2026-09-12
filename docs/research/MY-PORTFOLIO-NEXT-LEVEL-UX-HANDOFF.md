@@ -89,8 +89,11 @@ header and aborting Portfolio Sync refresh.
   triage is a four-metric scan row plus collapsed Filters; Start review is
   in the header; Queue carries the Needs Review count. Owner Notes form
   stays at the bottom of the holding-detail overlay. Risk concentration and
-  Portfolio heatmap start collapsed. Morning triage actions scroll Current
-  Holdings into view.
+  Portfolio heatmap start collapsed. MP-RV3 supersedes automatic triage
+  scrolling: attention filters, Smart Filters, All/Queue and Clear update
+  in place. View holdings explicitly navigates with a live displayed count;
+  the status announces matching rows and separate pinned exceptions. Empty
+  displayed results disable navigation, not Clear. Assets now `9.226.0`.
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.
