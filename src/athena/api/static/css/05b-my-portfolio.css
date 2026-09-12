@@ -1,4 +1,14 @@
 /* My Portfolio import/reconciliation workspace (PS-P3). */
+/* Scroll padding remains paintable above a sticky top:0 child. Put the
+   initial breathing room in the content so it scrolls away with the page. */
+.workspace-viewport:has(> #tab-my-portfolio.active) {
+    padding-top: 0;
+}
+
+#tab-my-portfolio > .my-portfolio-workstation {
+    padding-top: var(--space-32);
+}
+
 .my-portfolio-workstation {
     display: flex;
     flex-direction: column;
@@ -16,11 +26,87 @@
 
 .my-portfolio-command-center {
     align-items: center;
-    padding: var(--space-2) 0 var(--space-4);
+    padding: var(--space-4) 0;
 }
 
-.my-portfolio-header h2 {
-    margin: 0 0 var(--space-4);
+/* Header actions + section nav grouped into one persistently visible
+   sticky block, instead of a non-sticky header sitting above a sticky
+   nav strip -- the primary actions (Export/Sync/Upload/Reset) stay
+   reachable at all times, and there is only ever one opaque sticky
+   surface to reason about, not two. */
+.my-portfolio-sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    isolation: isolate;
+    /* Fully opaque, matching the same reliable pattern the holdings-table's
+       own sticky header/thead already use (var(--bg-sidebar)) -- a
+       translucent + backdrop-filter background let scrolled-past content
+       visibly bleed through while sticky. */
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    padding: 0 var(--space-16);
+}
+
+.my-portfolio-sticky-header .my-portfolio-command-center {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.my-portfolio-section-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: var(--space-6) 0;
+}
+
+.my-portfolio-section-nav-item {
+    padding: var(--space-8) var(--space-16);
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-0-85);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--transition-speed) ease, color var(--transition-speed) ease;
+}
+
+.my-portfolio-section-nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.my-portfolio-section-nav-item.active {
+    background: rgba(0, 229, 255, 0.1);
+    color: var(--accent);
+}
+
+/* Leave room for the sticky section nav when a nav click (or an anchor
+   jump) scrolls one of these sections to the top, so the nav itself
+   never covers the section's own heading.
+
+   The 56px fallback here used to assume the header is roughly one row
+   tall -- WRONG since MP-RV2 grouped the command-center actions AND the
+   nav into one block (measured real height ~127px). The JS-measured
+   --my-portfolio-section-nav-height custom property is supposed to
+   replace this fallback immediately once the tab is shown, but that
+   depends on a requestAnimationFrame callback actually firing promptly
+   -- proven, via direct instrumentation, to NOT be reliable (e.g. a
+   backgrounded/automated tab can throttle rAF indefinitely; real user
+   sessions have shown the same symptom on the very first click after
+   opening the tab, before any scroll/resize event has run the sync).
+   When the variable hasn't been set yet, 56px undershoots the real
+   header by ~70px, landing the target UNDER the header instead of
+   below it -- exactly the "content visible above/under the sticky
+   header" bug reported live. Bumped to a safe fallback comfortably
+   above the real measured height, so a stale/missing JS measurement
+   can no longer cause an overlap -- the JS value, when it does load,
+   still takes over via var() and is normally slightly tighter. */
+.my-portfolio-kpi-strip,
+.my-portfolio-command-dashboard,
+.my-portfolio-risk-panel,
+.my-portfolio-holdings-card {
+    scroll-margin-top: calc(var(--my-portfolio-section-nav-height, 180px) + var(--space-24));
 }
 
 .my-portfolio-actions,
@@ -1224,12 +1310,21 @@
     border-color: rgba(0, 229, 255, 0.24);
     box-shadow: 0 14px 42px rgba(0, 0, 0, 0.16);
     overflow: visible;
-    scroll-margin-top: var(--space-16);
+    /* scroll-margin-top for this selector is set once, near the other three
+       nav-target sections (MP-RV2) -- this pre-existing flat 16px rule was
+       silently overriding that calc() (later in the cascade, same
+       specificity), so the section nav's "Holdings" jump target used a
+       stale, too-small margin. */
 }
 
 .my-portfolio-holdings-card > .card-header {
     position: sticky;
-    top: 0;
+    /* Same reasoning as the scroll-margin-top fallback above: a 0px
+       fallback would stick this sub-header at the very top, overlapping
+       the main sticky header, whenever the JS measurement hasn't run
+       yet. Match the same safe fallback so the two stack correctly by
+       default too. */
+    top: var(--my-portfolio-section-nav-height, 140px);
     z-index: 40;
     isolation: isolate;
     overflow: visible;

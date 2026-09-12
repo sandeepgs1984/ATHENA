@@ -285,6 +285,413 @@ MP-RV1 OWNER APPROVED / CLOSED.**
 
 ---
 
+## MP-RV2 — My Portfolio Dashboard Revamp: Sticky Section Nav
+
+**Latest correction, 2026-09-12: exposed scrollport gutter.** Prior closure
+language below is superseded for the persistent bleed report. An isolated
+synthetic fixture loading the actual production CSS reproduced a visible row
+above the header during browser wheel scroll. Scrollport top: 72px; sticky
+header top: 104px. The unpainted 32px gap matched `.workspace-viewport`'s top
+padding, while the header's own box remained correctly opaque. This is a
+layout gap, not evidence of a GPU paint race.
+
+**Fix.** Scoped `:has(> #tab-my-portfolio.active)` viewport padding-top to 0;
+moved initial 32px spacing into the workstation; squared sticky-header corners
+and removed speculative transform/backface promotion. Preserved prior JS
+section-navigation clearance and tab-switch measurement fixes. No overlays,
+new scroll containers, API/schema/methodology changes, or ADR required.
+
+**Verification.** Before/after wheel-scroll screenshots of the same fixture
+show the exposed row removed, header flush at y=72 after scroll, and initial
+spacing intact on return to top. Real production authentication was not
+available in the verification browser; native Chrome permission was absent.
+Production data and service lifecycle were untouched. Added a focused hosting
+regression for scoped padding, initial spacing, and square sticky corners.
+Full suite: **4017 passed, 1 failed** in 136.08s. The sole failure is the
+same pre-existing `test_installer_builds_configured_app_bundle` macOS launcher
+failure named in the handoff. Ruff reports three existing E501 lines in
+`test_dashboard_hosting.py` (978, 979, 1014); no new lint finding in the added
+test. Desktop (1280px) and narrow (390px) fixture wheel-scroll screenshots
+both show the header flush against the viewport, without exposed content.
+
+**Files modified in this correction.** `05b-my-portfolio.css`, `index.html`,
+`dashboard.css`, the hosting and release-gate tests, this log,
+`docs/MILESTONES.md`, and the governing revamp design document. All three
+asset cache keys advanced to 9.224.0. No files created in the repository.
+
+**Review status.** Fix implemented and fixture visually verified; production
+owner review remains pending. No next milestone started. Residual risk is
+browser-specific production behavior not exercised in the isolated fixture.
+No git operations performed; unrelated changes preserved.
+
+**Objective.** Second milestone of the My Portfolio Dashboard Revamp
+track: add the prototype's sticky in-page sub-nav (Overview / Triage /
+Risk & Heatmap / Holdings) so the owner can jump directly to any section
+of the (long) page instead of scrolling manually.
+
+**Scope completed.**
+- New `<nav id="my-portfolio-section-nav">` inserted after the (MP-RV1)
+  upload panel and before the KPI strip — matches the prototype's own
+  header -> upload-panel -> nav -> overview ordering. Four buttons:
+  Overview, Triage, Risk & Heatmap, Holdings.
+- Click-to-scroll wired to the real existing sections (KPI strip,
+  `.my-portfolio-command-dashboard`, `.my-portfolio-risk-panel`,
+  `.my-portfolio-holdings-card` — reusing DOM refs already declared in
+  the file, no new elements needed for the targets themselves).
+- Active-section highlighting via `IntersectionObserver` (new pattern
+  for this file; a standard, well-supported browser API), scoped to the
+  same `.workspace-viewport` scroll root the existing sticky-holdings
+  logic already uses.
+- **Sticky-stacking correctness (the real risk in this milestone):** the
+  holdings table already has its own sticky card-header (`top: 0`) and a
+  sticky thead-dock (`top: var(--my-portfolio-holdings-thead-top)`,
+  JS-measured). Adding a second sticky element above them would have
+  made both fight for the same `top: 0` once the user scrolled deep
+  into Holdings. Fixed correctly, not papered over: new
+  `syncMyPortfolioSectionNavHeight()` measures the nav's real height
+  into a `--my-portfolio-section-nav-height` CSS variable on the
+  workstation root; the holdings card-header's own `top` now reads that
+  variable (was a hardcoded `0`); `syncMyPortfolioTheadDock()`'s existing
+  offset calculation now adds the nav height on top of the header height
+  it already measured. All three now stack with zero gap/overlap
+  regardless of scroll position (verified live, see below).
+- **Scroll-target-landing fix:** the four target sections gained
+  `scroll-margin-top: calc(var(--my-portfolio-section-nav-height, 56px) +
+  var(--space-12))` so a `scrollIntoView({block:"start"})` lands just
+  below the sticky nav instead of partially behind it (a real bug caught
+  during live verification, not assumed — the first attempt without this
+  fix landed sections partially hidden behind the nav, which then made
+  the `IntersectionObserver` immediately promote the *next* section to
+  "active", contradicting whatever the owner had just clicked).
+
+**Files modified.** `index.html` (new nav markup), `08b-my-portfolio.js`
+(nav section list, click handlers, `IntersectionObserver` setup, the two
+new sync functions above, wired into the existing
+`scheduleMyPortfolioHoldingsScrollChrome` rAF batching), `05b-my-portfolio.css`
+(nav styling, `scroll-margin-top` fix, corrected sticky-header `top`).
+Dashboard asset version bumped `9.209.0` -> `9.210.0`.
+
+**Tests.** New assertions in `tests/api/platform/test_dashboard_hosting.py`:
+nav markup/ids/DOM-order (after upload panel, before KPI strip) and the
+new CSS selectors. Full suite run; `ruff check` clean (same two
+pre-existing, untouched E501 lines).
+
+**Live verification.** Isolated throwaway server (fresh empty DB, same
+established pattern). With enough injected rows to make the page
+scrollable: scrolled to the true bottom and measured exact
+`getBoundingClientRect()` values — nav bottom = 148, card-header top =
+148, card-header bottom = 284, thead-dock top = 284: a perfect zero-gap
+stack, nav -> header -> thead-dock, in that order, no overlap. Clicked
+all four nav buttons in sequence and confirmed each one both scrolled to
+the correct section (positive, just-below-nav offset) and set the
+matching item `active` — Overview/Triage/Risk & Heatmap/Holdings all
+independently verified. Real production server (port 8000, PID 2258)
+confirmed unaffected throughout; scratch DB and throwaway server torn
+down after verification.
+
+**Status.** Full suite run and confirmed clean. **Owner/Chief Architect
+review of MP-RV2, live on the real dashboard, found three further
+issues — corrected same day, same milestone, no MP-RV2.1 created:**
+
+1. **Duplicate page title.** The global app-shell header already shows
+   a `<h1 id="page-title">` set to the active tab's name (every tab
+   shares this one element — `switchTab()` in `03-app-shell.js` sets its
+   text from the sidebar nav item's own label). My Portfolio's own
+   `<section>` additionally repeated `<h2 id="my-portfolio-heading">My
+   Portfolio</h2>` right below it — confirmed, by checking the Market
+   Intelligence and Decisions & Trace tab-panes, to be a My-Portfolio-only
+   duplication, not an app-wide convention (neither of those tabs repeats
+   its own name as a local heading), so this was safe and correctly
+   scoped to fix here without touching the shared app shell or any other
+   tab. Removed the local `<h2>`; the section now uses `aria-label="My
+   Portfolio"` directly (was `aria-labelledby` pointing at the removed
+   heading) so it stays a properly labelled landmark for assistive tech.
+   The descriptive subtitle paragraph is unchanged and is now the header
+   row's only left-side text. Removed the now-dead `.my-portfolio-header
+   h2` CSS rule (nothing matches it any more).
+2. **Sticky nav visibly transparent.** `.my-portfolio-section-nav` used
+   `background: rgba(11, 15, 25, 0.92)` + `backdrop-filter: blur(8px)` —
+   scrolled-past content (e.g. the KPI cards) visibly bled through it
+   while sticky, confirmed in the owner's own screenshot. Replaced with a
+   fully opaque `background: var(--bg-sidebar)` — the exact same reliable
+   pattern the holdings-table's own sticky header/thead already use in
+   this file, dropping the unreliable translucency+blur approach
+   entirely rather than trying to tune its opacity further.
+3. **Unnecessary "jump" clicking Overview.** `scrollMyPortfolioToSection`
+   always called `scrollIntoView`, even when the target section's current
+   position was already correct (or near enough) — most noticeable on
+   Overview, the first section, which sits directly under the nav with
+   very little real distance to travel. Added a check: if the section's
+   current `getBoundingClientRect().top` is already within 24px of where
+   it would land (`navHeight`), skip the scroll entirely. Verified live:
+   clicking Overview a second time while already positioned there now
+   moves the page by exactly 0px (was a visible re-animate-to-same-place
+   before).
+
+**Files modified (this correction round):** `index.html` (removed the
+local heading, `aria-label` on the section), `08b-my-portfolio.js`
+(threshold check in `scrollMyPortfolioToSection`), `05b-my-portfolio.css`
+(opaque nav background, removed the dead `h2` rule). Two new test
+assertions in `tests/api/platform/test_dashboard_hosting.py` (no local
+heading id present; nav background is the opaque token, not the old
+rgba value). Dashboard asset version bumped `9.211.0` -> `9.212.0`.
+
+**Live verification.** Fourth isolated throwaway server (fresh empty
+DB): confirmed the global `#page-title` still reads "My Portfolio",
+`#my-portfolio-heading` no longer exists, the section's `aria-label` is
+"My Portfolio"; confirmed the nav's computed background is a solid
+`rgb(15, 22, 38)` (no alpha channel) with no `backdrop-filter`; confirmed
+clicking Overview from an unscrolled page state (top not yet aligned)
+still scrolls correctly (measured a real ~148px movement), then clicking
+it again while already aligned moves the page by exactly 0px. Zero
+console errors beyond the expected empty-DB 404. Production server (port
+8000, PID 2258) confirmed unaffected; scratch DB and server torn down.
+
+**Grouped-header redesign + real root cause found (same day, same
+milestone, no MP-RV2.2 created).** The owner asked to group the header
+actions and section nav into one always-visible sticky block (rather than
+a separate non-sticky header above a sticky nav strip), and separately
+kept reporting that scrolled-past content was still visibly showing
+through the sticky area no matter how many CSS fixes landed.
+
+- **Grouped header:** new `#my-portfolio-sticky-header` wrapper
+  (`index.html`) now contains both `.my-portfolio-command-center` (the
+  title/description + Privacy/Export/Sync/Upload/Reset actions) and the
+  section nav as one unit; `position: sticky` moved from the nav onto
+  this wrapper; the nav itself is now a plain (non-sticky) flex row
+  inside it. `--my-portfolio-section-nav-height` (consumed by the
+  holdings-table sticky offset and the four sections'
+  `scroll-margin-top`) now measures the WRAPPER's real height, not just
+  the nav row's.
+- **Scroll landing precision:** native `scrollIntoView()` +
+  `scroll-margin-top` was found, empirically, to land a target a
+  consistent ~8-30px short of fully clearing a `position: sticky` sibling
+  on this engine (verified with exact `getBoundingClientRect()` deltas
+  before/after real scrolls — not assumed). Replaced with a new shared
+  `scrollMyPortfolioElementIntoView(el)` that computes the exact
+  scroll delta itself, anchored against the sticky header's own current
+  `getBoundingClientRect().bottom` (anchoring against the scroll
+  container's rect instead reintroduced the same shortfall, traced to
+  the container's own padding/border not matching the sticky element's
+  true `top:0` reference). `scrollMyPortfolioToSection` and the
+  pre-existing `scrollMyPortfolioHoldingsIntoView` (used by "Start
+  review," MP-NX6B) now both call this one shared, exact function.
+  Verified: all four nav targets land with a clean, positive,
+  non-overlapping gap after scrolling from the very bottom of a long
+  page. A stale, conflicting flat `scroll-margin-top: var(--space-16)`
+  rule on `.my-portfolio-holdings-card` (predating the sticky header,
+  silently overriding the new dynamic value later in the cascade) was
+  removed; the test asserting that literal stale rule was updated to
+  assert the new dynamic one instead.
+- **`isolation: isolate` hardening:** added to the sticky header,
+  mirroring the exact defensive pattern the holdings-table's own sticky
+  `.card-header` already uses in this file — `.card` descendants use
+  `backdrop-filter`, which has known compositing quirks against sticky
+  siblings on some engines.
+- **The actual root cause of "still broken, same behavior" across
+  several rounds, found by direct inspection of the real running server
+  rather than more speculative CSS changes:** `src/athena/api/static/dashboard.css`
+  (a real static file, NOT server-assembled like `dashboard.js`) is a
+  hand-maintained list of `@import url("css/<file>.css")` lines, and two
+  of them carry their OWN independent cache-busting query string —
+  `css/03-shell.css?v=9.148.7` and, critically,
+  `css/05b-my-portfolio.css?v=9.204.0`. Every fix this session correctly
+  bumped `index.html`'s own outer `dashboard.css?v=`/`dashboard.js?v=`,
+  which forces a fresh fetch of the wrapper file itself — but a browser
+  caches each `@import`ed URL independently by its own exact query
+  string, and that inner `?v=9.204.0` for `05b-my-portfolio.css` was
+  never touched by any of those bumps. Confirmed directly: `curl`ing the
+  real production server's `/dashboard/dashboard.css` showed the import
+  line still pinned at `?v=9.204.0` after six-plus rounds of CSS fixes
+  and outer-version bumps, even though `curl`ing the outer wrapper and
+  `index.html` themselves both showed the correct latest version — the
+  server was serving the latest code from disk the entire time (proven:
+  fetching `css/05b-my-portfolio.css?v=9.204.0` directly still returned
+  old content, while fetching the same file at the new version returned
+  the latest); only the specific cached sub-import URL was stale in the
+  browser. **This is why repeated "I fixed it" reports kept coming back
+  as "same behavior" — the browser was never actually being asked to
+  refetch that one file.** Fixed by bumping the import line itself to
+  `?v=9.215.0`; the one test asserting the exact old import string
+  (`tests/api/platform/test_dashboard_hosting.py`) updated to match.
+  Recorded as a standing memory note (`feedback_dashboard_version_bump.md`):
+  any future edit to `05b-my-portfolio.css` (or `03-shell.css`) must also
+  bump its own `@import` line inside `dashboard.css`, not just the outer
+  `index.html` version.
+- Dashboard asset version bumped `9.214.0` → `9.215.0` (outer), plus the
+  inner import fix above.
+- Tests: full suite run to confirm the final combined state (grouped
+  header, exact-scroll fix, isolation hardening, and the import-version
+  fix together).
+
+**Correction round: scroll-position revert, then a compositor-layer fix
+for persistent sticky-header bleed-through.** The owner continued to
+report the same "top header stick always, content scroll cleanly below
+it" failure across several supposedly-fixed rounds, escalating to
+explicit frustration. Two separate, real problems were involved:
+
+- **Scroll landing position.** The hand-computed exact-scroll `scrollBy()`
+  delta (added to fix native `scrollIntoView`'s measured ~8-30px
+  undershoot against the sticky header on this engine) passed every
+  automated/synthetic check performed this session, but produced a
+  *worse* real-environment symptom (content appearing entirely above/
+  through the sticky header, confirmed via the owner's own plain,
+  non-DevTools screenshot) than native's known-benign minor undershoot.
+  Root cause could not be reproduced or confirmed despite an extensive
+  audit (every descendant checked for rogue `position: sticky`/`fixed`,
+  `.workspace-viewport` overflow/padding checked, real mouse-wheel
+  simulation attempted, programmatic scrollTop stepping with DOM
+  hit-testing at 8 positions — all showed correct stacking in this
+  session's own testing). **Reverted** `scrollMyPortfolioElementIntoView`
+  back to plain `el.scrollIntoView({block: "start", behavior: "smooth",
+  inline: "nearest"})`, on the reasoning that the custom code's real-world
+  failure mode was strictly worse than native's, and that further
+  patching without being able to reproduce the actual bug risked making
+  it worse again. Communicated to the owner as an honest, not-fully-explained
+  reversion rather than a claimed fix.
+- **Persistent visual bleed-through during active scroll (the actual
+  ongoing complaint).** `isolation: isolate` (added in the prior round)
+  fixes CSS stacking *order* but not necessarily paint *timing* — a
+  `position: sticky` element can still be composited a frame behind an
+  already-GPU-promoted `backdrop-filter` sibling (every `.card` in this
+  file uses `backdrop-filter: var(--glass-blur)`, confirmed via
+  `04-shared-components.css:23`) during an active scroll gesture on
+  Chromium/WebKit, which is exactly what "isolation is correct but
+  content still visibly bleeds through while scrolling" looks like.
+  Added `transform: translateZ(0)` + `backface-visibility: hidden` to
+  `#my-portfolio-sticky-header` (`05b-my-portfolio.css`) to force it onto
+  its own explicit compositor layer, removing the ambiguity the browser
+  was resolving inconsistently. This is additive to, not a replacement
+  for, the existing `isolation: isolate` + opaque `var(--bg-sidebar)`
+  background.
+- **Verification limits, stated plainly:** this bug class (per this
+  session's own earlier-documented finding) only reproduces with genuine
+  physical mouse-wheel/trackpad scroll input in a real, GPU-accelerated
+  browser — not with a programmatic scroll, and not with this session's
+  automated Browser-pane tool, whose screenshot capture returned a blank/
+  broken image on every attempt against a real, authenticated, populated
+  (47-holding) throwaway server this round (confirmed not a login or data
+  problem: DOM queries against the same live page returned correct real
+  geometry and content). This is a tooling limitation, not a code
+  verification that passed — it is explicitly **not** claimed as visually
+  confirmed by the AI. Real-server `curl` verification confirmed all
+  three cache-busting layers (`index.html` outer `dashboard.css?v=`/
+  `dashboard.js?v=`, and `dashboard.css`'s own inner `@import
+  ...05b-my-portfolio.css?v=`) correctly serve the new code at `9.218.0`.
+- Verification server: real production `db/athena.db` (5.6 GB) cloned via
+  APFS copy-on-write (`cp -c`, zero additional disk consumed — confirmed
+  via `df -h` before/after) into a scratchpad temp path, isolated
+  throwaway owner credentials via `python -m athena.cli
+  set-owner-password`, isolated port 8010. Real production server (port
+  8000, PID 2258) confirmed unaffected throughout; throwaway server
+  stopped and its scratch DB clone left under the session scratchpad
+  (auto-cleaned, never touches the real file).
+- Dashboard asset version bumped `9.217.0` → `9.218.0` (all three layers
+  together, per the standing memory convention). Version-string
+  assertions in `tests/api/platform/test_dashboard_hosting.py` and
+  `tests/api/platform/test_decision_chart_release_gate.py` updated to
+  match.
+- Tests: full suite **4009 passed, 1 pre-existing unrelated failure
+  (macOS installer test), 1 pre-existing unrelated skip** (140.20s). The
+  passed-count differs slightly from the prior round's 4016 because that
+  run was on 2026-09-11 (a Friday/trading day) and this one on
+  2026-09-12 (a Saturday) — plausibly explained by this project's
+  calendar/session-type-aware tests, not by this change (CSS cannot
+  alter Python test collection); not independently re-confirmed against
+  a same-weekday baseline.
+
+**Status.** Implementation complete; full suite green modulo the one
+pre-existing unrelated failure. The compositor-layer fix is **not yet
+owner-verified** — awaiting the owner's own real-browser confirmation
+that the sticky-header bleed-through is actually resolved, since this
+bug class cannot be confirmed by this session's own tooling. MP-RV2
+remains open, not owner-approved.
+
+**Correction round: the real root cause, found by direct measurement
+instead of more CSS theories.** The owner re-tested the compositor-layer
+fix (hard refresh, restart) and reported the identical failure —
+disproving the GPU-compositing-race hypothesis entirely. At the owner's
+own suggestion, a loud, unmistakable diagnostic CSS block (`!important`
+magenta sticky header, yellow content panels) was shipped to remove all
+ambiguity; the owner's screenshots showed yellow content clearly landing
+partially behind/above the magenta header — a real, persistent
+overlap, not a transient paint glitch.
+
+- Reproduced directly via an isolated throwaway server (real 5.7 GB
+  `db/athena.db` cloned via APFS copy-on-write, zero extra disk used;
+  isolated port; throwaway owner credentials) and raw DOM measurement
+  (`getBoundingClientRect()`, since this session's own Browser-pane
+  screenshot capture remained broken throughout — confirmed not a login/
+  data problem, a tooling limitation). A monkey-patched
+  `Element.prototype.scrollIntoView` proved the click handler and target
+  resolution were both firing correctly; `behavior: "smooth"` simply
+  never animates in this specific automated tab (rAF/animation appears
+  throttled for a backgrounded automation tab), so `behavior: "instant"`
+  was used to isolate the underlying landing-position math from that
+  separate, environment-specific animation issue.
+- **Root cause #1:** `loadMyPortfolioWorkspace()` (the function that runs
+  every time the My Portfolio tab is opened) never re-triggered the
+  sticky-header height measurement after the tab's `display:none` pane
+  becomes visible. The one-time measurement at page load ran while the
+  header was still hidden (0 height, since Overview loads by default),
+  and nothing refreshed it until an unrelated window scroll/resize event
+  happened to fire — so the very first nav-section click after opening
+  the tab always used a stale or unset height. Fixed by calling
+  `scheduleMyPortfolioHoldingsScrollChrome()` both the instant the tab
+  pane is marked active (`switchTab()`, `03-app-shell.js`) and again
+  after the async holdings/imports/notes/snapshot load finishes
+  (`loadMyPortfolioWorkspace()`'s `finally` block, `08b-my-portfolio.js`).
+- **Root cause #2 (the deeper one — present even when the JS measurement
+  DID run):** `syncMyPortfolioSectionNavHeight()` measured only the
+  sticky header's own `getBoundingClientRect().height`. But
+  `scrollIntoView` + `scroll-margin-top` anchors the landing position
+  against the *scrolling container's own border-box top edge* — which
+  sits well above where the header naturally starts (the container's own
+  top padding). The header's height alone always missed that leading
+  gap, undershooting the true required clearance by a consistent ~14-70px
+  depending on measurement timing. Proven empirically across three
+  separate iterations of instrumented direct measurement (not assumed):
+  the fallback-only case overlapped by ~85px, a "successfully measured"
+  JS value still overlapped by ~14px, and only after correcting the
+  formula to `header.getBoundingClientRect().bottom -
+  container.getBoundingClientRect().top` did every section (Overview,
+  Triage, Risk & Heatmap, Holdings) land with a clean, consistent ~24px
+  gap and zero overlap, reproduced identically three times.
+- The CSS fallback (used whenever the JS value hasn't populated yet) was
+  bumped from an undershooting `56px` to a safe `180px`, comfortably
+  above the header's real measured clearance, so a missing/stale
+  measurement can no longer cause an overlap on its own.
+- The earlier `transform: translateZ(0)` + `backface-visibility: hidden`
+  compositor hardening and `isolation: isolate` are left in place
+  (harmless, technically correct defensive patterns) but are now known
+  **not** to have been the actual cause of the reported symptom.
+- Temporary loud diagnostic CSS (`!important` magenta header / yellow
+  panels), added at the owner's suggestion to remove all ambiguity from
+  screenshots, has been fully removed.
+- Dashboard asset version bumped `9.219.0` → `9.223.0` across all three
+  cache-busting layers (several intermediate bumps during iterative
+  throwaway-server verification of each hypothesis). Version-string and
+  scroll-margin-top-fallback assertions in
+  `tests/api/platform/test_dashboard_hosting.py` and
+  `tests/api/platform/test_decision_chart_release_gate.py` updated to
+  match.
+- Tests: full suite **4009 passed, 1 pre-existing unrelated failure
+  (macOS installer test), 1 pre-existing unrelated skip** (124.15s) —
+  identical result to the prior round, confirming no regression from
+  either the JS formula change or the CSS fallback bump.
+- Real production server (port 8000, PID 2258) confirmed serving the
+  final fix via direct `curl` (all three cache-busting layers, the
+  corrected JS formula, and the corrected CSS fallback) — never
+  restarted, never touched beyond normal static-file serving throughout
+  this entire investigation.
+
+**Status.** Implementation complete; root cause reproduced and fixed via
+direct, repeatable measurement rather than theory. Full suite green
+modulo the one pre-existing unrelated failure. Awaiting the owner's own
+real-dashboard confirmation before MP-RV2 can be marked owner-approved.
+
+---
+
 ## ID-11 — Owner-Facing Intraday Intelligence Integration (source-review correction)
 
 **Summary.** Owner/Chief Architect source review of the ID-11 implementation

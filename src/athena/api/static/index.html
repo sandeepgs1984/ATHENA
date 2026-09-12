@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.209.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.224.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -475,10 +475,10 @@
 
                 <!-- My Portfolio Tab -->
                 <div id="tab-my-portfolio" class="tab-pane">
-                    <section class="my-portfolio-workstation" aria-labelledby="my-portfolio-heading">
+                    <section class="my-portfolio-workstation" aria-label="My Portfolio">
+                        <div id="my-portfolio-sticky-header" class="my-portfolio-sticky-header">
                         <div class="my-portfolio-header my-portfolio-command-center">
                             <div>
-                                <h2 id="my-portfolio-heading">My Portfolio</h2>
                                 <p class="metric-desc">Canonical current holdings from confirmed imports. Portfolio Sync analysis reflects the latest successful or partial Sync.</p>
                             </div>
                             <div class="my-portfolio-actions">
@@ -546,6 +546,14 @@
                                     <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
                                 </button>
                             </div>
+                        </div>
+
+                        <nav id="my-portfolio-section-nav" class="my-portfolio-section-nav" aria-label="My Portfolio sections">
+                            <button type="button" class="my-portfolio-section-nav-item active" data-nav-target="overview">Overview</button>
+                            <button type="button" class="my-portfolio-section-nav-item" data-nav-target="triage">Triage</button>
+                            <button type="button" class="my-portfolio-section-nav-item" data-nav-target="risk-heatmap">Risk &amp; Heatmap</button>
+                            <button type="button" class="my-portfolio-section-nav-item" data-nav-target="holdings">Holdings</button>
+                        </nav>
                         </div>
 
                         <div id="my-portfolio-alert" class="my-portfolio-alert my-portfolio-status-banner" hidden></div>
@@ -2482,7 +2490,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.209.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.224.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

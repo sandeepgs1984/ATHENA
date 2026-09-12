@@ -13,6 +13,22 @@ from athena.api.app import DASHBOARD_JS_PARTS, assemble_dashboard_js
 _IMPORT_RE = re.compile(r'@import\s+url\("([^"]+)"\)')
 
 
+def test_portfolio_sticky_header_has_no_scrollport_top_gutter(client: TestClient) -> None:
+    """Keep initial spacing in scrolling content, outside the sticky inset."""
+    css = client.get("/dashboard/css/05b-my-portfolio.css").text
+    viewport = re.search(
+        r"\.workspace-viewport:has\(> #tab-my-portfolio\.active\)\s*\{([^}]+)\}", css
+    )
+    content = re.search(
+        r"#tab-my-portfolio > \.my-portfolio-workstation\s*\{([^}]+)\}", css
+    )
+    header = re.search(r"\.my-portfolio-sticky-header\s*\{([^}]+)\}", css)
+    assert viewport and "padding-top: 0;" in viewport[1]
+    assert content and "padding-top: var(--space-32);" in content[1]
+    assert header and "top: 0;" in header[1] and "border-radius: 0;" in header[1]
+    assert "transform:" not in header[1]
+
+
 def _fetch_full_css(client: TestClient) -> str:
     """dashboard.css (UX-7 refactor) is a slim entry point that @imports the
     real rules from css/*.css, split by concern for maintainability. Tests
@@ -303,8 +319,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.209.0" in html
-    assert "dashboard.js?v=9.209.0" in html
+    assert "dashboard.css?v=9.224.0" in html
+    assert "dashboard.js?v=9.224.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -366,6 +382,12 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-reset-modal"' in html
     assert "Delete My Portfolio" in html
     assert 'class="my-portfolio-header my-portfolio-command-center"' in html
+    # MP-RV3: no redundant local "My Portfolio" title -- the global
+    # #page-title header already shows the active tab's name, so the
+    # workstation section labels itself directly instead of repeating it
+    # in a local heading.
+    assert 'class="my-portfolio-workstation" aria-label="My Portfolio"' in html
+    assert 'id="my-portfolio-heading"' not in html
     assert 'id="my-portfolio-privacy-toggle"' in html
     assert 'class="btn btn-icon my-portfolio-privacy-toggle"' in html
     assert 'aria-label="Hide private portfolio values"' in html
@@ -387,6 +409,29 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "Essential" in html
     assert "Exports include private values" in html
     assert 'id="my-portfolio-alert" class="my-portfolio-alert my-portfolio-status-banner" hidden' in html
+    # MP-RV2 (revised): the header actions and the section nav are grouped
+    # into one persistently-visible sticky block (#my-portfolio-sticky-header)
+    # rather than a non-sticky header sitting above a separately-sticky nav
+    # strip, so the primary actions stay reachable at all times and there is
+    # only ever one opaque sticky surface. One button per section, click-to-scroll.
+    assert 'id="my-portfolio-sticky-header" class="my-portfolio-sticky-header"' in html
+    assert 'id="my-portfolio-section-nav" class="my-portfolio-section-nav"' in html
+    assert html.count('class="my-portfolio-section-nav-item') == 4
+    assert 'data-nav-target="overview"' in html
+    assert 'data-nav-target="triage"' in html
+    assert 'data-nav-target="risk-heatmap"' in html
+    assert 'data-nav-target="holdings"' in html
+    assert html.find('id="my-portfolio-sticky-header"') < html.find(
+        'class="my-portfolio-header my-portfolio-command-center"'
+    )
+    assert html.find('class="my-portfolio-header my-portfolio-command-center"') < html.find(
+        'id="my-portfolio-section-nav"'
+    )
+    assert html.find('id="my-portfolio-section-nav"') < html.find('id="my-portfolio-alert"')
+    assert html.find('id="my-portfolio-alert"') < html.find('id="my-portfolio-upload-panel"')
+    assert html.find('id="my-portfolio-upload-panel"') < html.find(
+        'class="my-portfolio-summary my-portfolio-kpi-strip"'
+    )
     assert 'class="my-portfolio-summary my-portfolio-kpi-strip"' in html
     assert 'class="card val-card my-portfolio-kpi-card my-portfolio-kpi-primary"' in html
     assert 'class="my-portfolio-freshness-strip" aria-label="Portfolio freshness"' in html
@@ -562,7 +607,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css?v=9.204.0");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.224.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
@@ -577,6 +622,14 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert ".my-portfolio-private-value" in my_portfolio_css
     assert ".my-portfolio-private-value::before" in my_portfolio_css
     assert ".my-portfolio-status-banner" in my_portfolio_css
+    assert ".my-portfolio-section-nav {" in my_portfolio_css
+    assert ".my-portfolio-section-nav-item.active" in my_portfolio_css
+    # MP-RV3: the sticky nav must be fully opaque (var(--bg-sidebar), the
+    # same pattern the holdings-table's own sticky header/thead already
+    # use) -- a translucent rgba(...) + backdrop-filter background let
+    # scrolled-past content visibly bleed through while sticky.
+    assert "background: var(--bg-sidebar);" in my_portfolio_css
+    assert "rgba(11, 15, 25, 0.92)" not in my_portfolio_css
     assert ".my-portfolio-kpi-strip" in my_portfolio_css
     assert ".my-portfolio-kpi-primary" in my_portfolio_css
     assert ".my-portfolio-freshness-strip" in my_portfolio_css
@@ -947,7 +1000,18 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "heatmapExpanded: false" in js
     assert "function scrollMyPortfolioHoldingsIntoView" in js
     assert "scrollMyPortfolioHoldingsIntoView()" in js
-    assert "scroll-margin-top: var(--space-16);" in my_portfolio_css
+    # MP-RV2: the holdings card's own scroll-margin-top (used by both this
+    # existing scrollMyPortfolioHoldingsIntoView() jump and the section
+    # nav's "Holdings" target) now accounts for the sticky header's real,
+    # dynamically-measured height instead of a flat value that predates it
+    # (a flat 16px would leave the card partially hidden behind the taller
+    # header on every scrollIntoView() call that targets it). The fallback
+    # (used whenever the JS measurement hasn't run yet -- proven unreliable
+    # on the very first nav click after opening the tab) was bumped from an
+    # undershooting 56px to a safe 140px, comfortably above the header's
+    # real measured height, so a missing JS measurement can no longer land
+    # a section underneath the header instead of below it.
+    assert "scroll-margin-top: calc(var(--my-portfolio-section-nav-height, 180px) + var(--space-24));" in my_portfolio_css
     assert 'athena.myPortfolio.riskExpanded' in js
     assert 'athena.myPortfolio.heatmapExpanded' in js
     assert ".my-portfolio-risk-panel.collapsed .my-portfolio-risk-body" in my_portfolio_css

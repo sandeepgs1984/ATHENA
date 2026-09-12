@@ -32,6 +32,10 @@
     const myPortfolioHoldingsScopeBadge = document.getElementById("my-portfolio-holdings-scope-badge");
     const myPortfolioCommandDashboard = document.querySelector(".my-portfolio-command-dashboard");
     const myPortfolioRiskPanel = document.querySelector(".my-portfolio-risk-panel");
+    const myPortfolioWorkstation = document.querySelector(".my-portfolio-workstation");
+    const myPortfolioKpiStrip = document.querySelector(".my-portfolio-kpi-strip");
+    const myPortfolioSectionNav = document.getElementById("my-portfolio-section-nav");
+    const myPortfolioStickyHeader = document.getElementById("my-portfolio-sticky-header");
     const myPortfolioRiskBody = document.getElementById("my-portfolio-risk-body");
     const myPortfolioRiskLead = document.getElementById("my-portfolio-risk-lead");
     const myPortfolioRiskToggle = document.getElementById("my-portfolio-risk-toggle");
@@ -859,12 +863,93 @@
         myPortfolioTheadClone.style.minWidth = window.getComputedStyle(myPortfolioHoldingsTable).minWidth;
     }
 
+    const myPortfolioNavSections = [
+        { key: "overview", el: myPortfolioKpiStrip },
+        { key: "triage", el: myPortfolioCommandDashboard },
+        { key: "risk-heatmap", el: myPortfolioRiskPanel },
+        { key: "holdings", el: myPortfolioHoldingsCard },
+    ].filter(section => section.el);
+
+    function setMyPortfolioActiveNavItem(key) {
+        myPortfolioSectionNav?.querySelectorAll(".my-portfolio-section-nav-item").forEach(item => {
+            item.classList.toggle("active", item.dataset.navTarget === key);
+        });
+    }
+
+    // Plain, native browser positioning: scrollIntoView() honors each
+    // target's own scroll-margin-top (set once, in CSS, from the same
+    // --my-portfolio-section-nav-height variable the sticky header's own
+    // height is measured into) rather than a hand-computed JS delta.
+    // A hand-rolled scrollBy() delta was tried here and, despite passing
+    // every synthetic/automated check, produced worse real-world results
+    // (a target landing scrolled too far, past the header) than this
+    // simpler, standard mechanism ever did — reverted rather than
+    // patched further. Shared by the section nav and the pre-existing
+    // "Start review" jump-to-holdings action, since both scroll a target
+    // in under the same sticky header.
+    function scrollMyPortfolioElementIntoView(el) {
+        if (!el) return;
+        el.scrollIntoView({ block: "start", behavior: "smooth", inline: "nearest" });
+    }
+
+    function scrollMyPortfolioToSection(key) {
+        const section = myPortfolioNavSections.find(entry => entry.key === key);
+        if (section) scrollMyPortfolioElementIntoView(section.el);
+    }
+
+    let myPortfolioNavObserver = null;
+
+    function initMyPortfolioSectionNavObserver() {
+        if (!myPortfolioSectionNav || !myPortfolioNavSections.length || typeof IntersectionObserver === "undefined") {
+            return;
+        }
+        const stickyHeight = Math.ceil((myPortfolioStickyHeader || myPortfolioSectionNav).getBoundingClientRect().height) || 56;
+        myPortfolioNavObserver = new IntersectionObserver(entries => {
+            const visible = entries.filter(entry => entry.isIntersecting);
+            if (!visible.length) return;
+            visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+            const topKey = visible[0].target.dataset.navSectionKey;
+            if (topKey) setMyPortfolioActiveNavItem(topKey);
+        }, {
+            root: myPortfolioWorkspaceViewport || null,
+            rootMargin: `-${stickyHeight + 8}px 0px -70% 0px`,
+            threshold: 0,
+        });
+        myPortfolioNavSections.forEach(section => {
+            section.el.dataset.navSectionKey = section.key;
+            myPortfolioNavObserver.observe(section.el);
+        });
+    }
+
+    function syncMyPortfolioSectionNavHeight() {
+        const stickyHeader = myPortfolioStickyHeader || myPortfolioSectionNav;
+        if (!stickyHeader || !myPortfolioWorkstation) return 0;
+        // `scrollIntoView` + `scroll-margin-top` anchors against the
+        // scrolling container's own border-box top edge, not the sticky
+        // header's -- the header is not flush against that edge (the
+        // container's own top padding sits between them), so the header's
+        // own getBoundingClientRect().height alone always undershoots by
+        // that leading gap. Measure the header's bottom edge relative to
+        // the container's own top instead, which captures both the leading
+        // gap and the header's height in one real, live number (verified
+        // empirically: height-only measurement left a consistent ~14px
+        // overlap even when it ran successfully, not just when it fell
+        // back to a default).
+        const container = myPortfolioWorkspaceViewport || myPortfolioWorkstation;
+        const stickyHeight = Math.round(
+            stickyHeader.getBoundingClientRect().bottom - container.getBoundingClientRect().top
+        );
+        myPortfolioWorkstation.style.setProperty("--my-portfolio-section-nav-height", `${stickyHeight}px`);
+        return stickyHeight;
+    }
+
     function syncMyPortfolioTheadDock() {
         if (!myPortfolioTheadDock || !myPortfolioHoldingsHeader || !myPortfolioHoldingsScroll || !myPortfolioHoldingsTable) {
             return;
         }
+        const navHeight = syncMyPortfolioSectionNavHeight();
         const headerHeight = Math.round(myPortfolioHoldingsHeader.getBoundingClientRect().height);
-        myPortfolioHoldingsCard?.style.setProperty("--my-portfolio-holdings-thead-top", `${headerHeight}px`);
+        myPortfolioHoldingsCard?.style.setProperty("--my-portfolio-holdings-thead-top", `${navHeight + headerHeight}px`);
         myPortfolioTheadDock.hidden = false;
         myPortfolioTheadDock.setAttribute("aria-hidden", "false");
         syncMyPortfolioTheadClone();
@@ -879,6 +964,7 @@
         if (myPortfolioHoldingsChromeFrame) return;
         myPortfolioHoldingsChromeFrame = window.requestAnimationFrame(() => {
             myPortfolioHoldingsChromeFrame = 0;
+            syncMyPortfolioSectionNavHeight();
             syncMyPortfolioStickyHeaderState();
             syncMyPortfolioTheadDock();
         });
@@ -1818,7 +1904,11 @@
 
     function scrollMyPortfolioHoldingsIntoView() {
         window.requestAnimationFrame(() => {
-            myPortfolioHoldingsCard?.scrollIntoView({ block: "start", behavior: "smooth", inline: "nearest" });
+            if (myPortfolioHoldingsCard && myPortfolioStickyHeader && myPortfolioWorkspaceViewport) {
+                scrollMyPortfolioElementIntoView(myPortfolioHoldingsCard);
+            } else {
+                myPortfolioHoldingsCard?.scrollIntoView({ block: "start", behavior: "smooth", inline: "nearest" });
+            }
             scheduleMyPortfolioHoldingsScrollChrome();
         });
     }
@@ -2412,6 +2502,18 @@
             renderMyPortfolioSummary();
         } finally {
             myPortfolioState.loading = false;
+            // The sticky header is inside a `display:none` tab-pane until this
+            // tab is actually activated, so any earlier measurement of its
+            // height (e.g. the one-time init call at page load, before this
+            // tab was ever shown) measured a hidden, zero-height element.
+            // --my-portfolio-section-nav-height stayed stuck at that stale
+            // value (or its 56px CSS fallback) until an unrelated scroll/
+            // resize event happened to refresh it -- so the first nav-target
+            // click right after opening this tab always used a too-small
+            // scroll-margin-top and undershot, leaving the tail of the
+            // previous section visible above the now-visible sticky header.
+            // Re-measure now that the tab-pane's real layout exists.
+            scheduleMyPortfolioHoldingsScrollChrome();
         }
     }
 
@@ -3946,6 +4048,14 @@
     renderMyPortfolioHeatmapDisclosure();
     renderMyPortfolioTriageFiltersDisclosure();
     renderMyPortfolioExportColumns();
+    myPortfolioSectionNav?.querySelectorAll(".my-portfolio-section-nav-item").forEach(item => {
+        item.addEventListener("click", () => {
+            const key = item.dataset.navTarget;
+            setMyPortfolioActiveNavItem(key);
+            scrollMyPortfolioToSection(key);
+        });
+    });
+    initMyPortfolioSectionNavObserver();
     scheduleMyPortfolioHoldingsScrollChrome();
     window.addEventListener("scroll", scheduleMyPortfolioHoldingsScrollChrome, { passive: true });
     window.addEventListener("resize", scheduleMyPortfolioHoldingsScrollChrome);

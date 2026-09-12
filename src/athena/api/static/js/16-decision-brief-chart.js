@@ -1,6 +1,12 @@
 
 
     const decisionChartControllers = new Map();
+    // event.target on a bubbled click/pointer/focus/key event is not always
+    // an Element (e.g. document or window itself, or a text node) -- guard
+    // every closest() lookup below instead of letting it throw.
+    function decisionChartClosest(target, selector) {
+        return target instanceof Element ? target.closest(selector) : null;
+    }
     const CHART_PREF_KEY = "athena.decision-chart-preferences";
     const CHART_TIMEFRAMES = ["5m", "15m"];
     const CHART_LIMITS = [60, 120, 300, 500];
@@ -920,14 +926,14 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     });
 
     document.addEventListener("pointermove", event => {
-        const hitArea = event.target.closest("[data-chart-host-id]");
+        const hitArea = decisionChartClosest(event.target, "[data-chart-host-id]");
         if (!hitArea) return;
         const controller = decisionChartControllers.get(hitArea.getAttribute("data-chart-host-id"));
         if (controller) controller.inspectFromPointer(event, hitArea);
     });
 
     document.addEventListener("pointerdown", event => {
-        const hitArea = event.target.closest("[data-chart-host-id]");
+        const hitArea = decisionChartClosest(event.target, "[data-chart-host-id]");
         if (!hitArea) return;
         const controller = decisionChartControllers.get(hitArea.getAttribute("data-chart-host-id"));
         if (!controller) return;
@@ -936,7 +942,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     });
 
     document.addEventListener("click", event => {
-        const hitArea = event.target.closest("[data-chart-host-id]");
+        const hitArea = decisionChartClosest(event.target, "[data-chart-host-id]");
         if (!hitArea) return;
         const controller = decisionChartControllers.get(hitArea.getAttribute("data-chart-host-id"));
         if (!controller) return;
@@ -945,14 +951,14 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     });
 
     document.addEventListener("pointerleave", event => {
-        const hitArea = event.target.closest("[data-chart-host-id]");
+        const hitArea = decisionChartClosest(event.target, "[data-chart-host-id]");
         if (!hitArea) return;
         const controller = decisionChartControllers.get(hitArea.getAttribute("data-chart-host-id"));
         if (controller) controller.hideCrosshair();
     }, true);
 
     document.addEventListener("focusin", event => {
-        const shell = event.target.closest("[data-chart-host]");
+        const shell = decisionChartClosest(event.target, "[data-chart-host]");
         if (!shell) return;
         activeInspectionHostId = shell.getAttribute("data-chart-host");
         const controller = decisionChartControllers.get(shell.getAttribute("data-chart-host"));
@@ -964,7 +970,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     });
 
     document.addEventListener("keydown", event => {
-        const shell = event.target.closest("[data-chart-host]");
+        const shell = decisionChartClosest(event.target, "[data-chart-host]");
         const passiveFocus = event.target === document.body || event.target === document.documentElement;
         const hostId = shell ? shell.getAttribute("data-chart-host") : activeInspectionHostId;
         if (!hostId || (!shell && !passiveFocus)) return;
@@ -983,7 +989,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
     });
 
     document.addEventListener("click", event => {
-        const resetButton = event.target.closest("[data-chart-reset]");
+        const resetButton = decisionChartClosest(event.target, "[data-chart-reset]");
         if (resetButton) {
             const controller = decisionChartControllers.get(resetButton.getAttribute("data-chart-reset"));
             const candles = controller && controller.series && Array.isArray(controller.series.candles)
@@ -995,12 +1001,12 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             }
             return;
         }
-        const fullscreenButton = event.target.closest("#decision-chart-open-fullscreen");
+        const fullscreenButton = decisionChartClosest(event.target, "#decision-chart-open-fullscreen");
         if (fullscreenButton) {
             openChartModal();
             return;
         }
-        const timeframeButton = event.target.closest("[data-chart-timeframe]");
+        const timeframeButton = decisionChartClosest(event.target, "[data-chart-timeframe]");
         if (timeframeButton) {
             const current = chartPreferences();
             const timeframe = timeframeButton.getAttribute("data-chart-timeframe");
@@ -1009,7 +1015,7 @@ Volume ${Number(candle.volume).toLocaleString("en-IN")}</title>
             reloadActiveDecisionChart();
             return;
         }
-        const limitButton = event.target.closest("[data-chart-limit]");
+        const limitButton = decisionChartClosest(event.target, "[data-chart-limit]");
         if (limitButton) {
             const current = chartPreferences();
             const limit = Number(limitButton.getAttribute("data-chart-limit"));

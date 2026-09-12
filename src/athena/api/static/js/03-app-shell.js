@@ -36,6 +36,20 @@
             }
         });
 
+        // My Portfolio's sticky section-nav header is inside this pane, so
+        // any earlier measurement of its height (e.g. the one-time init call
+        // at page load, before this tab was ever shown) measured a hidden,
+        // `display:none`, zero-height element. Re-measure the instant the
+        // pane actually becomes visible -- not only after loadTabData's own
+        // async data load finishes below -- so a user who clicks straight
+        // from this tab into a section-nav button has the correct height
+        // (and therefore the correct scroll-margin-top) from the very first
+        // click, instead of undershooting and leaving the previous section's
+        // tail visible above the header.
+        if (tabId === "my-portfolio" && typeof scheduleMyPortfolioHoldingsScrollChrome === "function") {
+            scheduleMyPortfolioHoldingsScrollChrome();
+        }
+
         // DT-2 header market ticker, generalized in MI-1 (Market Intelligence
         // redesign) to also cover Market Intelligence — both tabs share the
         // exact same component/endpoint, no duplication.

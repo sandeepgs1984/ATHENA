@@ -1,7 +1,7 @@
 # My Portfolio Dashboard Revamp
 
 **Status: Owner/Chief Architect approved 2026-09-11 — MP-RV1 approved and
-closed; MP-RV2 not started.**
+closed; MP-RV2 implemented, ready for review.**
 Authorized after the 14-item Next-Level UX roadmap closed with MP-NX6C
 (`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`). This is a **new**,
 separately-authorized track — not a reopening of Portfolio Intelligence V2
@@ -11,6 +11,36 @@ or scoring change. If a milestone is found to need any of those, it stops
 and an ADR/owner-approval path is followed instead of proceeding silently.
 
 ## 1. Origin
+
+### MP-RV2 scroll bleed correction (2026-09-12)
+
+The owner reported the bleed remained after the earlier stacking and
+scroll-landing corrections. A synthetic browser fixture loading the real
+shell and Portfolio styles reproduced a row visibly ABOVE the opaque header
+after wheel scrolling: the scrollport starts at y=72, while the sticky header
+remained at y=104. The 32px scroll-container top padding was an uncovered
+paint strip. Sampling points only inside the header missed this defect;
+no GPU race is needed to explain this reproduced case.
+
+The active Portfolio tab now sets its parent viewport's top padding to zero
+and places the same initial 32px padding on the workstation content. That
+space scrolls away, letting the sticky header meet the viewport edge. Square
+header corners close edge cutouts. Speculative transform/backface promotion
+was removed. The existing section landing measurement and tab-switch refresh
+remain unchanged. Other tabs retain their original viewport padding.
+
+Browser wheel-scroll screenshots verified the formerly exposed row is hidden
+and scrolling back to the top preserves initial spacing without a curtain
+covering the overview. Verification used synthetic data and the real styles;
+the production page required authentication and native Chrome automation was
+unavailable. Owner confirmation on production remains pending. Assets are
+cache-busted at all three levels to 9.224.0. MP-RV2 remains in review; no
+subsequent milestone is started.
+
+Regression result: full suite 4017 passed, 1 pre-existing macOS launcher
+failure. Ruff retains three existing E501 assertions in the hosting test.
+The new hosting regression passed as part of the full suite. Visual checks
+covered 1280px and 390px widths, wheel scrolling, and returning to the top.
 
 The owner reviewed five real screenshots of the live My Portfolio page
 (header/summary/triage; risk/heatmap; holdings table top; holdings table
