@@ -1,7 +1,7 @@
 # My Portfolio Dashboard Revamp
 
-**Status: Owner/Chief Architect approved 2026-09-11 — MP-RV1 approved and
-closed; MP-RV2 implemented, ready for review.**
+**Status: MP-RV1 and MP-RV2 Owner/Chief Architect approved and closed
+(2026-09-11 and 2026-09-12). MP-RV3 implemented and ready for Owner review.**
 Authorized after the 14-item Next-Level UX roadmap closed with MP-NX6C
 (`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`). This is a **new**,
 separately-authorized track — not a reopening of Portfolio Intelligence V2
@@ -33,9 +33,9 @@ Browser wheel-scroll screenshots verified the formerly exposed row is hidden
 and scrolling back to the top preserves initial spacing without a curtain
 covering the overview. Verification used synthetic data and the real styles;
 the production page required authentication and native Chrome automation was
-unavailable. Owner confirmation on production remains pending. Assets are
-cache-busted at all three levels to 9.224.0. MP-RV2 remains in review; no
-subsequent milestone is started.
+unavailable in that initial verification. Owner subsequently confirmed the
+fix on production and closed MP-RV2 on 2026-09-12, recorded in commit
+`48e02d0`. Assets at that closure were 9.224.0.
 
 Regression result: full suite 4017 passed, 1 pre-existing macOS launcher
 failure. Ruff retains three existing E501 assertions in the hosting test.
@@ -108,6 +108,13 @@ Owner/Chief Architect review before the next starts.
 | **MP-RV5** | Route the heatmap tile's secondary label text through `--tone-good-text`/`--tone-warn-text`/`--tone-bad-text` (matching the tile's own tone) instead of the flat `--text-muted`, for real contrast against tinted backgrounds. Pure CSS token substitution — zero tone-selection logic change. | `05b-my-portfolio.css` only | Low — must screenshot-verify contrast on all five tones (positive/negative/danger/neutral/default) before/after |
 
 ## 4. Non-goals (explicit)
+
+MP-RV3 implementation (2026-09-12): scoped copy replacements and triage
+overlap caption are complete, with all unavailable filter keys/disabled
+states and private-export disclosure preserved. Static browser preview
+verified text wrapping. Full suite: 4017 passed, one pre-existing macOS
+launcher failure; three pre-existing hosting-test E501 lint findings remain.
+Assets: 9.225.0. Owner approval pending; MP-RV4/MP-RV5 not started.
 
 - No change to Status / Conviction / Trend / Setup / Daily Review / Next
   Action / Structural Review / EXIT_RISK methodology, or any interpretation

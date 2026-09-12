@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.224.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.225.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -493,7 +493,7 @@
                                     <div id="my-portfolio-export-panel" class="my-portfolio-export-panel" hidden>
                                         <div>
                                             <h3>Export Portfolio</h3>
-                                            <p>Download server-owned My Portfolio data. Exports include private values.</p>
+                                            <p>Download your portfolio data. Exports include private values.</p>
                                         </div>
                                         <label for="my-portfolio-export-scope">
                                             Dataset
@@ -648,7 +648,7 @@
                                 <div class="card-body">
                                     <h3>Total Investment</h3>
                                     <div class="metric-value" id="my-portfolio-total-investment">₹ —</div>
-                                    <p class="metric-desc">Server-owned holding math</p>
+                                    <p class="metric-desc">Based on confirmed quantities and average prices</p>
                                 </div>
                             </div>
                             <div class="card val-card my-portfolio-kpi-card my-portfolio-kpi-compact">
@@ -709,6 +709,7 @@
                                     <span>Evidence gap</span>
                                 </button>
                             </div>
+                            <p class="metric-desc">A holding can appear in more than one category.</p>
                             <div class="my-portfolio-triage-footer">
                                 <p id="my-portfolio-triage-summary">Showing all holdings.</p>
                                 <div class="my-portfolio-triage-footer-actions">
@@ -787,10 +788,10 @@
                                     </div>
                                 </div>
                                 <p class="my-portfolio-triage-unavailable-note">
-                                    Counts not invented:
-                                    <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="near_trigger" data-triage-available="false" disabled title="Unavailable until owner-approved near-trigger semantics exist. No new distance threshold was invented.">Near Trigger</button>
-                                    <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="near_support" data-triage-available="false" disabled title="Unavailable until owner-approved near-support semantics exist. No new distance threshold was invented.">Near Support</button>
-                                    <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="fresh_breakout" data-triage-available="false" disabled title="Unavailable until owner-approved fresh-breakout semantics exist. Opening Range Setup Breakout remains available as a Smart Filter.">Fresh Breakout</button>
+                                    Not available:
+                                    <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="near_trigger" data-triage-available="false" disabled title="Unavailable: proximity to a trigger is not currently assessed.">Near Trigger</button>
+                                    <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="near_support" data-triage-available="false" disabled title="Unavailable: proximity to support is not currently assessed.">Near Support</button>
+                                    <button type="button" class="my-portfolio-triage-chip is-unavailable" data-triage-filter="fresh_breakout" data-triage-available="false" disabled title="Unavailable: breakout freshness is not currently assessed. Opening Range Setup Breakout is available in Smart Filters.">Fresh Breakout</button>
                                 </p>
                             </div>
                         </section>
@@ -2490,7 +2491,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.224.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.225.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

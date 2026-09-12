@@ -6,6 +6,51 @@ status updated on approval.
 
 ---
 
+## MP-RV3 — My Portfolio Dashboard Revamp: Owner-Facing Copy
+
+**Objective and scope.** Continue the approved revamp after the latest
+commit `48e02d0` recorded MP-RV2 Owner approval. Replace the three scoped
+engineering descriptions with plain product language and explain overlapping
+triage categories. Export still explicitly discloses private values; the
+three unavailable filters retain disabled state and their existing keys.
+No new count, threshold, financial calculation, or filter behavior.
+
+**Changes.** Investment now reads "Based on confirmed quantities and average
+prices"; export reads "Download your portfolio data. Exports include private
+values."; unavailable filters use "Not available" and explanatory tooltips.
+A caption beneath the four triage metrics reads "A holding can appear in
+more than one category." Corrected the design document's stale MP-RV2 status
+to match Owner approval. Asset cache keys advanced together to 9.225.0.
+
+**Files.** No new repository files. Modified `src/athena/api/static/index.html`,
+`src/athena/api/static/dashboard.css` (cache key only),
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`,
+`docs/design/MY-PORTFOLIO-DASHBOARD-REVAMP.md`, `docs/MILESTONES.md`, and this log.
+No module-map change, so no briefing-map update is required.
+
+**Validation and coverage.** Updated existing copy/version assertions; no
+new tests for static prose. Screenshot-checked an isolated static copy of
+the real HTML/CSS, including the caption and wrapping investment description.
+Preview scripts were removed, so this verifies presentation, not runtime
+interaction. Full suite: **4017 passed, 1 pre-existing macOS launcher failure**
+(`test_installer_builds_configured_app_bundle`), 118.69s. Ruff retains the
+same three pre-existing E501 assertions in the hosting test (978/979/1014).
+No new failures observed; repository gates remain non-green on those known
+issues. Production runtime was not restarted or mutated.
+
+**Architecture and review.** Presentation-only per ATHENA-002 reporting
+boundary and the revamp design. No public API, DTO, schema, methodology,
+interpretation, configuration, determinism, or replay changes. No ADR or
+technical debt introduced. MP-RV3 ready for Owner review with the existing
+validation failures disclosed;
+MP-RV4 and MP-RV5 remain planned. Git inspection was explicitly requested;
+no git mutation or commit performed.
+
+**Commit message.** `fix(portfolio): clarify dashboard copy and triage counts`
+
+---
+
 ## MP-RV1 — My Portfolio Dashboard Revamp: Upload Holdings Header Shortcut
 
 **Objective.** First milestone of the newly-authorized My Portfolio

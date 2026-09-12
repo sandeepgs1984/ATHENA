@@ -319,8 +319,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.224.0" in html
-    assert "dashboard.js?v=9.224.0" in html
+    assert "dashboard.css?v=9.225.0" in html
+    assert "dashboard.js?v=9.225.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -607,7 +607,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css?v=9.224.0");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.225.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
@@ -942,7 +942,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'status === "AT_RISK"' in js
     assert 'status === "CAUTION"' in js
     assert 'filterId === "near_trigger"' in js
-    assert "No new distance threshold was invented." in html
+    assert "Unavailable: proximity to a trigger is not currently assessed." in html
     assert "Sync Portfolio to build the action queue." in js
     assert "No holdings need attention." in js
     assert "No holdings match the current triage filters." in js
