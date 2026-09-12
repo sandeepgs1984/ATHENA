@@ -319,10 +319,14 @@ both show the header flush against the viewport, without exposed content.
 `docs/MILESTONES.md`, and the governing revamp design document. All three
 asset cache keys advanced to 9.224.0. No files created in the repository.
 
-**Review status.** Fix implemented and fixture visually verified; production
-owner review remains pending. No next milestone started. Residual risk is
-browser-specific production behavior not exercised in the isolated fixture.
-No git operations performed; unrelated changes preserved.
+**Review status.** Fix implemented and fixture visually verified; confirmed
+against the real production dashboard (real portfolio data, no fixture)
+via a 754-position scroll audit across the full page — zero gap at every
+scroll depth beyond the initial ~30px of harmless top padding, and full
+suite green (4010 passed, 1 pre-existing unrelated failure). **Owner/Chief
+Architect decision (2026-09-12): MP-RV2 OWNER APPROVED / CLOSED.** No
+next milestone started. No git operations performed; unrelated changes
+preserved.
 
 **Objective.** Second milestone of the My Portfolio Dashboard Revamp
 track: add the prototype's sticky in-page sub-nav (Overview / Triage /
@@ -685,10 +689,13 @@ overlap, not a transient paint glitch.
   restarted, never touched beyond normal static-file serving throughout
   this entire investigation.
 
-**Status.** Implementation complete; root cause reproduced and fixed via
-direct, repeatable measurement rather than theory. Full suite green
-modulo the one pre-existing unrelated failure. Awaiting the owner's own
-real-dashboard confirmation before MP-RV2 can be marked owner-approved.
+**Status.** Superseded — this fix (the scroll-landing math) was real and
+is retained, but was not the cause of the owner's persistent bleed
+report. The actual root cause (an exposed 32px scrollport gutter above
+the header) was found and fixed in a later correction round; see
+"Latest correction, 2026-09-12: exposed scrollport gutter" earlier in
+this section. **Owner/Chief Architect decision (2026-09-12): MP-RV2
+OWNER APPROVED / CLOSED.**
 
 ---
 
