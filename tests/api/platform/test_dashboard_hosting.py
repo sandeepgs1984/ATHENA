@@ -62,7 +62,7 @@ def test_symbol_intelligence_load_cannot_native_navigate(client: TestClient) -> 
     assert "si-audit-table" in js
     assert "si-lineage" not in js
     assert "function siDate(value)" in js
-    assert "function siNum(value, digits = 2)" in js
+    assert "function siMoney(value)" in js
     assert "event.preventDefault()" in js[js.index("function requestSymbolIntelligenceLoad") : js.index("function searchSymbolIntelligence")]
 
 
@@ -357,8 +357,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.241.0" in html
-    assert "dashboard.js?v=9.241.0" in html
+    assert "dashboard.css?v=9.244.0" in html
+    assert "dashboard.js?v=9.244.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -1210,7 +1210,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function loadSymbolIntelligence(" in js
     assert "function requestSymbolIntelligenceLoad(event)" in js
     assert "/api/v1/symbol-intelligence/" in js
-    assert "Methodology pending" in js
+    assert "Momentum Quality is not yet methodologically defined." in js
     assert "Not available yet" in js
     assert "ATHENA has not produced a Decision for this symbol." in js
     assert "EXPERIMENTAL_UNVALIDATED" in js

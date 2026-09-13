@@ -6,6 +6,59 @@ status updated on approval.
 
 ---
 
+## SI-P2B — Stock 360 research workspace
+
+**Authorization/objective.** Owner/Chief Architect authorized SI-P2B
+(2026-09-13) after SI-P2A COMPLETE AND FROZEN. Turn Stock 360 into a useful
+owner research cockpit using existing SI-P1 evidence only. SI-P1/P2A
+correctness semantics remain frozen. SI-P2C not started.
+
+**Scope completed.** Scanable Stock 360 hierarchy (header, coverage, compact
+strip, market snapshot, independent structure + disagreement copy, momentum
+facts, D1 price map with completed-D1 distances using absolute magnitude plus
+ABOVE/BELOW/AT wording, compact ATHENA View, featured chart, portfolio,
+written disclosure, capability chips). Duplicate ticker/name suppressed.
+Invalid symbols omit the chart loading host. Narrow CSS keeps Analyze
+reachable. Presentation hardening on `9.244.0`: consistent INR/zone/score
+formatting, signed currency, Evidence table readability, unresolved copy,
+narrow Analyze toolbar. Zero DTO/composer/hydration changes.
+
+**Files created.** `docs/research/SI-P2B-STOCK-360-IMPLEMENTATION.md`;
+`tests/symbol_intelligence/test_si_p2b_stock_360.py`.
+**Files modified.** SI JS/CSS, asset cache `9.244.0`, hosting/release-gate
+pins, `docs/MILESTONES.md`, `ATHENA_BRIEFING.md` §6, this log.
+
+**Tests/coverage.** P2B presentation contracts plus SI-P2A request/IA pins,
+SI-P1 composer/API, dashboard hosting, chart release-gate, DarvaX isolation
+strings, core SI API. Ruff on the new test file. mypy scoped to SI package.
+
+**Compliance/risks/debt.** Distances are DERIVED_SAFE arithmetic on completed-D1
+operands only. Live-quote-to-level % deferred. No blended trend. MQ/EQ still
+undefined. Status is **COMPLETE AND FROZEN** on asset `9.244.0` after
+Owner/Chief Architect source review and final visual re-check (TI PARTIAL,
+ACMESOLAR `-₹` P&L, ZZNOPE999, ~390px toolbar/scan/Evidence). Re-check shots
+`13`–`17` in `docs/research/si-p2b-live-gate/`. No implementation edits after
+freeze.
+
+**Remaining work.** Do not start SI-P2C SMA overlays (including S1/MS
+chart-label collision), P2D written-summary methodology, P2E Decision
+generation, or SI-F0/SI-N0. Do not modify frozen SI-P1 / SI-P2A / SI-P2B
+semantics.
+
+**Consolidated commit message.**
+
+```text
+feat(review): build SI-P2B Stock 360 research workspace
+
+- Restack Stock 360 into a scanable cockpit over frozen SI-P1 evidence.
+- Add independent structure disagreement copy and completed-D1 level distances.
+- Word Price Map distances as absolute magnitude plus above/below/at.
+- Suppress duplicate ticker/name and hide the chart host for unresolved symbols.
+- Harden SI price/zone/currency/score presentation and the narrow Analyze toolbar.
+```
+
+---
+
 ## SI-P2A — Symbol Intelligence experience IA + request hardening
 
 **Authorization/objective.** Owner/Chief Architect approved the SI-P2 discovery

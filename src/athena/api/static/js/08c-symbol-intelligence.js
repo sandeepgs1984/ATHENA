@@ -35,35 +35,169 @@
         return siEscape(value);
     }
 
+    function siFiniteNumber(value) {
+        const amount = Number(value);
+        return Number.isFinite(amount) ? amount : null;
+    }
+
     function siMoney(value) {
         if (value === null || value === undefined || value === "") return "—";
-        const amount = Number(value);
-        if (!Number.isFinite(amount)) return siEscape(value);
-        return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const amount = siFiniteNumber(value);
+        if (amount == null) return siEscape(value);
+        const formatted = Math.abs(amount).toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+        return amount < 0 ? `-₹${formatted}` : `₹${formatted}`;
+    }
+
+    function siInteger(value) {
+        if (value === null || value === undefined || value === "") return "—";
+        const amount = siFiniteNumber(value);
+        if (amount == null) return siEscape(value);
+        return Math.round(amount).toLocaleString("en-IN");
+    }
+
+    function siRsi(value) {
+        const amount = siFiniteNumber(value);
+        if (amount == null) return "—";
+        return amount.toFixed(1);
+    }
+
+    function siScore(value) {
+        const amount = siFiniteNumber(value);
+        if (amount == null) return "—";
+        return amount.toFixed(1);
     }
 
     function siPct(value) {
         if (value === null || value === undefined || value === "") return "";
-        const amount = Number(value);
-        if (!Number.isFinite(amount)) return "";
+        const amount = siFiniteNumber(value);
+        if (amount == null) return "";
         const sign = amount > 0 ? "+" : "";
         return `${sign}${amount.toFixed(2)}%`;
     }
 
-    function siNum(value, digits = 2) {
-        if (value === null || value === undefined || value === "") return "—";
-        const amount = Number(value);
-        if (!Number.isFinite(amount)) return siEscape(value);
-        return amount.toLocaleString("en-IN", {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: digits,
-        });
+    function siEnumLabel(value, fallback = "—") {
+        if (value === null || value === undefined || value === "") return fallback;
+        return String(value)
+            .replace(/_/g, " ")
+            .toLowerCase()
+            .replace(/\b\w/g, char => char.toUpperCase());
+    }
+
+    function siDisplayExplanation(text) {
+        if (!text) return "";
+        return String(text)
+            .replace(/\bscore\s+(\d+(?:\.\d+)?)\/100/gi, (_, number) => (
+                `Score ${Number(number).toFixed(1)} / 100`
+            ))
+            .replace(/\bwatch level \((\d+(?:\.\d+)?)\)/gi, (_, number) => (
+                `watch level (${Number(number).toFixed(1)})`
+            ));
+    }
+
+    function siZoneShort(zone) {
+        if (!zone) return "—";
+        const lower = siFiniteNumber(zone.lower);
+        const upper = siFiniteNumber(zone.upper);
+        if (lower == null && upper == null) return "—";
+        if (lower == null) return siMoney(upper);
+        if (upper == null) return siMoney(lower);
+        if (lower.toFixed(2) === upper.toFixed(2)) return siMoney(lower);
+        return `${siMoney(lower)} – ${siMoney(upper)}`;
     }
 
     function siDate(value) {
         if (!value) return "—";
         const text = String(value);
         return siEscape(text.slice(0, 10));
+    }
+
+    function siNormalizeLabel(value) {
+        return String(value || "").trim().toUpperCase().replace(/[\s.\-_/:]/g, "");
+    }
+
+    function siCompanyName(identity) {
+        const name = String((identity && identity.name) || "").trim();
+        if (!name) return "";
+        const symbol = String((identity && identity.symbol) || "").trim();
+        const instrument = String((identity && identity.instrument_id) || "").trim();
+        const normalizedName = siNormalizeLabel(name);
+        if (symbol && normalizedName === siNormalizeLabel(symbol)) return "";
+        if (instrument && normalizedName === siNormalizeLabel(instrument)) return "";
+        const instrumentTail = instrument.includes(":") ? instrument.split(":").pop() : instrument;
+        if (instrumentTail && normalizedName === siNormalizeLabel(instrumentTail)) return "";
+        return name;
+    }
+
+    function siStructureDiffers(d1) {
+        const sma = String((d1 && d1.symbol_trend) || "");
+        const st = String((d1 && d1.supertrend_direction) || "");
+        if (!sma || !st) return false;
+        if (sma === "UPTREND" && st === "BEARISH") return true;
+        if (sma === "DOWNTREND" && st === "BULLISH") return true;
+        if (sma === "SIDEWAYS" && (st === "BULLISH" || st === "BEARISH")) return true;
+        if (sma === "MIXED" && (st === "BULLISH" || st === "BEARISH")) return true;
+        return false;
+    }
+
+    function siPriceMapRelation(signedDelta, denominator) {
+        const delta = siFiniteNumber(signedDelta);
+        const den = siFiniteNumber(denominator);
+        if (delta == null || den == null || den === 0) return null;
+        const pct = (delta / den) * 100;
+        const magnitude = Math.abs(pct).toFixed(1);
+        if (Number(magnitude) === 0) return { magnitude, direction: "at" };
+        return { magnitude, direction: pct > 0 ? "above" : "below" };
+    }
+
+    function siCloseVsBoundary(close, boundary) {
+        const closeN = siFiniteNumber(close);
+        const boundaryN = siFiniteNumber(boundary);
+        if (closeN == null || boundaryN == null || closeN === 0 || boundaryN === 0) return null;
+        return siPriceMapRelation(closeN - boundaryN, boundaryN);
+    }
+
+    function siLevelVsClose(level, close) {
+        const closeN = siFiniteNumber(close);
+        const levelN = siFiniteNumber(level);
+        if (closeN == null || levelN == null || closeN === 0 || levelN === 0) return null;
+        return siPriceMapRelation(levelN - closeN, closeN);
+    }
+
+    function siCloseVsBoundarySentence(label, close, boundary) {
+        const rel = siCloseVsBoundary(close, boundary);
+        if (!rel) return "";
+        if (rel.direction === "at") {
+            return `Completed D1 is at ${label} upper boundary.`;
+        }
+        return `Completed D1 is ${rel.magnitude}% ${rel.direction} ${label} upper boundary.`;
+    }
+
+    function siLevelVsCloseSentence(label, level, close) {
+        const rel = siLevelVsClose(level, close);
+        if (!rel) return "";
+        if (rel.direction === "at") {
+            return `${label} is at completed-D1 close.`;
+        }
+        return `${label} is ${rel.magnitude}% ${rel.direction} completed-D1 close.`;
+    }
+
+    function siJumpButton(section, label) {
+        return `<button type="button" class="si-jump" data-si-jump="${siEscape(section)}">${siEscape(label)}</button>`;
+    }
+
+    function siPersistedScore(decision) {
+        const value = decision && decision.depth && decision.depth.score && decision.depth.score.value;
+        return siFiniteNumber(value);
+    }
+
+    function siGatePassSummary(decision) {
+        const gates = (decision && decision.gates) || [];
+        if (!gates.length) return "";
+        const passed = gates.filter(gate => gate && gate.passed === true).length;
+        return `${passed} of ${gates.length} gates passed`;
     }
 
     function showSiSection(sectionId) {
@@ -78,11 +212,6 @@
     function siMetric(label, value, title) {
         const tip = title ? ` title="${siEscape(title)}"` : "";
         return `<div class="si-metric"${tip}><dt>${siEscape(label)}</dt><dd>${siText(value)}</dd></div>`;
-    }
-
-    function siZoneShort(zone) {
-        if (!zone) return "—";
-        return `${siText(zone.lower)} – ${siText(zone.upper)}`;
     }
 
     function siZoneLooksEmpty(zone) {
@@ -172,21 +301,21 @@
         const price = live.present ? live.last_price : d1.close;
         const change = live.present ? siPct(live.change_pct) : "";
         const changeClass = Number(live.change_pct) > 0 ? "up" : Number(live.change_pct) < 0 ? "down" : "";
+        const company = siCompanyName(identity);
         return `<div class="si-id-block">
                 <div class="si-id-symbol">${siText(identity.symbol || identity.instrument_id, identity.query || "Unresolved")}</div>
-                <div class="si-id-name">${siText(identity.name, "")}</div>
+                ${company ? `<div class="si-id-name">${siText(company, "")}</div>` : ""}
                 <div class="si-id-meta">${siText(identity.exchange, "")}${identity.instrument_id ? ` · ${siText(identity.instrument_id)}` : ""}</div>
             </div>
             <div>
                 <div class="si-id-price">${siMoney(price)}</div>
                 <div class="si-id-change ${changeClass}">${siEscape(change)}</div>
                 <div class="si-id-session">${siQuoteCaption(live)}</div>
+                <div class="si-id-session">${siQuotePriceLabel(live)}</div>
             </div>
             <div>
-                <div class="si-id-session">D1 through: ${siDate(d1.latest_session)}</div>
-                <div class="si-id-session">Expected: ${siDate(d1.expected_session)}</div>
-                <div class="si-id-session">Market data: ${siMarketDataStatus(bundle)}</div>
-                <div class="si-id-session">SI coverage: ${siCoverageStatus(bundle)}</div>
+                <div class="si-id-session">Completed D1 as-of: ${siDate(d1.latest_session)}</div>
+                <div class="si-id-session">Last completed D1 close: ${siMoney(d1.close)}</div>
                 ${identity.resolved ? "" : `<p class="si-unavailable">${siText(identity.unresolved_reason)}</p>`}
             </div>`;
     }
@@ -208,7 +337,11 @@
             message = message || "Completed D1 history is stale. Press Analyze to hydrate this symbol.";
         } else if (coverage === "UNAVAILABLE" || market === "UNAVAILABLE") {
             tone = "unavailable";
-            message = message || "Symbol Intelligence is unavailable for this symbol.";
+            if (bundle.identity && bundle.identity.resolved === false) {
+                message = "";
+            } else {
+                message = message || "Symbol Intelligence is unavailable for this symbol.";
+            }
         }
         const decisionLine = decision.present
             ? ""
@@ -226,7 +359,7 @@
     function siPortfolioCard(portfolio) {
         if (!portfolio || portfolio.status === "NOT_HELD") {
             return `<div class="si-card"><h3>Portfolio Context</h3>
-                <p class="si-empty">Not held.</p></div>`;
+                <p class="si-empty">Not held in My Portfolio</p></div>`;
         }
         const banned = [portfolio.interpretation_status, portfolio.next_action, portfolio.daily_review_status]
             .filter(value => SI_HOLDING_GUIDANCE.has(String(value || "")));
@@ -234,10 +367,14 @@
             ? `<p class="si-empty">Held. Portfolio-owned status ${siText(portfolio.interpretation_status)}.</p>`
             : `<p class="si-empty">${siText(portfolio.interpretation_status)} · ${siText(portfolio.next_action)}</p>`;
         return `<div class="si-card"><h3>Portfolio Context</h3>
+            <p class="si-pending">These facts are Portfolio-owned. Symbol Intelligence does not issue BUY/HOLD/SELL.</p>
             <dl class="si-metrics">
-                ${siMetric("Quantity", portfolio.quantity)}
+                ${siMetric("Quantity", siInteger(portfolio.quantity))}
                 ${siMetric("Average", siMoney(portfolio.avg_price))}
-                ${siMetric("P&L", `${siMoney(portfolio.pnl)}`)}
+                ${siMetric("Last", siMoney(portfolio.last_price))}
+                ${siMetric("Current value", siMoney(portfolio.current_value))}
+                ${siMetric("Investment", siMoney(portfolio.investment))}
+                ${siMetric("P&L", `${siMoney(portfolio.pnl)}${siPct(portfolio.pnl_pct) ? ` (${siEscape(siPct(portfolio.pnl_pct))})` : ""}`)}
             </dl>
             ${interpretation}</div>`;
     }
@@ -250,63 +387,158 @@
         }
         const plan = decision.trade_plan;
         const openHref = `/dashboard/decisions?decision=${encodeURIComponent(decision.decision_id)}`;
+        const score = siPersistedScore(decision);
+        const gates = siGatePassSummary(decision);
+        const freshness = decision.plan_freshness && decision.plan_freshness.status
+            ? siMetric("Plan freshness", siEnumLabel(decision.plan_freshness.status))
+            : "";
         return `<div class="si-card"><h3>ATHENA Decision</h3>
             <dl class="si-metrics">
-                ${siMetric("Type", decision.decision_type)}
-                ${siMetric("Direction", decision.direction)}
+                ${siMetric("Type", siEnumLabel(decision.decision_type))}
+                ${siMetric("Direction", siEnumLabel(decision.direction))}
                 ${siMetric("Confidence", decision.confidence_level)}
+                ${score != null ? siMetric("Score", siScore(score)) : ""}
+                ${gates ? siMetric("Gates", gates) : ""}
+                ${siMetric("Decision as-of", siDate(decision.ts))}
+                ${freshness}
             </dl>
-            <p>${siText(decision.explanation)}</p>
+            <p>${siText(siDisplayExplanation(decision.explanation))}</p>
             ${plan ? `<p>TradePlan ${siMoney(plan.entry_low)} / ${siMoney(plan.entry_high)}</p>` : ""}
             <p><a class="btn" href="${siEscape(openHref)}">Open Decision Brief</a></p></div>`;
     }
 
+    function siAthenaView(decision) {
+        if (!decision || !decision.present) {
+            return `<div class="si-card si-athena-view"><h3>ATHENA View</h3>
+                <p class="si-empty">ATHENA Decision</p>
+                <p class="si-empty">Not available for this symbol</p>
+                <p class="si-pending">Stock 360 research remains available. This is not an Analyze failure.</p>
+                ${siJumpButton("decision", "Open ATHENA Decision")}
+                ${siJumpButton("audit", "View evidence")}</div>`;
+        }
+        const openHref = `/dashboard/decisions?decision=${encodeURIComponent(decision.decision_id)}`;
+        const score = siPersistedScore(decision);
+        const gates = siGatePassSummary(decision);
+        return `<div class="si-card si-athena-view"><h3>ATHENA View</h3>
+            <dl class="si-metrics">
+                ${siMetric("Decision", siEnumLabel(decision.decision_type))}
+                ${siMetric("Confidence", decision.confidence_level)}
+                ${score != null ? siMetric("Score", siScore(score)) : ""}
+                ${gates ? siMetric("Gates", gates) : ""}
+                ${siMetric("As-of", siDate(decision.ts))}
+                ${decision.plan_freshness && decision.plan_freshness.status ? siMetric("Plan freshness", siEnumLabel(decision.plan_freshness.status)) : ""}
+            </dl>
+            <p>${siText(siDisplayExplanation(decision.explanation))}</p>
+            <p class="si-actions">
+                ${siJumpButton("decision", "Open ATHENA Decision")}
+                <a class="btn" href="${siEscape(openHref)}">Open Decision Brief</a>
+                ${siJumpButton("audit", "View evidence")}
+            </p></div>`;
+    }
+
     function siTrendCard(d1) {
         if (!d1 || !d1.present) {
-            return `<div class="si-card"><h3>Trend / Structure</h3><p class="si-empty">No completed D1 evidence.</p></div>`;
+            return `<div class="si-card"><h3>Technical Structure</h3><p class="si-empty">No completed D1 evidence.</p></div>`;
         }
-        return `<div class="si-card"><h3>Trend / Structure</h3>
+        const differ = siStructureDiffers(d1);
+        const note = differ
+            ? `<p class="si-note" data-si-structure-note="disagree">Daily SMA structure and SuperTrend currently differ. They are independent measurements, not a blended verdict. Neither is treated as authoritative here.</p>`
+            : `<p class="si-pending">SMA structure and SuperTrend are independent evidence. They are not blended.</p>`;
+        return `<div class="si-card"><h3>Technical Structure</h3>
             <dl class="si-metrics">
                 ${siMetric("Daily SMA structure", siSmaStructureLabel(d1.symbol_trend), d1.symbol_trend)}
                 ${siMetric("SuperTrend (10,3)", siSuperTrendLabel(d1.supertrend_direction), d1.supertrend_direction)}
-                ${siMetric("SMA20", siNum(d1.fast_sma, 2))}
-                ${siMetric("SMA50", siNum(d1.slow_sma, 2))}
+                ${siMetric("SuperTrend value", siMoney(d1.supertrend_value))}
+                ${siMetric("SMA20", siMoney(d1.fast_sma))}
+                ${siMetric("SMA50", siMoney(d1.slow_sma))}
             </dl>
-            <p class="si-pending">SMA structure and SuperTrend are independent evidence. They are not blended.</p></div>`;
+            ${note}</div>`;
     }
 
     function siMomentumCard(bundle) {
         const d1 = bundle.d1 || {};
-        return `<div class="si-card"><h3>Momentum Evidence</h3>
-            <p class="si-pending">Methodology pending</p>
+        return `<div class="si-card"><h3>Momentum / Participation</h3>
             <dl class="si-metrics">
-                ${siMetric("RSI14", siNum(d1.rsi14, 1))}
+                ${siMetric("RSI (14)", siRsi(d1.rsi14))}
                 ${siMetric("Volume vs MA20", siVolumeVsMa20(d1))}
-            </dl></div>`;
+            </dl>
+            <p class="si-pending">Volume vs 20D average uses completed-D1 volume against MA20. Momentum Quality is not defined.</p></div>`;
+    }
+
+    function siLevelRow(label, zone, close, { perspective, bound } = {}) {
+        if (siZoneLooksEmpty(zone)) return "";
+        const level = bound === "upper" ? zone.upper : zone.lower;
+        const distLine = perspective === "close-vs-boundary"
+            ? siCloseVsBoundarySentence(label, close, level)
+            : siLevelVsCloseSentence(label, level, close);
+        return `<div class="si-level-row">
+            <div><dt>${siEscape(label)}</dt><dd>${siZoneShort(zone)}</dd></div>
+            ${distLine ? `<p class="si-level-dist">${siEscape(distLine)}</p>` : ""}
+        </div>`;
     }
 
     function siLevelsCard(d1) {
-        return `<div class="si-card"><h3>Key Levels</h3>
-            <dl class="si-metrics">
-                ${siOptionalZoneMetric("Support 1", d1 && d1.support_1)}
-                ${siOptionalZoneMetric("Major support", d1 && d1.major_support)}
-                ${siOptionalZoneMetric("Review trigger", d1 && d1.review_trigger)}
-                ${siOptionalZoneMetric("Target 1", d1 && d1.target_1)}
+        const close = d1 && d1.close;
+        const highLine = siLevelVsCloseSentence(
+            "Available-history high",
+            d1 && d1.available_history_high,
+            close
+        );
+        return `<div class="si-card si-price-map"><h3>Price Map</h3>
+            <p class="si-pending">Distances use completed-D1 close against completed-D1 levels. Live/latest quote is not mixed in.</p>
+            <div class="si-level-list">
+                ${siLevelRow("Support 1", d1 && d1.support_1, close, { perspective: "close-vs-boundary", bound: "upper" })}
+                ${siLevelRow("Major support", d1 && d1.major_support, close, { perspective: "close-vs-boundary", bound: "upper" })}
+                ${siLevelRow("Review trigger", d1 && d1.review_trigger, close, { perspective: "level-vs-close", bound: "lower" })}
+                ${siLevelRow("Target 1", d1 && d1.target_1, close, { perspective: "level-vs-close", bound: "lower" })}
                 ${siOptionalZoneMetric("Target 2", d1 && d1.target_2)}
                 ${siOptionalZoneMetric("Target 3", d1 && d1.target_3)}
-                ${siMetric("Available-history high", siMoney(d1 && d1.available_history_high))}
-            </dl></div>`;
+                ${d1 && d1.available_history_high != null ? `<div class="si-level-row">
+                    <div><dt>Available-history high</dt><dd>${siMoney(d1.available_history_high)}</dd></div>
+                    ${highLine ? `<p class="si-level-dist">${siEscape(highLine)}</p>` : ""}
+                </div>` : ""}
+            </div></div>`;
+    }
+
+    function siScanStrip(bundle) {
+        const d1 = bundle.d1 || {};
+        const decision = bundle.decision || {};
+        const decisionLabel = decision.present ? siEnumLabel(decision.decision_type) : "Not available";
+        return `<div class="si-scan-strip" aria-label="Compact technical snapshot">
+            <div class="si-scan-item"><span>Daily SMA structure</span><strong title="${siEscape(d1.symbol_trend || "")}">${siSmaStructureLabel(d1.symbol_trend)}</strong></div>
+            <div class="si-scan-item"><span>SuperTrend (10,3)</span><strong title="${siEscape(d1.supertrend_direction || "")}">${siSuperTrendLabel(d1.supertrend_direction)}</strong></div>
+            <div class="si-scan-item"><span>RSI (14)</span><strong>${siRsi(d1.rsi14)}</strong></div>
+            <div class="si-scan-item"><span>Volume vs MA20</span><strong>${siVolumeVsMa20(d1)}</strong></div>
+            <div class="si-scan-item"><span>ATHENA Decision</span><strong>${siEscape(decisionLabel)}</strong></div>
+        </div>`;
+    }
+
+    function siMarketSnapshot(bundle) {
+        const d1 = bundle.d1 || {};
+        const live = bundle.live || {};
+        return `<div class="si-card"><h3>Market Snapshot</h3>
+            <dl class="si-metrics">
+                ${live.present ? siMetric(siQuotePriceLabel(live), siMoney(live.last_price)) : ""}
+                ${live.present && siPct(live.change_pct) ? siMetric("Change", siPct(live.change_pct)) : ""}
+                ${siMetric("Quote", siQuoteCaption(live))}
+                ${siMetric("Completed D1 close", siMoney(d1.close))}
+                ${siMetric("Completed D1 date", siDate(d1.latest_session))}
+                ${d1.present ? siMetric("D1 open / high / low", `${siMoney(d1.open)} / ${siMoney(d1.high)} / ${siMoney(d1.low)}`) : ""}
+                ${siMetric("Available-history high", siMoney(d1.available_history_high))}
+            </dl>
+            <p class="si-pending">Available-history high is prior persisted D1 history, not an official 52-week or all-time high.</p></div>`;
     }
 
     function siAvailabilityChips(bundle) {
         const fundamentals = bundle.fundamentals || {};
         const news = bundle.news || {};
-        return `<div class="si-card"><h3>Additional sources</h3>
+        return `<div class="si-card si-capability"><h3>Capability availability</h3>
             <div class="si-availability-chips">
                 <span class="si-chip">Fundamentals — Not ingested</span>
                 <span class="si-chip">News &amp; catalysts — Not ingested</span>
             </div>
-            <p class="si-pending">Not available yet. ${siText(fundamentals.status, "NOT_INGESTED")} / ${siText(news.status, "NOT_INGESTED")} are not errors.</p></div>`;
+            <p class="si-pending">Not available yet. ${siText(fundamentals.status, "NOT_INGESTED")} / ${siText(news.status, "NOT_INGESTED")} are not errors.</p>
+            ${siJumpButton("audit", "View evidence")}</div>`;
     }
 
     function siDarvaxOverview(darvax) {
@@ -317,8 +549,10 @@
                 <p class="si-pending">${label}</p></div>`;
         }
         return `<div class="si-card"><h3>DarvaX</h3>
+            <p class="si-empty">DarvaX experimental view available</p>
             <p class="si-empty">Symbol 360 is available on the DarvaX surface. It is not mixed into Stock 360 evidence.</p>
-            <p class="si-pending">${label}</p></div>`;
+            <p class="si-pending">${label}</p>
+            ${siJumpButton("experimental", "Open DarvaX")}</div>`;
     }
 
     function siDarvaxCard(darvax) {
@@ -335,10 +569,17 @@
             </div></div>`;
     }
 
-    function siChartBlock() {
-        return `<div class="si-card"><h3>Completed D1 chart</h3>
+    function siChartBlock(identity, d1) {
+        if (!identity || !identity.resolved) {
+            return "";
+        }
+        if (!d1 || !d1.present) {
+            return `<div class="si-card si-chart-card"><h3>Completed D1 chart</h3>
+                <p class="si-empty">Completed D1 chart unavailable.</p></div>`;
+        }
+        return `<div class="si-card si-chart-card"><h3>Completed D1 chart</h3>
             <p class="si-pending">LAST COMPLETED D1 · unfinished session candles are excluded</p>
-            <div class="si-chart-host" id="si-d1-chart-host"><p class="text-muted">Loading D1 chart…</p></div>
+            <div class="si-chart-host si-chart-pending" id="si-d1-chart-host"><p class="text-muted">Loading D1 chart…</p></div>
         </div>`;
     }
 
@@ -352,9 +593,13 @@
         const decision = bundle.decision || {};
         const portfolio = bundle.portfolio || {};
         const darvax = bundle.darvax || {};
-        const trend = d1.symbol_trend ? `Primary D1 trend is ${d1.symbol_trend}.` : "D1 trend is unavailable.";
-        const st = d1.supertrend_direction ? `SuperTrend remains ${String(d1.supertrend_direction).toLowerCase()}.` : "";
-        const rsi = d1.rsi14 != null ? `RSI is ${siNum(d1.rsi14, 1)}.` : "RSI is unavailable.";
+        const trend = d1.symbol_trend ? `Daily SMA structure is ${d1.symbol_trend}.` : "D1 SMA structure is unavailable.";
+        const st = d1.supertrend_direction ? `SuperTrend (10,3) is ${String(d1.supertrend_direction).toLowerCase()}.` : "";
+        const differ = siStructureDiffers(d1)
+            ? "Those two measurements currently differ; they are not blended."
+            : "";
+        const rsi = d1.rsi14 != null ? `RSI (14) is ${siRsi(d1.rsi14)}.` : "RSI is unavailable.";
+        const volume = `Volume vs MA20 is ${siVolumeVsMa20(d1)}.`;
         return `<div class="si-card si-review">
             <h3>Written summary</h3>
             <h4>Market Snapshot</h4>
@@ -364,13 +609,13 @@
                     : "No current/latest quote was captured; last completed D1 is shown.",
                 d1.present ? `Last completed D1 close ${siMoney(d1.close)} on ${siDate(d1.latest_session)}.` : "No completed D1 bar is present.",
             ])}</p>
-            <h4>Trend</h4><p>${siSentence([trend, st])}</p>
-            <h4>Momentum Evidence</h4><p>${rsi} Momentum Quality is not yet methodologically defined.</p>
+            <h4>Trend</h4><p>${siSentence([trend, st, differ])}</p>
+            <h4>Momentum Evidence</h4><p>${rsi} ${volume} Momentum Quality is not yet methodologically defined.</p>
             <h4>Structure</h4><p>${d1.present ? `Available-history high ${siMoney(d1.available_history_high)}.` : "Structure unavailable."}</p>
             <h4>Key Levels</h4><p>Support 1 ${siZoneShort(d1.support_1)}. Review trigger ${siZoneShort(d1.review_trigger)}.</p>
             <h4>Entry Evidence</h4><p>Entry Quality is not yet methodologically defined. Named support/review levels are shown without a buy/wait verdict.</p>
             <h4>ATHENA Decision</h4>
-            <p>${decision.present ? siText(decision.explanation) : "ATHENA has not produced a Decision for this symbol."}</p>
+            <p>${decision.present ? siText(siDisplayExplanation(decision.explanation)) : "ATHENA has not produced a Decision for this symbol."}</p>
             <h4>DarvaX</h4>
             <p>${darvax.status === "ENABLED_IFRAME" ? "DarvaX Symbol 360 is available as an experimental satellite." : "DarvaX is unavailable."}</p>
             <h4>Portfolio Context</h4>
@@ -381,23 +626,51 @@
     }
 
     function siAuditTable(bundle) {
-        const rows = (bundle.sources || []).map(src => (
-            `<tr><td>${siText(src.source)}</td><td>${siText(src.status)}</td><td>${siDate(src.as_of)}</td>
-            <td>${siText(src.lineage)}</td><td>${siText(src.explanation)}</td></tr>`
-        )).join("");
-        const missing = (bundle.unavailable || []).map(item => (
-            `<tr><td>${siText(item.code)}</td><td>UNAVAILABLE</td><td>—</td>
-            <td>${siText(item.lineage)}</td><td>${siText(item.detail)}</td></tr>`
-        )).join("");
+        const records = [
+            ...((bundle.sources || []).map(src => ({
+                source: src.source,
+                status: src.status,
+                asOf: siDate(src.as_of),
+                reference: src.lineage,
+                reason: src.explanation,
+            }))),
+            ...((bundle.unavailable || []).map(item => ({
+                source: item.code,
+                status: "UNAVAILABLE",
+                asOf: "—",
+                reference: item.lineage,
+                reason: item.detail,
+            }))),
+        ];
         const hydration = bundle.hydration || {};
+        records.push({
+            source: "HYDRATION",
+            status: hydration.status || "SKIPPED",
+            asOf: "—",
+            reference: "D1_CANDLES",
+            reason: hydration.detail,
+        });
+        const rows = records.map(row => (
+            `<tr><td>${siText(row.source)}</td><td>${siText(row.status)}</td><td>${siText(row.asOf)}</td>
+            <td>${siText(row.reference)}</td><td>${siText(row.reason)}</td></tr>`
+        )).join("");
+        const cards = records.map(row => (
+            `<article class="si-audit-card">
+                <div><dt>Source</dt><dd>${siText(row.source)}</dd></div>
+                <div><dt>Status</dt><dd>${siText(row.status)}</dd></div>
+                <div><dt>As Of</dt><dd>${siText(row.asOf)}</dd></div>
+                <div><dt>Reference</dt><dd>${siText(row.reference)}</dd></div>
+                <div><dt>Reason</dt><dd>${siText(row.reason)}</dd></div>
+            </article>`
+        )).join("");
         return `<div class="si-card"><h3>Evidence / Audit</h3>
+            <div class="si-audit-wrap">
             <table class="si-audit-table">
                 <thead><tr><th>Source</th><th>Status</th><th>As Of</th><th>Reference</th><th>Reason</th></tr></thead>
-                <tbody>${rows}${missing}
-                <tr><td>HYDRATION</td><td>${siText(hydration.status, "SKIPPED")}</td><td>—</td>
-                    <td>D1_CANDLES</td><td>${siText(hydration.detail)}</td></tr>
-                </tbody>
-            </table></div>`;
+                <tbody>${rows}</tbody>
+            </table>
+            </div>
+            <div class="si-audit-cards">${cards}</div></div>`;
     }
 
     function bindDarvaxFrame() {
@@ -427,10 +700,10 @@
             return;
         }
         const width = 720;
-        const height = 280;
+        const height = 360;
         const margin = { top: 12, right: 56, bottom: 36, left: 12 };
         const plotWidth = width - margin.left - margin.right;
-        const priceHeight = 190;
+        const priceHeight = 250;
         const volumeTop = margin.top + priceHeight + 8;
         const volumeHeight = 34;
         const highs = candles.map(c => Number(c.high));
@@ -504,17 +777,20 @@
         if (!identityEl || !bundleEl) return;
         identityEl.innerHTML = siHeader(bundle);
         const d1 = bundle.d1 || {};
+        const identity = bundle.identity || {};
         bundleEl.innerHTML = `
             <section class="si-section" data-si-panel="stock-360">
                 ${siCoverageBanner(bundle)}
-                <div class="si-360-core">
+                ${identity.resolved ? siScanStrip(bundle) : ""}
+                ${identity.resolved ? `<div class="si-360-stack">
+                    ${siMarketSnapshot(bundle)}
                     ${siTrendCard(d1)}
                     ${siMomentumCard(bundle)}
-                    ${siDecisionCard(bundle.decision)}
                     ${siLevelsCard(d1)}
-                </div>
-                ${siChartBlock()}
-                <details class="si-written-summary">
+                    ${siAthenaView(bundle.decision)}
+                </div>` : ""}
+                ${siChartBlock(identity, d1)}
+                ${identity.resolved ? `<details class="si-written-summary">
                     <summary>Written summary</summary>
                     ${siCompleteReview(bundle)}
                 </details>
@@ -522,15 +798,15 @@
                     ${siPortfolioCard(bundle.portfolio)}
                     ${siAvailabilityChips(bundle)}
                     ${siDarvaxOverview(bundle.darvax)}
-                </div>
+                </div>` : ""}
             </section>
             <section class="si-section" data-si-panel="decision" hidden>${siDecisionCard(bundle.decision)}</section>
             <section class="si-section" data-si-panel="experimental" hidden>${siDarvaxCard(bundle.darvax)}</section>
             <section class="si-section" data-si-panel="audit" hidden>${siAuditTable(bundle)}</section>`;
         showSiSection(document.querySelector(".si-section-nav-item.active")?.getAttribute("data-si-section") || "stock-360");
         bindDarvaxFrame();
-        if (bundle.identity && bundle.identity.instrument_id) {
-            loadSiD1Chart(bundle.identity.instrument_id, d1, siLoadGeneration);
+        if (identity.resolved && identity.instrument_id && d1.present) {
+            loadSiD1Chart(identity.instrument_id, d1, siLoadGeneration);
         }
     }
 
@@ -714,4 +990,9 @@
         const item = event.target.closest(".si-section-nav-item");
         if (!item) return;
         showSiSection(item.getAttribute("data-si-section"));
+    });
+    document.getElementById("si-bundle")?.addEventListener("click", event => {
+        const jump = event.target.closest("[data-si-jump]");
+        if (!jump) return;
+        showSiSection(jump.getAttribute("data-si-jump"));
     });

@@ -11,7 +11,8 @@ too large for a single-sitting review is split BEFORE implementation.
 **Reports:** `docs/research/SI-P0-SYMBOL-INTELLIGENCE-DISCOVERY-ARCHITECTURE.md`,
 `docs/research/SI-P1-SYMBOL-INTELLIGENCE-COMPOSITION-IMPLEMENTATION.md`,
 `docs/research/SI-P2-SYMBOL-INTELLIGENCE-EXPERIENCE-DISCOVERY.md`,
-`docs/research/SI-P2A-EXPERIENCE-IA-IMPLEMENTATION.md`
+`docs/research/SI-P2A-EXPERIENCE-IA-IMPLEMENTATION.md`,
+`docs/research/SI-P2B-STOCK-360-IMPLEMENTATION.md`
 
 Read-only GET composition over existing ATHENA Decision, D1 evidence,
 My Portfolio holdings, and DarvaX satellite presentation, plus POST Analyze
@@ -22,7 +23,8 @@ symbol-scoped D1 hydration. Not a new decision engine.
 | SI-P0 | Discovery & architecture — inventory existing Decision/DarvaX/Portfolio/D1/dashboard surfaces and freeze composition boundaries | ✅ Owner/Chief Architect approved 2026-09-13 — SI-P0 COMPLETE |
 | SI-P1 | Universal Symbol Intelligence workspace: search, typed contract, GET re-read, POST Analyze symbol-scoped D1 hydration, Decision reuse, D1 evidence/chart, quote vs session labels, market-data vs SI-coverage freshness, held Portfolio context, DarvaX iframe, explicit missing sources | ✅ COMPLETE AND FROZEN 2026-09-13 — Owner/Chief Architect live review passed; awaiting commit |
 | SI-P2 | Experience & coverage discovery — Stock 360 / IA / empty states / request model; no SI-P1 contract unfreeze; no fundamentals/news vendor | ✅ Discovery Owner/Chief Architect approved 2026-09-13 — SI-P1 remains COMPLETE AND FROZEN |
-| SI-P2A | Experience IA + state/request hardening — four primary surfaces, GET-first load, explicit Analyze POST, in-flight race protection, Stock 360 reorganization of existing SI-P1 fields, coverage banner, volume-vs-MA20 comparison | ✅ COMPLETE AND FROZEN 2026-09-13 — Owner/Chief Architect source review + live release gate passed on `9.241.0`; SI-P2B not started |
+| SI-P2A | Experience IA + state/request hardening — four primary surfaces, GET-first load, explicit Analyze POST, in-flight race protection, Stock 360 reorganization of existing SI-P1 fields, coverage banner, volume-vs-MA20 comparison | ✅ COMPLETE AND FROZEN 2026-09-13 — Owner/Chief Architect source review + live release gate passed on `9.241.0` |
+| SI-P2B | Stock 360 research workspace — scanable cockpit over frozen SI-P1 evidence; presentation-only distances and disagreement copy; no blended trend; no new methodology | ✅ COMPLETE AND FROZEN 2026-09-13 — Owner/Chief Architect source review + final visual re-check passed on `9.244.0`; SI-P2C not started |
 
 ## Portfolio Sync Track (PS-P0 started 2026-09-01)
 
