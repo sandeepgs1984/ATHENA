@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.229.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.230.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -808,10 +808,10 @@
                         <section class="my-portfolio-risk-panel collapsed" aria-labelledby="my-portfolio-risk-heading">
                             <div class="my-portfolio-risk-header">
                                 <div>
-                                    <h3 id="my-portfolio-risk-heading">Risk concentration</h3>
+                                    <h3 id="my-portfolio-risk-heading">Risk &amp; Heatmap</h3>
                                     <p id="my-portfolio-risk-lead" class="metric-desc">Factual counts and ranks from the latest snapshot. No new risk score.</p>
                                 </div>
-                                <button id="my-portfolio-risk-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="false" aria-controls="my-portfolio-risk-body">
+                                <button id="my-portfolio-risk-toggle" class="btn btn-secondary btn-sm" type="button" aria-expanded="false" aria-controls="my-portfolio-risk-body my-portfolio-heatmap-section">
                                     <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
                                     <span>Show</span>
                                 </button>
@@ -819,9 +819,7 @@
                             <div id="my-portfolio-risk-body" class="my-portfolio-risk-body" hidden>
                                 <p class="metric-desc">Unavailable until Portfolio Sync.</p>
                             </div>
-                        </section>
-
-                        <section class="my-portfolio-heatmap-panel collapsed" aria-labelledby="my-portfolio-heatmap-heading">
+                        <section id="my-portfolio-heatmap-section" class="my-portfolio-heatmap-panel collapsed" aria-labelledby="my-portfolio-heatmap-heading">
                             <div class="my-portfolio-heatmap-header">
                                 <div>
                                     <h3 id="my-portfolio-heatmap-heading">Portfolio heatmap</h3>
@@ -853,7 +851,7 @@
                                 <p class="metric-desc">Unavailable until Portfolio Sync.</p>
                             </div>
                         </section>
-
+                        </section>
                         <div class="card my-portfolio-holdings-card">
                             <div class="card-header my-portfolio-holdings-header">
                                 <div class="my-portfolio-holdings-heading">
@@ -2500,7 +2498,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.229.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.230.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

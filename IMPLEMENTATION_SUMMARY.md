@@ -6,6 +6,47 @@ status updated on approval.
 
 ---
 
+## MP-RV5 — Risk & Heatmap Reference Layout
+
+**Objective and authorization.** MP-RV4 Owner approved/closed 2026-09-12.
+Owner supplied a combined Risk & Heatmap reference and expanded MP-RV5 from
+tone-text polish to the presentation layout of these two existing sections.
+
+**Scope completed.** Group sections beneath Risk & Heatmap; parent disclosure
+hides both, nested heatmap retains its own disclosure preference. Four-column
+counts/conviction row, wider Top holdings, restrained winner/loser panels,
+conviction symbol chips and semantic categorical labels. Tile secondary text
+uses existing good/warn/bad/neutral tokens. Size/color selectors, weighted
+sizing, privacy masking, rank limits, notes, removed rows and tile navigation
+are unchanged. No mock data, new score or financial logic introduced.
+
+**Files/API.** Modified portfolio HTML/JS/CSS and cache keys, hosting/version
+assertions, design, milestones, handoff and this log. Added
+`tests/api/platform/test_portfolio_risk_heatmap_style.py`. No public APIs,
+schemas, configuration or dependencies added. Assets 9.230.0.
+
+**Validation.** Full suite: 4020 passed, one pre-existing macOS launcher
+failure (`test_installer_builds_configured_app_bundle`), 118.79s. New-test
+Ruff and JS syntax pass. Coverage verifies
+section nesting, unique existing controls, tone mapping, private sizing,
+weighted sizing and retained rank limits/removal information.
+Desktop fixture used the real risk renderer with synthetic rows and all
+heatmap tone/default variants; 390px iframe checked narrow risk layout.
+Ten targeted hosting/structure tests pass. Authenticated control interaction
+remains unverified. Existing hosting-test E501 findings were left untouched.
+
+**Architecture/review.** ATHENA-002 rendering boundary preserved. Existing
+provider-independent calculations, deterministic replay and methodology
+contracts unchanged; no ADR required. No module-map change. Residual risk:
+new parent disclosure now hides the nested heatmap; individual saved heatmap
+state remains intact. MP-RV5 ready for Owner review. Owner subsequently
+requested page-wide typography/style consistency, documented as MP-RV6;
+implementation waits for MP-RV5 approval. No git operations performed.
+
+**Commit message.** `fix(portfolio): unify risk and heatmap presentation`
+
+---
+
 ## MP-RV4 — Compact Row Change Indicators
 
 **Objective.** Reduce holdings-row badge clutter without losing sync-change
@@ -36,7 +77,7 @@ methodology, replay or determinism changes. No ADR or new dependency needed.
 Native title is a desktop hover affordance; touch users retain the existing
 symbol-detail route to full reasons. No module-map change or new technical
 debt. MP-RV4 ready for Owner review with the existing gate failure disclosed.
-MP-RV5 remains pending MP-RV4 Owner approval, not started.
+Owner approved MP-RV4 on 2026-09-12; MP-RV5 authorized next with a supplied mock.
 
 **Commit message.** `fix(portfolio): condense row changes without losing reasons`
 

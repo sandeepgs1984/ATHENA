@@ -1631,7 +1631,7 @@
     function myPortfolioRiskCountList(entries) {
         if (!entries.length) return `<p class="metric-desc">None.</p>`;
         return `<ul class="my-portfolio-risk-list">${entries.map(([key, count]) =>
-            `<li><span>${escapeMyPortfolioHtml(myPortfolioRiskLabel(key))}</span><strong>${formatMyPortfolioNumber(count)}</strong></li>`
+            `<li data-risk-key="${escapeMyPortfolioHtml(String(key).toUpperCase())}"><span>${escapeMyPortfolioHtml(myPortfolioRiskLabel(key))}</span><strong>${formatMyPortfolioNumber(count)}</strong></li>`
         ).join("")}</ul>`;
     }
 
@@ -1705,26 +1705,28 @@
                     <h4>Next Action</h4>
                     ${myPortfolioRiskCountList(myPortfolioCountEntries(rows, row => row.next_action))}
                 </div>
-                <div class="my-portfolio-risk-group">
+                <div class="my-portfolio-risk-group my-portfolio-risk-conviction">
+                    <div class="my-portfolio-risk-group-heading">
                     <h4>High conviction</h4>
                     <p class="metric-desc">${formatMyPortfolioNumber(highConviction.length)} of ${formatMyPortfolioNumber(rows.length)}</p>
+                    </div>
                     ${highConvictionPreview.length
-                        ? `<ul class="my-portfolio-risk-list">${highConvictionPreview.map(row =>
+                        ? `<ul class="my-portfolio-risk-list my-portfolio-conviction-symbols">${highConvictionPreview.map(row =>
                             `<li><span>${escapeMyPortfolioHtml(row.symbol)}</span></li>`
                         ).join("")}</ul>${highConvictionRemaining
                             ? `<p class="metric-desc">+${formatMyPortfolioNumber(highConvictionRemaining)} more</p>`
                             : ""}`
                         : `<p class="metric-desc">None.</p>`}
                 </div>
-                <div class="my-portfolio-risk-group">
+                <div class="my-portfolio-risk-group my-portfolio-risk-top">
                     <h4>Top holdings</h4>
                     ${myPortfolioRankedHoldings(rows, myPortfolioExposureValue, "desc", 5)}
                 </div>
-                <div class="my-portfolio-risk-group">
+                <div class="my-portfolio-risk-group my-portfolio-risk-winners">
                     <h4>Largest winners</h4>
                     ${myPortfolioRankedHoldings(rows.filter(row => myPortfolioPnlValue(row) > 0), myPortfolioPnlValue, "desc", 3, "positive")}
                 </div>
-                <div class="my-portfolio-risk-group">
+                <div class="my-portfolio-risk-group my-portfolio-risk-losers">
                     <h4>Largest losers</h4>
                     ${myPortfolioRankedHoldings(rows.filter(row => myPortfolioPnlValue(row) < 0), myPortfolioPnlValue, "asc", 3, "negative")}
                 </div>

@@ -1270,7 +1270,7 @@
 }
 
 .my-portfolio-heatmap-tile span {
-    color: var(--text-muted);
+    color: var(--heatmap-label-color, var(--tone-neutral-text));
     font-size: var(--text-0-68);
     font-weight: 700;
 }
@@ -1318,6 +1318,51 @@
 .my-portfolio-heatmap-tile.tone-neutral,
 .my-portfolio-heatmap-tile.tone-muted {
     background: rgba(148, 163, 184, 0.08);
+}
+
+/* One risk workspace, with the existing heatmap disclosure retained inside. */
+.my-portfolio-risk-panel {
+    padding: 28px;
+    gap: 24px;
+    background: #101927;
+}
+.my-portfolio-risk-header h3 { font-size: 20px; }
+.my-portfolio-risk-panel.collapsed > .my-portfolio-heatmap-panel { display: none; }
+.my-portfolio-risk-panel > .my-portfolio-heatmap-panel {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    gap: 18px;
+}
+.my-portfolio-risk-grid { gap: 18px; }
+.my-portfolio-risk-group { padding: 20px; background: transparent; }
+.my-portfolio-risk-group h4 { color: #9caec4; letter-spacing: 0; margin-bottom: 16px; }
+.my-portfolio-risk-list, .my-portfolio-risk-rank { gap: 12px; }
+.my-portfolio-risk-top { grid-column: span 2; }
+.my-portfolio-risk-winners { background: rgba(34, 197, 94, 0.04); border-color: rgba(34, 197, 94, 0.3); }
+.my-portfolio-risk-losers { background: rgba(248, 113, 113, 0.05); border-color: rgba(248, 113, 113, 0.3); }
+.my-portfolio-risk-winners h4, .my-portfolio-risk-rank li.tone-positive strong { color: var(--tone-good-text); }
+.my-portfolio-risk-losers h4, .my-portfolio-risk-rank li.tone-negative strong { color: var(--tone-bad-text); }
+.my-portfolio-risk-list :is([data-risk-key="HEALTHY"], [data-risk-key="STRONG"], [data-risk-key="UPTREND"]) > span { color: var(--tone-good-text); }
+.my-portfolio-risk-list :is([data-risk-key="CAUTION"], [data-risk-key="WATCH"]) > span { color: var(--tone-warn-text); }
+.my-portfolio-risk-list :is([data-risk-key="AT_RISK"], [data-risk-key="EXIT"], [data-risk-key="DOWNTREND"]) > span { color: var(--tone-bad-text); }
+.my-portfolio-risk-conviction > .metric-desc { margin-bottom: 12px; }
+.my-portfolio-risk-group-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+.my-portfolio-risk-group-heading h4, .my-portfolio-risk-group-heading .metric-desc { margin: 0; }
+.my-portfolio-conviction-symbols { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.my-portfolio-conviction-symbols li { max-width: 100%; }
+.my-portfolio-conviction-symbols li span { padding: 4px 8px; border: 1px solid rgba(0, 229, 255, 0.3); border-radius: 4px; color: var(--accent); background: rgba(0, 229, 255, 0.08); }
+.my-portfolio-heatmap-tile { min-height: 84px; padding: 14px; gap: 8px; }
+.my-portfolio-heatmap-tile strong { overflow-wrap: anywhere; }
+.my-portfolio-heatmap-tile:is(.tone-positive, .tone-good, .tone-up) { --heatmap-label-color: var(--tone-good-text); }
+.my-portfolio-heatmap-tile:is(.tone-negative, .tone-danger, .tone-down) { --heatmap-label-color: var(--tone-bad-text); }
+.my-portfolio-heatmap-tile.tone-warning { --heatmap-label-color: var(--tone-warn-text); }
+.my-portfolio-heatmap-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 560px) {
+    .my-portfolio-risk-panel { padding: 16px; }
+    .my-portfolio-risk-top { grid-column: auto; }
+    .my-portfolio-risk-group { padding: 14px; }
 }
 
 .my-portfolio-kpi-tone-positive,

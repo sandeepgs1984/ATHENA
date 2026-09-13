@@ -103,7 +103,14 @@ header and aborting Portfolio Sync refresh.
   MP-RV3 is Owner approved/closed. MP-RV4 condenses row-level sync changes
   to N changes, preserving all privacy-safe reasons in title/accessibility
   text and full symbol details. Pins/notes remain separate. Assets 9.229.0;
-  MP-RV4 review pending, MP-RV5 must not start without approval.
+  MP-RV4 Owner approved/closed 2026-09-12. MP-RV5 authorized with Risk &
+  Heatmap reference: nested heatmap under parent risk disclosure, existing
+  individual heatmap preference/controls and weighted/privacy behavior retained.
+  Assets 9.230.0; MP-RV5 review pending.
+  Owner requested a page-wide mock-inspired font/style pass (MP-RV6).
+  Scope and acceptance criteria are in MY-PORTFOLIO-DASHBOARD-REVAMP.md.
+  Verify existing Inter font loading, scope changes to Portfolio and its
+  overlays, and preserve other tabs. Do not start before MP-RV5 review.
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.

@@ -1,7 +1,7 @@
 # My Portfolio Dashboard Revamp
 
 **Status: MP-RV1, MP-RV2 and MP-RV3 Owner/Chief Architect approved and closed
-(2026-09-11 and 2026-09-12). MP-RV4 ready for Owner review.**
+(2026-09-11 and 2026-09-12). MP-RV4 Owner approved/closed; MP-RV5 ready for review; MP-RV6 documented.**
 Authorized after the 14-item Next-Level UX roadmap closed with MP-NX6C
 (`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`). This is a **new**,
 separately-authorized track — not a reopening of Portfolio Intelligence V2
@@ -109,6 +109,30 @@ Owner/Chief Architect review before the next starts.
 
 ## 4. Non-goals (explicit)
 
+### Owner-requested follow-on: MP-RV6 Typography and Visual Consistency
+
+Requested 2026-09-12 while MP-RV5 was in validation. Begin only after the
+MP-RV5 review gate. Apply the supplied mock's typography and styling across
+My Portfolio, not the other ATHENA tabs. Existing sans stack starts with
+Inter; the screenshot does not prove its exact font. Verify actual font
+loading before changing families or adding dependencies.
+
+Scope: page/header actions, KPI strip, metadata, navigation, triage, risk,
+heatmap, holdings toolbar/table, upload/import/export/reset surfaces and
+symbol-detail overlays. Establish portfolio-scoped sizes, weights, line
+heights, spacing, borders and muted-text contrast; retain compact/full
+profiles, tabular financial numbers, semantic colors and privacy masking.
+Use sans-serif for labels/headings; retain existing monospace only where
+financial/code-style data benefits. Do not alter calculations or workflows.
+
+Acceptance: consistent hierarchy without extra explanatory UI copy; no
+clipping or overlap at desktop/mobile widths or browser zoom; visible hover,
+focus, selected and disabled states; readable long symbols and values;
+privacy/empty/loading/error states and sticky/modal layout regressions checked.
+Use real rendered components and synthetic fixtures, never mock holdings in
+production. Update scoped tests, implementation log and handoff; run full
+suite and disclose existing failures. Stop for Owner review after MP-RV6.
+
 MP-RV3 implementation (2026-09-12): scoped copy replacements and triage
 overlap caption are complete, with all unavailable filter keys/disabled
 states and private-export disclosure preserved. Static browser preview
@@ -127,6 +151,27 @@ cache keys advance together to 9.229.0. Direct renderer tests compare all four
 original reasons, singular/empty cases, privacy masking and HTML escaping.
 Validation: 4019 tests passed; one pre-existing macOS launcher failure remains.
 New-test lint and JS syntax pass. Live UI validation pending; MP-RV5 not started.
+
+Owner approved MP-RV4 on 2026-09-12 and authorized the supplied Risk & Heatmap
+reference as the expanded MP-RV5 scope. This supersedes the color-only scope
+in the original roadmap row: group existing risk/heatmap sections into one
+workspace, widen Top holdings, style conviction symbols as chips, apply
+existing categorical colors to count labels, and improve heatmap tone text.
+The parent risk disclosure hides the whole workspace; the nested heatmap
+keeps its own saved disclosure and Size/Color controls. Existing data keys,
+ranking limits (5 top holdings, 3 winners/losers, 5 conviction symbols),
+comparison notes and removed rows remain unchanged. Weighted tile flex sizing,
+private-mode equal sizing/P&L masking, tile-detail navigation and all five
+color selectors remain unchanged. No hardcoded mock data or new risk score.
+Responsive layout uses four/two/one risk columns; Top holdings spans two
+desktop columns. Native controls, keyboard focus and unknown/empty states
+are retained. Assets 9.230.0. MP-RV5 requires its own Owner review after tests.
+Desktop synthetic fixture exercised the production risk renderer and all
+11 heatmap tone/default variants; a 390px iframe verified the narrow risk
+stack. This is isolated layout validation, not live authenticated interaction.
+Targeted hosting/structure tests pass after updating the renamed heading and
+expanded aria-controls contract. Existing hosting E501 findings remain.
+Full suite: 4020 passed, one existing macOS launcher failure, 118.79s.
 
 Owner-authorized navigation extension (2026-09-12): changing filters never
 requests a scroll or moves keyboard focus. The existing expanded filter panel

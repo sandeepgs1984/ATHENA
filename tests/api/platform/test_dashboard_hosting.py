@@ -319,8 +319,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.229.0" in html
-    assert "dashboard.js?v=9.229.0" in html
+    assert "dashboard.css?v=9.230.0" in html
+    assert "dashboard.js?v=9.230.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -479,7 +479,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
         'class="card my-portfolio-holdings-card"'
     )
     assert 'id="my-portfolio-risk-heading"' in html
-    assert "Risk concentration" in html
+    assert "Risk &amp; Heatmap" in html
     assert 'id="my-portfolio-heatmap-heading"' in html
     assert "Portfolio heatmap" in html
     assert 'id="my-portfolio-heatmap-size"' in html
@@ -489,7 +489,10 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'id="my-portfolio-heatmap-toggle"' in html
     assert 'class="my-portfolio-risk-panel collapsed"' in html
     assert 'class="my-portfolio-heatmap-panel collapsed"' in html
-    assert 'aria-expanded="false" aria-controls="my-portfolio-risk-body"' in html
+    assert (
+        'aria-expanded="false" '
+        'aria-controls="my-portfolio-risk-body my-portfolio-heatmap-section"'
+    ) in html
     assert 'aria-expanded="false" aria-controls="my-portfolio-heatmap-body"' in html
     assert 'id="my-portfolio-risk-body" class="my-portfolio-risk-body" hidden' in html
     assert 'id="my-portfolio-heatmap-body" class="my-portfolio-heatmap-body" hidden' in html
@@ -607,7 +610,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ):
         assert removed_heading not in html
 
-    assert '@import url("css/05b-my-portfolio.css?v=9.229.0");' in css_manifest
+    assert '@import url("css/05b-my-portfolio.css?v=9.230.0");' in css_manifest
     assert ".my-portfolio-table-scroll" in my_portfolio_css
     assert ".my-portfolio-command-center" in my_portfolio_css
     assert ".my-portfolio-export-menu" in my_portfolio_css
