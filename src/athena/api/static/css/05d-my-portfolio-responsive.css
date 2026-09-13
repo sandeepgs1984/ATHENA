@@ -1,0 +1,75 @@
+/* Explicit dismissal stays reachable when the popover covers its trigger. */
+#tab-my-portfolio #my-portfolio-export-close {
+    justify-self: end;
+}
+
+#tab-my-portfolio .my-portfolio-export-panel {
+    position: fixed;
+    top: 110px;
+    right: 24px;
+    max-height: calc(100dvh - 126px);
+    overflow-y: auto;
+}
+
+/* Keep the portfolio usable with an expanded desktop sidebar preference. */
+@media (max-width: 920px) {
+    #app:has(#tab-my-portfolio.active) .sidebar {
+        width: 64px;
+    }
+
+    #app:has(#tab-my-portfolio.active) .sidebar :is(.brand-text, .profile-info, .nav-item span, .nav-item-disabled span, .sidebar-collapse-btn) {
+        display: none;
+    }
+
+    #app:has(#tab-my-portfolio.active) .sidebar :is(.sidebar-brand, .sidebar-footer, .nav-item, .nav-item-disabled) {
+        padding: 12px;
+        justify-content: center;
+    }
+
+    #app:has(#tab-my-portfolio.active) .sidebar-nav {
+        padding: 16px 8px;
+    }
+
+    #app:has(#tab-my-portfolio.active) .console-header {
+        overflow-x: auto;
+        padding: 0 16px;
+        min-height: 70px;
+        height: auto;
+        padding-block: 8px;
+    }
+
+    #app:has(#tab-my-portfolio.active) .header-left {
+        flex-shrink: 0;
+    }
+
+    .workspace-viewport:has(> #tab-my-portfolio.active) {
+        padding-inline: 12px;
+    }
+    /* Tall stacked toolbars must not consume the mobile/zoom scrollport. */
+    #tab-my-portfolio .my-portfolio-sticky-header {
+        position: relative;
+        padding-inline: 12px;
+    }
+
+    #tab-my-portfolio .my-portfolio-holdings-header {
+        position: relative;
+        top: auto;
+    }
+
+    #tab-my-portfolio .my-portfolio-holdings-thead-dock {
+        top: 0;
+    }
+
+    #tab-my-portfolio .my-portfolio-export-panel {
+        position: fixed;
+        inset: 110px 12px auto 76px;
+        width: auto;
+        min-width: 0;
+        max-height: calc(100dvh - 126px);
+        overflow-y: auto;
+    }
+
+    #tab-my-portfolio :is(.my-portfolio-kpi-strip, .my-portfolio-command-dashboard, .my-portfolio-risk-panel, .my-portfolio-holdings-card) {
+        scroll-margin-top: 12px;
+    }
+}

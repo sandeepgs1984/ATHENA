@@ -3978,6 +3978,11 @@
     myPortfolioExportPanel?.addEventListener("click", event => {
         event.stopPropagation();
     });
+    document.getElementById("my-portfolio-export-close")?.addEventListener("click", () => {
+        myPortfolioExportPanel.hidden = true;
+        renderMyPortfolioExportPanel();
+        myPortfolioExportToggle?.focus({ preventScroll: true });
+    });
     myPortfolioExportScope?.addEventListener("change", () => {
         renderMyPortfolioExportColumns();
         setMyPortfolioExportStatus("Choose a dataset, format, and optional column set.", "neutral");

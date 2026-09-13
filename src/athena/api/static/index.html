@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.231.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.232.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -491,6 +491,9 @@
                                         <span>Export</span>
                                     </button>
                                     <div id="my-portfolio-export-panel" class="my-portfolio-export-panel" hidden>
+                                        <button id="my-portfolio-export-close" class="btn btn-icon" type="button" title="Close export" aria-label="Close export">
+                                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                        </button>
                                         <div>
                                             <h3>Export Portfolio</h3>
                                             <p>Download your portfolio data. Exports include private values.</p>
@@ -2498,7 +2501,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.231.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.232.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

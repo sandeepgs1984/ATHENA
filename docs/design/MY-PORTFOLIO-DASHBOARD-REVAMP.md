@@ -2,7 +2,8 @@
 
 **Status: MP-RV1, MP-RV2 and MP-RV3 Owner/Chief Architect approved and closed
 (2026-09-11 and 2026-09-12). MP-RV4 and MP-RV5 Owner approved/closed;
-MP-RV6 Owner approved 2026-09-13 with documented validation outstanding.
+MP-RV6 Owner approved 2026-09-13. MP-RV7 browser validation/hardening authorized;
+see [MP-RV7 validation](MY-PORTFOLIO-RV7-VALIDATION.md) for scope and evidence.
 No next milestone is defined.**
 Authorized after the 14-item Next-Level UX roadmap closed with MP-NX6C
 (`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`). This is a **new**,
@@ -226,8 +227,8 @@ the restored Daily Review choice and cross-group conjunction semantics.
 - No change to Portfolio Sync orchestration, privacy masking contract,
   export contract, or owner-notes/review-session contracts (MP-NX6/NX6B).
 - No re-litigating findings 3/5/8/9 above (already shipped correctly).
-- No MP-RV6+ authorized yet — this document covers exactly MP-RV1 through
-  MP-RV5; a further milestone needs its own owner authorization, the same
+- Original scope was MP-RV1 through MP-RV5; MP-RV6 and MP-RV7 were later
+  explicitly authorized as recorded above. Any further milestone needs Owner authorization, the same
   discipline `MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md` §"Do not invent MP-NX7"
   already established for the prior track.
 

@@ -117,7 +117,14 @@ header and aborting Portfolio Sync refresh.
   into shared tabs. Live mobile/populated overlays and zoom checks remain
   pending; script-free mobile preview retains the expanded shared sidebar.
   MP-RV6 Owner approved 2026-09-13. Outstanding checks are not marked passed.
-  There is no MP-RV7 scope; obtain Owner direction before new implementation.
+  MP-RV7 subsequently authorized 2026-09-13: see
+  `docs/design/MY-PORTFOLIO-RV7-VALIDATION.md`. Actual assembled dashboard
+  runs against synthetic API fixtures via `tests/browser/portfolio-validation.cjs`.
+  No live portfolio writes. Responsive corrections live separately in
+  `05d-my-portfolio-responsive.css`; do not mix geometry into typography.
+  Below 920px, use the compact navigation rail and flowing toolbars; column
+  headings remain sticky. Desktop sticky behavior is preserved. Export is
+  viewport-bounded with explicit dismissal. Assets 9.232.0.
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.

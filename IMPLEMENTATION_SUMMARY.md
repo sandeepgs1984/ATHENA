@@ -6,12 +6,69 @@ status updated on approval.
 
 ---
 
+## MP-RV7 — Browser Validation and Responsive Hardening
+
+**Authorization/objective.** Owner authorized MP-RV7 on 2026-09-13 to close
+the populated-browser validation gaps. Implemented for Owner review; the
+full-suite launcher exception below remains open, not silently waived.
+
+**Scope completed.** Real assembled dashboard against 48 synthetic holdings
+at 390/768/1280/1920px and 640px with doubled root text size. Corrected narrow
+sidebar width, oversized stacked sticky toolbars and clipped export popovers.
+Desktop sticky layout is unchanged. Below 920px, toolbars flow while column
+headings stay sticky. Added export dismissal with focus restoration.
+
+**Files created.** `css/05d-my-portfolio-responsive.css` under API static;
+`tests/browser/portfolio-validation.cjs`;
+`tests/api/platform/test_portfolio_responsive.py`;
+`docs/design/MY-PORTFOLIO-RV7-VALIDATION.md`.
+**Files modified.** Static `index.html`, `dashboard.css`,
+`js/08b-my-portfolio.js`; hosting/release asset assertions; milestones,
+revamp design, next-level UX handoff and this log. Asset version 9.232.0.
+No public APIs added, no schema or configuration changes.
+
+**Tests/coverage.** Browser gate exercises populated filters, profiles,
+initial summary visibility, desktop sticky placement, risk/heatmap disclosure,
+privacy, detail reopen, reset lock, export bounds/dismissal, automatic preview
+and sync success/failure blocking. External requests are blocked and unexpected
+APIs fail. No real mutations. Python full suite: 4022 passed, 1 skipped,
+1 existing macOS launcher failure, 126.22s. The opt-in browser wrapper is
+skipped in default pytest; Node gate runs separately. Scoped Ruff and Node
+syntax pass. No numerical coverage claim beyond these exercised surfaces.
+
+**Compliance/risks/debt.** ATHENA-002 rendering boundary and ADR-004 remain
+intact; no provider, evidence, interpretation or financial calculation changes.
+Determinism/replay and frozen contracts preserved; no ADR required. Isolated
+CSS keeps other tabs unchanged. Browser tooling is optional development-only,
+not an application dependency. Root-text stress is not native browser zoom.
+Fonts/icons use offline fallback; Safari, physical device, screen reader and
+live authenticated sign-off remain unverified. Real export/reset/confirmation
+flows were not executed. No new production technical debt identified.
+
+**Remaining work.** Owner review; independently resolve the existing
+`test_installer_builds_configured_app_bundle` failure. Suggested follow-up:
+cross-browser visual sign-off and a dedicated browser gate in CI. No next
+milestone started. No git operations performed.
+
+**Consolidated commit message.**
+
+```text
+fix(portfolio): harden responsive layouts and add browser validation
+
+- Constrain narrow toolbars and navigation to keep holdings reachable.
+- Bound export to the viewport and restore focus on dismissal.
+- Exercise populated UI flows with isolated browser fixtures per MP-RV7.
+- Record validation evidence, known test failure and remaining limits.
+```
+
+---
+
 ## MP-RV6 — Portfolio Typography and Visual Consistency
 
 **Owner review update (2026-09-13).** Owner approved and requested the next
-milestone. MP-RV6 is the last defined scope; no MP-RV7 is authorized or
-implemented. Prior validation limitations remain outstanding, not silently
-converted to passing checks. Await next scope before further implementation.
+milestone. MP-RV7 was subsequently authorized for browser validation and
+hardening; see its separate review entry. Prior validation limitations are
+not silently converted to passing checks.
 
 **Authorization/objective.** Owner continued on 2026-09-13, approving MP-RV5
 and starting the requested page-wide mock-inspired typography milestone.
