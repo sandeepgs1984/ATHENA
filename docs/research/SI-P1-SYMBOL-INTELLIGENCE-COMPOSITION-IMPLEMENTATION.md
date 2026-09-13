@@ -1,6 +1,6 @@
 # SI-P1 — Symbol Intelligence Composition Implementation
 
-Status: SI-P1 freeze candidate after owner-requested product cleanup.
+Status: **COMPLETE AND FROZEN** — Owner/Chief Architect live review passed 2026-09-13.
 Date: 2026-09-13
 Does not rewrite SI-P0. Governing discovery:
 `docs/research/SI-P0-SYMBOL-INTELLIGENCE-DISCOVERY-ARCHITECTURE.md`.
@@ -33,7 +33,7 @@ Added:
 - `src/athena/api/static/css/15-symbol-intelligence.css`
 - `tests/symbol_intelligence/test_si_p1_composer.py`
 - `tests/api/v1/test_symbol_intelligence.py`
-- `docs/research/SI-P1-SYMBOL-INTELLIGENCE-COMPOSITION-IMPLEMENTATION.md` (this file)
+- `docs/research/si-p1-ux-baseline/` — owner NSE:TI screenshots frozen as SI-P2 UX baseline
 
 Modified:
 
@@ -413,4 +413,33 @@ Required: universe+fresh D1, universe+stale D1 (hydrate), outside universe,
 no Decision, invalid, held/non-held, DarvaX available/unavailable,
 hydration failure. Network must show POST Analyze + scoped ingest when
 D1 is stale.
+
+## 26. Freeze validation (2026-09-13)
+
+Owner live review of NSE:TI after restart: closed-market quote labeled
+`LATEST QUOTE · MARKET CLOSED`; Market data CURRENT + SI coverage PARTIAL
+with no Decision; Fundamentals/News empty; Complete Review does not invent
+MQ/EQ; DarvaX iframe `EXPERIMENTAL_UNVALIDATED`; completed-D1 chart.
+
+Release-gate checks immediately before freeze:
+
+| Gate | Result |
+|---|---|
+| `NSE:WIPRO` persisted Decision | Market data CURRENT, Decision CURRENT, SI coverage READY (`NO_TRADE`) |
+| `NSE:20MICRONS` stale D1 then Analyze | GET D1 STALE through 2026-08-14; hydrate wrote 20 candle rows; re-read D1 CURRENT through expected 2026-09-11; SI coverage PARTIAL (`NO_DECISION`) |
+| `ZZNOPE999` unknown | `UNKNOWN_INSTRUMENT`, overall UNAVAILABLE, explicit unresolved reason; no leftover report |
+| Ambiguous bare ticker | Unit-tested (`AMBIGUOUS_SYMBOL`). Live `symbol_master` currently has no BSE dual-list, so live catalog cannot produce that state |
+
+SI-P1 is COMPLETE AND FROZEN. SI-P2 is not started.
+
+## 27. SI-P2 UX baseline (planning only)
+
+Owner NSE:TI screenshots from 2026-09-13 are preserved at
+`docs/research/si-p1-ux-baseline/` (Overview, Complete Review, Decision,
+DarvaX, Technical/Structure chart, Fundamentals, News, Evidence/Audit).
+
+A later SI-P2 must address information hierarchy, empty space, tab/nav
+scalability, responsive density, Complete Review presentation, Overview
+prioritization, chart UX, empty/error/loading states, and investor-workspace
+usability **without** changing frozen SI-P1 contracts.
 

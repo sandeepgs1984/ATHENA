@@ -24,7 +24,8 @@ unavailable states. No SI persistence tables.
 **Files created.** `src/athena/symbol_intelligence/` (`composer.py`,
 `d1_adapter.py`, `d1_hydrate.py`); DTOs/service/router; `js/08c-symbol-intelligence.js`;
 `css/15-symbol-intelligence.css`; composer/API tests;
-`docs/research/SI-P1-SYMBOL-INTELLIGENCE-COMPOSITION-IMPLEMENTATION.md`.
+`docs/research/SI-P1-SYMBOL-INTELLIGENCE-COMPOSITION-IMPLEMENTATION.md`;
+`docs/research/si-p1-ux-baseline/` (owner live screenshots).
 **Files modified.** Dashboard nav/routing/JS assembly (`9.238.0`), market
 candles Literal, dependencies/router, hosting/release-gate assertions,
 `docs/MILESTONES.md`, `ATHENA_BRIEFING.md` §6, this log.
@@ -41,10 +42,11 @@ may still fetch on hydrate because LiveIngestionEngine requires an intraday TF.
 Risk: iframe depends on satellite mount; Analyze needs EXECUTE + a process that
 serves POST.
 
-**Remaining work.** Owner/Chief Architect commit approval to freeze SI-P1.
-Deferred: fundamentals/news, MQ/EQ formulas, AI Complete Review, advanced
-structure methodology, historical replay. No next milestone started. No git
-operations performed.
+**Remaining work.** None in SI-P1. Milestone is COMPLETE AND FROZEN pending
+owner commit. Deferred to later milestones (not started): fundamentals/news,
+MQ/EQ formulas, AI Complete Review, advanced structure methodology, historical
+replay, and the SI-P2 UX/information-hierarchy work listed in the SI-P1
+implementation note. No git operations performed.
 
 **Consolidated commit message.**
 

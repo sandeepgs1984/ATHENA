@@ -276,7 +276,7 @@ def get_decisions_service(request: Request) -> DecisionsService:
 
 
 def get_symbol_intelligence_service(request: Request) -> SymbolIntelligenceService:
-    """Read-only SI composer. Never falls through to a hidden write path."""
+    """SI composer adapter. GET re-reads; POST Analyze may hydrate this symbol's D1."""
     repo = getattr(request.app.state, "sqlite_repo", None)
     now_fn = getattr(request.app.state, "si_clock", None) or getattr(
         request.app.state, "decisions_clock", None

@@ -18,7 +18,7 @@ symbol-scoped D1 hydration. Not a new decision engine.
 | Milestone | Objective | Status |
 |---|---|---|
 | SI-P0 | Discovery & architecture — inventory existing Decision/DarvaX/Portfolio/D1/dashboard surfaces and freeze composition boundaries | ✅ Owner/Chief Architect approved 2026-09-13 — SI-P0 COMPLETE |
-| SI-P1 | Universal Symbol Intelligence workspace: search, typed contract, GET re-read, POST Analyze symbol-scoped D1 hydration, Decision reuse, D1 evidence/chart, quote vs session labels, market-data vs SI-coverage freshness, held Portfolio context, DarvaX iframe, explicit missing sources | 🔄 Freeze candidate 2026-09-13 — awaiting Owner/Chief Architect commit approval |
+| SI-P1 | Universal Symbol Intelligence workspace: search, typed contract, GET re-read, POST Analyze symbol-scoped D1 hydration, Decision reuse, D1 evidence/chart, quote vs session labels, market-data vs SI-coverage freshness, held Portfolio context, DarvaX iframe, explicit missing sources | ✅ COMPLETE AND FROZEN 2026-09-13 — Owner/Chief Architect live review passed; awaiting commit |
 
 ## Portfolio Sync Track (PS-P0 started 2026-09-01)
 
