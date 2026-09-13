@@ -6,6 +6,58 @@ status updated on approval.
 
 ---
 
+## SI-P1 — Symbol Intelligence universal workspace foundation
+
+**Authorization/objective.** Owner approved SI-P0 on 2026-09-13 and authorized
+SI-P1 as the Symbol Intelligence composition workspace. GET remains a re-read.
+POST Analyze may hydrate stale/missing D1 for that one symbol through existing
+ingestion, then re-read. Frozen: no DecisionEngine, no Portfolio Sync, no
+DarvaX scan, DarvaX iframe/HTTP only (no ADR-010 amendment), MQ/EQ remain
+null, fundamentals/news remain NOT_INGESTED.
+
+**Scope completed.** `/dashboard/symbol-intelligence`, canonical search, typed
+bundle, composer + symbol-scoped hydrator, GET/POST APIs, D1 adapter, Decision
+read reuse, Portfolio facts, DarvaX iframe, persisted 1d SVG chart, live/latest
+quote vs market-session labels, market-data freshness vs SI coverage, explicit
+unavailable states. No SI persistence tables.
+
+**Files created.** `src/athena/symbol_intelligence/` (`composer.py`,
+`d1_adapter.py`, `d1_hydrate.py`); DTOs/service/router; `js/08c-symbol-intelligence.js`;
+`css/15-symbol-intelligence.css`; composer/API tests;
+`docs/research/SI-P1-SYMBOL-INTELLIGENCE-COMPOSITION-IMPLEMENTATION.md`.
+**Files modified.** Dashboard nav/routing/JS assembly (`9.238.0`), market
+candles Literal, dependencies/router, hosting/release-gate assertions,
+`docs/MILESTONES.md`, `ATHENA_BRIEFING.md` §6, this log.
+
+**Tests/coverage.** Composer/API tests for held/non-held, NO_DECISION PARTIAL
+coverage with CURRENT D1, NO_D1, stale D1, hydrate success/fail, closed-market
+LATEST QUOTE vs open-market LIVE, DarvaX disabled, MQ/EQ null, NOT_INGESTED,
+write-path spies, `1d` candles. Existing Decision/Portfolio/DarvaX isolation
+suites remain in the validation pass.
+
+**Compliance/risks/debt.** ADR-010 preserved. Decision staleness does not mark
+market data stale. Closed-market quotes are never labeled LIVE. Companion 5m
+may still fetch on hydrate because LiveIngestionEngine requires an intraday TF.
+Risk: iframe depends on satellite mount; Analyze needs EXECUTE + a process that
+serves POST.
+
+**Remaining work.** Owner/Chief Architect commit approval to freeze SI-P1.
+Deferred: fundamentals/news, MQ/EQ formulas, AI Complete Review, advanced
+structure methodology, historical replay. No next milestone started. No git
+operations performed.
+
+**Consolidated commit message.**
+
+```text
+feat(review): freeze SI-P1 Symbol Intelligence workspace foundation
+
+- Compose any valid NSE/BSE symbol with GET re-read and POST symbol-scoped D1 hydration.
+- Keep DecisionEngine, Portfolio Sync, and DarvaX scan off the Analyze path.
+- Separate live vs latest-quote session labels and market-data vs SI-coverage freshness.
+```
+
+---
+
 ## MP-RV7 — Browser Validation and Responsive Hardening
 
 **Authorization/objective.** Owner authorized MP-RV7 on 2026-09-13 to close

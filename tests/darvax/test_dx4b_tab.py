@@ -65,15 +65,20 @@ def test_01_index_html_contains_only_the_script_tag_reference():
     lines_with_darvax = [
         line for line in html.splitlines() if "darvax" in line.lower()
     ]
-    # Comment lines explaining the tag are documentation, not markup; the only
-    # non-comment reference must be the script tag itself.
+    # Comment lines explaining the tag are documentation, not markup.
+    # ADR-010 still allows only one DarvaX-owned injection: the tab.js script
+    # tag. SI-P1 additionally names DarvaX on the ATHENA-owned SI sub-tab.
     code_lines = [
         line
         for line in lines_with_darvax
         if "<script" in line or ("<" in line and "<!--" not in line and "--" not in line)
     ]
-    assert len(code_lines) == 1, f"expected one DarvaX code line, got {code_lines}"
-    only = code_lines[0]
+    si_label_lines = [line for line in code_lines if 'data-si-section="experimental"' in line]
+    injection_lines = [line for line in code_lines if line not in si_label_lines]
+    assert len(si_label_lines) == 1, f"expected one SI DarvaX label, got {si_label_lines}"
+    assert "DarvaX" in si_label_lines[0]
+    assert len(injection_lines) == 1, f"expected one DarvaX script tag, got {injection_lines}"
+    only = injection_lines[0]
     assert "<script" in only and 'src="/darvax/static/tab.js"' in only
     assert "defer" in only
 
@@ -101,9 +106,10 @@ def test_02_dashboard_js_parts_has_no_darvax_entry_and_assembly_still_works():
     # Assembly reads only ATHENA's own parts, so it cannot depend on DarvaX.
     assembled = assemble_dashboard_js(str(ATHENA_STATIC))
     assert assembled, "dashboard.js assembled empty"
-    assert "darvax" not in assembled.lower(), (
-        "assembled dashboard.js contains DarvaX code"
-    )
+    # SI-P1 ATHENA-owned composition may name DarvaX; DarvaX still must not
+    # be a DASHBOARD_JS_PARTS filename (asserted above).
+    assert "08c-symbol-intelligence.js" in DASHBOARD_JS_PARTS
+    assert "function loadSymbolIntelligence" in assembled
 
 
 # --------------------------------------------------------------------------- #
@@ -316,14 +322,27 @@ def test_07_release_gate_athena_still_provides_the_hooks_tab_js_relies_on():
 
 
 def test_08_athena_dashboard_assets_contain_no_darvax_reference():
+    """DarvaX satellite files still must not leak into non-SI ATHENA assets.
+
+    SI-P1 is ATHENA-owned and may compose the DarvaX iframe by name.
+    """
+    si_composition_assets = {
+        "08c-symbol-intelligence.js",
+        "15-symbol-intelligence.css",
+    }
     assembled = assemble_dashboard_js(str(ATHENA_STATIC)).lower()
-    assert "darvax" not in assembled
+    assert "function loadsymbolintelligence" in assembled
+    assert 'data-tab="darvax"' not in assembled
 
     for asset in (ATHENA_STATIC / "css").rglob("*.css"):
+        if asset.name in si_composition_assets:
+            continue
         assert "darvax" not in asset.read_text(encoding="utf-8").lower(), (
             f"{asset.name} references DarvaX"
         )
     for asset in (ATHENA_STATIC / "js").rglob("*.js"):
+        if asset.name in si_composition_assets:
+            continue
         assert "darvax" not in asset.read_text(encoding="utf-8").lower(), (
             f"{asset.name} references DarvaX"
         )

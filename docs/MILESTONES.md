@@ -4,6 +4,22 @@ Official milestone roadmap per the milestone-based workflow (AGENTS.md).
 One milestone at a time; owner approval gates every transition. A milestone
 too large for a single-sitting review is split BEFORE implementation.
 
+## Symbol Intelligence Track (SI-P0 started 2026-09-13)
+
+**Source:** Owner assignment after SI-P0 discovery approval.
+
+**Reports:** `docs/research/SI-P0-SYMBOL-INTELLIGENCE-DISCOVERY-ARCHITECTURE.md`,
+`docs/research/SI-P1-SYMBOL-INTELLIGENCE-COMPOSITION-IMPLEMENTATION.md`
+
+Read-only GET composition over existing ATHENA Decision, D1 evidence,
+My Portfolio holdings, and DarvaX satellite presentation, plus POST Analyze
+symbol-scoped D1 hydration. Not a new decision engine.
+
+| Milestone | Objective | Status |
+|---|---|---|
+| SI-P0 | Discovery & architecture — inventory existing Decision/DarvaX/Portfolio/D1/dashboard surfaces and freeze composition boundaries | ✅ Owner/Chief Architect approved 2026-09-13 — SI-P0 COMPLETE |
+| SI-P1 | Universal Symbol Intelligence workspace: search, typed contract, GET re-read, POST Analyze symbol-scoped D1 hydration, Decision reuse, D1 evidence/chart, quote vs session labels, market-data vs SI-coverage freshness, held Portfolio context, DarvaX iframe, explicit missing sources | 🔄 Freeze candidate 2026-09-13 — awaiting Owner/Chief Architect commit approval |
+
 ## Portfolio Sync Track (PS-P0 started 2026-09-01)
 
 **Source:** Owner assignment dated 2026-09-01 / 2026-09-02

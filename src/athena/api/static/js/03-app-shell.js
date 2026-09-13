@@ -105,7 +105,7 @@
             // Default fallback
             const pathParts = window.location.pathname.split("/");
             const pathTab = pathParts[pathParts.length - 1];
-            if (["overview", "my-portfolio", "market", "strategies", "decisions", "operations"].includes(pathTab)) {
+            if (["overview", "my-portfolio", "symbol-intelligence", "market", "strategies", "decisions", "operations"].includes(pathTab)) {
                 switchTab(pathTab);
             } else {
                 switchTab("overview");
@@ -123,7 +123,7 @@
     function initializeRoute() {
         const pathParts = window.location.pathname.split("/");
         const pathTab = pathParts[pathParts.length - 1];
-        const tab = ["overview", "my-portfolio", "market", "strategies", "decisions", "operations"].includes(pathTab)
+        const tab = ["overview", "my-portfolio", "symbol-intelligence", "market", "strategies", "decisions", "operations"].includes(pathTab)
             ? pathTab
             : "overview";
         const loaded = switchTab(tab);
@@ -138,6 +138,12 @@
             const targetDecisionId = new URLSearchParams(window.location.search).get("decision");
             if (targetDecisionId && typeof selectBriefing === "function") {
                 loaded.then(() => selectBriefing(targetDecisionId));
+            }
+        }
+        if (tab === "symbol-intelligence") {
+            const targetSymbol = new URLSearchParams(window.location.search).get("symbol");
+            if (targetSymbol && typeof loadSymbolIntelligence === "function") {
+                loaded.then(() => loadSymbolIntelligence(targetSymbol));
             }
         }
     }
@@ -210,6 +216,10 @@
             await loadMarketTicker();
         } else if (tabId === "operations") {
             await loadOperationsWorkspace();
+        } else if (tabId === "symbol-intelligence") {
+            if (typeof loadSymbolIntelligenceWorkspace === "function") {
+                await loadSymbolIntelligenceWorkspace();
+            }
         }
     }
 

@@ -477,7 +477,7 @@
     els.historySub.textContent = "";
     try {
       var url = new URL(window.location.href);
-      url.searchParams.set("symbol", bare);
+      url.searchParams.set("symbol", instrumentId);
       window.history.replaceState(null, "", url.pathname + url.search);
     } catch (err) {
       /* history is a nicety here, not a requirement */

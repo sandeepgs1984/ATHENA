@@ -111,8 +111,16 @@ def test_crosslink_url_params_set_filter_and_mode_before_first_render():
 def test_no_athena_asset_references_darvax_for_this_feature():
     """Redundant with the existing suite-wide ADR-010 guard, but pinned here
     too so a reader of this specific test file sees the constraint that
-    shaped this milestone's design, not just its result."""
+    shaped this milestone's design, not just its result.
+
+    SI-P1 ATHENA-owned Symbol Intelligence may name DarvaX while composing
+    its iframe; the AUX-6 Decision Brief cross-link still must not live in
+    any other ATHENA asset.
+    """
+    si_composition_assets = {"08c-symbol-intelligence.js"}
     for path in (ATHENA_STATIC / "js").rglob("*.js"):
+        if path.name in si_composition_assets:
+            continue
         assert "darvax" not in path.read_text(encoding="utf-8").lower(), (
             f"{path.name} references DarvaX -- the AUX-6 cross-link must be "
             "injected from tab.js, never added to any ATHENA asset"

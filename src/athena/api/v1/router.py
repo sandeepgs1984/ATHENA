@@ -25,6 +25,7 @@ from athena.api.v1.routers.reports import router as reports_router
 from athena.api.v1.routers.saved_symbols import router as saved_symbols_router
 from athena.api.v1.routers.scheduler import router as scheduler_router
 from athena.api.v1.routers.strategies import router as strategies_router
+from athena.api.v1.routers.symbol_intelligence import router as symbol_intelligence_router
 from athena.api.v1.routers.workspace import router as workspace_router
 
 router = APIRouter()
@@ -48,4 +49,5 @@ router.include_router(strategies_router)
 router.include_router(backtests_router)
 router.include_router(ops_router)
 router.include_router(saved_symbols_router)
+router.include_router(symbol_intelligence_router)
 router.include_router(emr_router)

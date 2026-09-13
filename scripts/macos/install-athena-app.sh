@@ -60,6 +60,7 @@ fi
 mkdir -p "$(dirname "$DESTINATION")"
 /usr/bin/ditto "$SOURCE_APP" "$DESTINATION"
 chmod +x "$DESTINATION/Contents/MacOS/ATHENA"
+mkdir -p "$DESTINATION/Contents/Resources"
 printf '%s\n' "$REPO_ROOT" >"$DESTINATION/Contents/Resources/repo-root"
 
 /usr/bin/plutil -lint "$DESTINATION/Contents/Info.plist" >/dev/null

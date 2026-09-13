@@ -299,17 +299,21 @@ def test_darvax_ui_does_not_touch_athena_dashboard_assets():
     unaffected by it.
 
     Scope note: ADR-010 Amendment 1 permits **one** DarvaX reference in
-    ``index.html`` — the ``tab.js`` script tag that injects the dashboard tab, and
-    which is itself the flag guard. That single exception is asserted in detail by
-    ``test_dx4b_tab.py::test_01_index_html_contains_only_the_script_tag_reference``;
-    this test covers everything that must still be completely DarvaX-free.
+    ``index.html`` — the ``tab.js`` script tag that injects the dashboard tab.
+    SI-P1 additionally allows ATHENA-owned Symbol Intelligence assets to name
+    DarvaX while composing its iframe. DarvaX still must not appear in
+    ``DASHBOARD_JS_PARTS`` filenames or non-SI ATHENA assets.
     """
     assert not any("darvax" in part.lower() for part in DASHBOARD_JS_PARTS)
 
     athena_static = REPO_ROOT / "src" / "athena" / "api" / "static"
+    si_composition_assets = {
+        "08c-symbol-intelligence.js",
+        "15-symbol-intelligence.css",
+    }
     for name in ("js", "css"):
         for asset in (athena_static / name).rglob("*"):
-            if asset.is_file():
+            if asset.is_file() and asset.name not in si_composition_assets:
                 assert "darvax" not in asset.read_text(encoding="utf-8").lower(), (
                     f"ATHENA asset {asset.name} references DarvaX"
                 )

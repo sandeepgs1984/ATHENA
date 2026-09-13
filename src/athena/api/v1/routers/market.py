@@ -62,7 +62,7 @@ def _meta(request: Request) -> ResponseMeta:
 def get_instrument_candles(
     instrument_id: str,
     request: Request,
-    timeframe: Literal["1m", "5m", "15m"] = Query(default="5m"),
+    timeframe: Literal["1m", "5m", "15m", "1d"] = Query(default="5m"),
     limit: int = Query(default=120, ge=1, le=500),
     service: MarketHistoryService = Depends(get_market_history_service),  # noqa: B008
     principal: AuthenticatedPrincipal = Depends(RequirePermission(Permission.READ)),  # noqa: B008

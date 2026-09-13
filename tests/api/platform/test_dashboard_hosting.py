@@ -29,6 +29,44 @@ def test_portfolio_sticky_header_has_no_scrollport_top_gutter(client: TestClient
     assert "transform:" not in header[1]
 
 
+def test_symbol_intelligence_load_cannot_native_navigate(client: TestClient) -> None:
+    """SI-P1 live blocker: Load inside a native <form type=submit> reloaded the
+    dashboard to the empty SI state whenever 08c was not bound. Keep Load as a
+    button and Enter as preventDefault so the workspace cannot GET-navigate.
+    """
+    html = client.get("/dashboard/").text
+    js = client.get("/dashboard/dashboard.js").text
+    start = html.index('id="tab-symbol-intelligence"')
+    end = html.index('id="tab-market"')
+    pane = html[start:end]
+    assert "<form" not in pane
+    assert 'id="si-search-form"' in pane
+    assert 'id="si-load-btn"' in pane
+    assert 'type="submit"' not in pane
+    assert 'id="si-load-btn" class="btn" type="button">Analyze</button>' in pane
+    assert "Read-only composition of persisted ATHENA sources" not in pane
+    assert "08c-symbol-intelligence.js" in DASHBOARD_JS_PARTS
+    assert 'getElementById("si-load-btn")' in js
+    assert 'event.key !== "Enter"' in js
+    assert "function requestSymbolIntelligenceLoad(event)" in js
+    assert "function loadSymbolIntelligence(" in js
+    assert "encodeURIComponent(needle)" in js
+    assert "function siShowWorkspaceError(code, detail)" in js
+    assert "API_ERROR" in js
+    assert "COMPOSITION_UNAVAILABLE" in js
+    assert "EXPERIMENTAL_UNVALIDATED" in js
+    assert 'method: "POST"' in js
+    assert "skipToast: true" in js
+    assert "RESTART_REQUIRED" in js
+    assert "Refreshing D1 history" in js
+    assert "si-audit-table" in js
+    assert "si-lineage" not in js
+    assert "function siDate(value)" in js
+    assert "function siNum(value, digits = 2)" in js
+    assert "event.preventDefault()" in js[js.index("function requestSymbolIntelligenceLoad") : js.index("function searchSymbolIntelligence")]
+
+
+
 def _fetch_full_css(client: TestClient) -> str:
     """dashboard.css (UX-7 refactor) is a slim entry point that @imports the
     real rules from css/*.css, split by concern for maintainability. Tests
@@ -319,8 +357,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.232.0" in html
-    assert "dashboard.js?v=9.232.0" in html
+    assert "dashboard.css?v=9.238.0" in html
+    assert "dashboard.js?v=9.238.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -867,6 +905,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert 'my-portfolio-table-scroll my-portfolio-holdings-scroll compact-density' in html
 
     assert "08b-my-portfolio.js" in DASHBOARD_JS_PARTS
+    assert "08c-symbol-intelligence.js" in DASHBOARD_JS_PARTS
     assert "function loadMyPortfolioWorkspace()" in js
     assert "function uploadMyPortfolioFile(file)" in js
     assert "function myPortfolioDailyReviewStatusCell(review)" in js
@@ -1165,7 +1204,31 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     ) in js
     assert "Absent from uploaded current-holdings snapshot; no sale inferred." in js
     assert "myPortfolioConfirm.disabled" in js
-    assert '["overview", "my-portfolio", "market", "strategies", "decisions", "operations"]' in js
+    assert '["overview", "my-portfolio", "symbol-intelligence", "market", "strategies", "decisions", "operations"]' in js
+    assert 'tabId === "symbol-intelligence"' in js
+    assert "function loadSymbolIntelligenceWorkspace()" in js
+    assert "function loadSymbolIntelligence(" in js
+    assert "function requestSymbolIntelligenceLoad(event)" in js
+    assert "/api/v1/symbol-intelligence/" in js
+    assert "Methodology pending" in js
+    assert "Not available yet" in js
+    assert "ATHENA has not produced a Decision for this symbol." in js
+    assert "EXPERIMENTAL_UNVALIDATED" in js
+    assert "Available-history high" in js
+    assert "function siAuditTable" in js
+    assert "function siMarketDataStatus" in js
+    assert "function siCoverageStatus" in js
+    assert "Market data:" in js
+    assert "SI coverage:" in js
+    assert "LATEST QUOTE · MARKET CLOSED" in js
+    assert "LIVE · MARKET OPEN" in js
+    assert "LIVE / CURRENT SESSION" not in js
+    assert "siFreshnessLabel" not in js
+    assert "DARVAX UNAVAILABLE" in js
+    assert "08c-symbol-intelligence.js" in DASHBOARD_JS_PARTS
+    assert 'data-tab="symbol-intelligence"' in html
+    assert 'id="tab-symbol-intelligence"' in html
+    assert '["overview", "my-portfolio", "market", "strategies", "decisions", "operations"]' not in js
     assert 'tabId === "my-portfolio"' in js
     assert "loadMyPortfolioWorkspace();" in js
     assert "function loadPortfolioData()" in js

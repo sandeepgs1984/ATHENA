@@ -1,0 +1,217 @@
+/* Symbol Intelligence (SI-P1) — composition cockpit, ATHENA-owned. */
+#tab-symbol-intelligence {
+    padding: 16px 20px 32px;
+}
+
+.si-workstation {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.si-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.si-search-form {
+    display: flex;
+    gap: 8px;
+    min-width: min(100%, 28rem);
+}
+
+.si-symbol-input {
+    flex: 1;
+    min-width: 12rem;
+    padding: 8px 10px;
+}
+
+.si-toolbar .metric-desc {
+    max-width: 42rem;
+    margin: 0;
+    opacity: 0.75;
+    font-size: 0.85rem;
+}
+
+.si-search-hits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.si-search-hit {
+    border: 1px solid var(--border, #2a3344);
+    background: transparent;
+    color: inherit;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.si-section-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.si-section-nav-item {
+    border: 1px solid var(--border, #2a3344);
+    background: transparent;
+    color: inherit;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.si-section-nav-item.active {
+    border-color: var(--accent, #5b8def);
+}
+
+.si-identity {
+    border: 1px solid var(--border, #2a3344);
+    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: minmax(12rem, 1.2fr) minmax(12rem, 1fr) minmax(10rem, 0.8fr);
+    gap: 12px 20px;
+    align-items: start;
+}
+
+.si-id-symbol {
+    font-size: 1.45rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+}
+
+.si-id-name {
+    font-size: 0.95rem;
+    opacity: 0.9;
+}
+
+.si-id-meta,
+.si-id-session {
+    font-size: 0.8rem;
+    opacity: 0.75;
+}
+
+.si-id-price {
+    font-variant-numeric: tabular-nums;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.si-id-change.up { color: var(--good, #3dba7e); }
+.si-id-change.down { color: var(--bad, #e15b64); }
+
+.si-card {
+    border: 1px solid var(--border, #2a3344);
+    padding: 14px 16px;
+}
+
+.si-card h3 {
+    margin: 0 0 10px;
+    font-size: 0.92rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.85;
+}
+
+.si-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 12px;
+}
+
+.si-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 10px;
+}
+
+.si-metric {
+    border: 1px solid var(--border, #2a3344);
+    padding: 10px 12px;
+    min-width: 0;
+}
+
+.si-metric dt {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.65;
+}
+
+.si-metric dd {
+    margin: 4px 0 0;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+}
+
+.si-pending {
+    font-size: 0.78rem;
+    opacity: 0.7;
+    margin: 0 0 8px;
+}
+
+.si-empty {
+    margin: 0;
+    opacity: 0.85;
+}
+
+.si-review p {
+    margin: 0 0 8px;
+    line-height: 1.45;
+}
+
+.si-review h4 {
+    margin: 14px 0 6px;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.75;
+}
+
+.si-audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.si-audit-table th,
+.si-audit-table td {
+    border-bottom: 1px solid var(--border, #2a3344);
+    padding: 8px 6px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.si-iframe {
+    width: 100%;
+    min-height: 640px;
+    border: 1px solid var(--border, #2a3344);
+    background: #0b0f16;
+}
+
+.si-unavailable {
+    opacity: 0.85;
+}
+
+.si-chart {
+    width: 100%;
+    min-height: 280px;
+}
+
+.si-chart-host {
+    min-height: 280px;
+}
+
+.si-section[hidden] {
+    display: none;
+}
+
+@media (max-width: 720px) {
+    .si-identity {
+        grid-template-columns: 1fr;
+    }
+}

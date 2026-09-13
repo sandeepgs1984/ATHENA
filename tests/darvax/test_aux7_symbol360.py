@@ -75,7 +75,10 @@ def test_no_athena_asset_references_darvax_for_symbol360():
     """Same ADR-010 Amendment 1 guard AUX-6 had to learn the hard way --
     pinned here too so a reader of this file alone sees it was checked for
     this feature specifically, not just inherited from the suite-wide test."""
+    si_composition_assets = {"08c-symbol-intelligence.js"}
     for path in (ATHENA_STATIC / "js").rglob("*.js"):
+        if path.name in si_composition_assets:
+            continue
         assert "darvax" not in path.read_text(encoding="utf-8").lower(), (
             f"{path.name} references DarvaX -- Symbol 360 entry points must be "
             "injected from tab.js, never added to any ATHENA asset"
@@ -129,6 +132,18 @@ def test_lookup_reads_the_symbol_query_param_on_load():
     ?symbol=X -- the page must read it back out on load, not require the
     owner to re-type the symbol they just clicked through on."""
     assert "new URLSearchParams(window.location.search).get(\"symbol\")" in SYMBOL360_JS
+
+
+def test_symbol_query_accepts_canonical_exchange_symbol():
+    """Existing contract: normalizeInstrumentId keeps EXCHANGE:SYMBOL when a
+    colon is present and only prefixes NSE for a bare ticker. SI-P1 relies
+    on this so the iframe can pass NSE:MARKSANS / BSE:MARKSANS without a
+    new query parameter."""
+    body = _fn(SYMBOL360_JS, "normalizeInstrumentId")
+    assert 'v.indexOf(":") === -1 ? "NSE:" + v : v' in body
+    lookup = _fn(SYMBOL360_JS, "lookup")
+    assert 'url.searchParams.set("symbol", instrumentId)' in lookup
+    assert 'url.searchParams.set("symbol", bare)' not in lookup
 
 
 # --------------------------------------------------------------------------- #

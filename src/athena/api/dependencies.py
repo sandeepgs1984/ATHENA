@@ -83,6 +83,7 @@ from athena.api.v1.services.reports_service import ReportsService
 from athena.api.v1.services.saved_symbols_service import SavedSymbolsService
 from athena.api.v1.services.scheduler_service import SchedulerService
 from athena.api.v1.services.strategies_service import StrategyService
+from athena.api.v1.services.symbol_intelligence_service import SymbolIntelligenceService
 from athena.api.v1.services.workspace_service import WorkspaceService
 from athena.data.store.repository import SqliteRepository
 from athena.explosive_move.live.presentation import default_emr_db_path
@@ -270,6 +271,21 @@ def get_decisions_service(request: Request) -> DecisionsService:
         db_path=db_path,
         backup_dir=backup_dir,
         repo=repo,
+        now_fn=now_fn,
+    )
+
+
+def get_symbol_intelligence_service(request: Request) -> SymbolIntelligenceService:
+    """Read-only SI composer. Never falls through to a hidden write path."""
+    repo = getattr(request.app.state, "sqlite_repo", None)
+    now_fn = getattr(request.app.state, "si_clock", None) or getattr(
+        request.app.state, "decisions_clock", None
+    )
+    return SymbolIntelligenceService(
+        repo,
+        config_dir=_resolve_config_dir(),
+        decisions_service=get_decisions_service(request) if repo is not None else None,
+        my_portfolio_service=get_my_portfolio_service(request) if repo is not None else None,
         now_fn=now_fn,
     )
 

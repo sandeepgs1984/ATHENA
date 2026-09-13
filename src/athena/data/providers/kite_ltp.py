@@ -9,6 +9,7 @@ on every 10s refresh would be heavy. The quote endpoint accepts
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -22,6 +23,18 @@ from athena.errors import ProviderError
 IST = ZoneInfo("Asia/Kolkata")
 
 
+@dataclass(frozen=True, slots=True)
+class LiveQuoteView:
+    """Quote plus optional current-session OHLC from Kite /quote."""
+
+    quote: Quote
+    change_pct: Decimal | None
+    session_open: Decimal | None = None
+    session_high: Decimal | None = None
+    session_low: Decimal | None = None
+    previous_close: Decimal | None = None
+
+
 def _parse_kite_ts(raw: str) -> datetime:
     s = raw.strip().replace(" ", "T")
     if len(s) >= 5 and s[-5] in "+-" and ":" not in s[-5:]:
@@ -33,6 +46,15 @@ def _parse_kite_ts(raw: str) -> datetime:
     if ts.tzinfo is None:
         return ts.replace(tzinfo=IST)
     return ts
+
+
+def _optional_decimal(value: object, field: str) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return _decimal(value, field)
+    except ProviderError:
+        return None
 
 
 def _decimal(value: object, field: str) -> Decimal:
@@ -56,7 +78,7 @@ def _build_transport(config_dir: Path) -> UrllibKiteTransport:
     )
 
 
-def _parse_quote_row(iid: str, row: object) -> tuple[Quote, Decimal | None]:
+def _parse_quote_row(iid: str, row: object) -> LiveQuoteView:
     if not isinstance(row, dict):
         raise ProviderError(f"kite /quote returned no data for {iid}")
 
@@ -70,13 +92,14 @@ def _parse_quote_row(iid: str, row: object) -> tuple[Quote, Decimal | None]:
 
     change_pct: Decimal | None = None
     ohlc = row.get("ohlc")
-    if isinstance(ohlc, dict) and ohlc.get("close") is not None:
-        try:
-            prior = _decimal(ohlc.get("close"), "ohlc.close")
-        except ProviderError:
-            prior = Decimal(0)
-        if prior > 0:
-            change_pct = (last_price - prior) / prior * Decimal(100)
+    session_open = session_high = session_low = previous_close = None
+    if isinstance(ohlc, dict):
+        session_open = _optional_decimal(ohlc.get("open"), "ohlc.open")
+        session_high = _optional_decimal(ohlc.get("high"), "ohlc.high")
+        session_low = _optional_decimal(ohlc.get("low"), "ohlc.low")
+        previous_close = _optional_decimal(ohlc.get("close"), "ohlc.close")
+        if previous_close is not None and previous_close > 0:
+            change_pct = (last_price - previous_close) / previous_close * Decimal(100)
 
     quote = Quote(
         instrument_id=iid,
@@ -85,20 +108,17 @@ def _parse_quote_row(iid: str, row: object) -> tuple[Quote, Decimal | None]:
         volume=int(row.get("volume") or 0),
         source="kite",
     )
-    return quote, change_pct
+    return LiveQuoteView(
+        quote=quote,
+        change_pct=change_pct,
+        session_open=session_open,
+        session_high=session_high,
+        session_low=session_low,
+        previous_close=previous_close,
+    )
 
 
-def fetch_live_quote(
-    instrument_id: str,
-    *,
-    config_dir: Path,
-) -> tuple[Quote, Decimal | None]:
-    """Return ``(quote, change_pct)`` for one instrument from Kite /quote.
-
-    ``change_pct`` is derived from Kite's previous-close OHLC when present;
-    otherwise ``None`` (never fabricated). Raises ``ProviderError`` /
-    ``ConfigError`` when credentials or the response are unusable.
-    """
+def _quote_row(instrument_id: str, *, config_dir: Path) -> tuple[str, object]:
     iid = instrument_id.strip().upper()
     if not iid:
         raise ProviderError("instrument_id must be non-empty")
@@ -113,6 +133,31 @@ def fetch_live_quote(
     row = data.get(iid)
     if row is None:
         row = next((v for k, v in data.items() if str(k).upper() == iid), None)
+    return iid, row
+
+
+def fetch_live_quote(
+    instrument_id: str,
+    *,
+    config_dir: Path,
+) -> tuple[Quote, Decimal | None]:
+    """Return ``(quote, change_pct)`` for one instrument from Kite /quote.
+
+    ``change_pct`` is derived from Kite's previous-close OHLC when present;
+    otherwise ``None`` (never fabricated). Raises ``ProviderError`` /
+    ``ConfigError`` when credentials or the response are unusable.
+    """
+    view = fetch_live_quote_view(instrument_id, config_dir=config_dir)
+    return view.quote, view.change_pct
+
+
+def fetch_live_quote_view(
+    instrument_id: str,
+    *,
+    config_dir: Path,
+) -> LiveQuoteView:
+    """Same Kite /quote path as ``fetch_live_quote``, including session OHLC."""
+    iid, row = _quote_row(instrument_id, config_dir=config_dir)
     return _parse_quote_row(iid, row)
 
 
@@ -152,7 +197,8 @@ def fetch_live_quotes(
         if row is None:
             continue
         try:
-            results[iid] = _parse_quote_row(iid, row)
+            view = _parse_quote_row(iid, row)
         except ProviderError:
             continue
+        results[iid] = (view.quote, view.change_pct)
     return results
