@@ -111,6 +111,11 @@ header and aborting Portfolio Sync refresh.
   Scope and acceptance criteria are in MY-PORTFOLIO-DASHBOARD-REVAMP.md.
   Verify existing Inter font loading, scope changes to Portfolio and its
   overlays, and preserve other tabs. Do not start before MP-RV5 review.
+  Update 2026-09-13: Owner continued, approving MP-RV5 and starting MP-RV6.
+  Portfolio typography is in css/05c-my-portfolio-typography.css (9.231.0),
+  including portaled detail/preview/reset roots. Do not widen its selectors
+  into shared tabs. Live mobile/populated overlays and zoom checks remain
+  pending; script-free mobile preview retains the expanded shared sidebar.
 - Current Holdings scroll: the table grows with every symbol. Update
   Holdings / Recent Imports come after the last row. No inner vertical
   scroller. Bind `#my-portfolio-holdings-table` for profile chrome.

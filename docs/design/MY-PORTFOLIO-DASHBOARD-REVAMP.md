@@ -1,7 +1,7 @@
 # My Portfolio Dashboard Revamp
 
 **Status: MP-RV1, MP-RV2 and MP-RV3 Owner/Chief Architect approved and closed
-(2026-09-11 and 2026-09-12). MP-RV4 Owner approved/closed; MP-RV5 ready for review; MP-RV6 documented.**
+(2026-09-11 and 2026-09-12). MP-RV4 and MP-RV5 Owner approved/closed; MP-RV6 in validation.**
 Authorized after the 14-item Next-Level UX roadmap closed with MP-NX6C
 (`docs/design/MY-PORTFOLIO-NEXT-LEVEL-UX-ROADMAP.md`). This is a **new**,
 separately-authorized track — not a reopening of Portfolio Intelligence V2
@@ -132,6 +132,18 @@ privacy/empty/loading/error states and sticky/modal layout regressions checked.
 Use real rendered components and synthetic fixtures, never mock holdings in
 production. Update scoped tests, implementation log and handoff; run full
 suite and disclose existing failures. Stop for Owner review after MP-RV6.
+
+MP-RV6 implementation (2026-09-13): Owner continue authorization closes
+MP-RV5 and starts this milestone. New 05c-my-portfolio-typography.css defines
+Portfolio-only text scale/weights/line heights and readable secondary tones.
+Inter is already requested by index.html; no new font dependency. Existing
+financial monospace is retained while symbols/headings use the sans stack.
+Detail/preview/reset/sync portal roots receive the same scoped tokens.
+No sticky geometry, column profile logic, semantic financial tones or data
+behavior changes. Assets 9.231.0. Desktop real-HTML/CSS fixture checked.
+390px script-free fixture is constrained by the shared expanded sidebar;
+it is not a successful live-mobile acceptance test. Populated table/modal,
+browser zoom and authenticated mobile verification remain pending.
 
 MP-RV3 implementation (2026-09-12): scoped copy replacements and triage
 overlap caption are complete, with all unavailable filter keys/disabled

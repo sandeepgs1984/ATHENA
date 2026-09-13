@@ -6,6 +6,39 @@ status updated on approval.
 
 ---
 
+## MP-RV6 — Portfolio Typography and Visual Consistency
+
+**Authorization/objective.** Owner continued on 2026-09-13, approving MP-RV5
+and starting the requested page-wide mock-inspired typography milestone.
+
+**Scope/files.** Added `src/athena/api/static/css/05c-my-portfolio-typography.css`:
+Portfolio-scoped text sizes, medium-weight controls, consistent heading and
+body line heights, clearer muted labels, tabular numbers and detail spacing.
+Includes preview/detail/reset/sync roots outside the main tab. Existing Inter
+request/fallback preserved; no new font dependency. Financial monospace and
+semantic tones remain intact. Modified dashboard.css/index.html cache keys,
+hosting/version assertions, design, milestones, handoff and this log.
+Added `tests/api/platform/test_portfolio_typography.py` for scope/guardrails.
+No public APIs or configuration changes. Assets 9.231.0.
+
+**Validation.** Full suite: 4021 passed, one pre-existing macOS launcher
+failure (`test_installer_builds_configured_app_bundle`), 110.33s. New-test Ruff
+passes. Desktop real-HTML/CSS
+script-free fixture checked. Narrow fixture exposed expanded shared-sidebar
+width constraint, not resolved by changing unrelated shell styles. Live mobile,
+populated overlays/table profiles and zoom acceptance checks remain pending.
+
+**Compliance/risks.** ATHENA-002 rendering-only boundary, methodology,
+determinism/replay and provider independence preserved. No ADR, dependency,
+financial calculation or workflow changes. Shared tabs are outside selectors.
+No sticky geometry or visibility overrides introduced. New scoped stylesheet
+keeps the review separate from legacy rules; future typography edits should
+use it to avoid conflicting overrides. Owner review required; track not closed.
+
+**Commit message.** `fix(portfolio): unify page and overlay typography`
+
+---
+
 ## MP-RV5 — Risk & Heatmap Reference Layout
 
 **Objective and authorization.** MP-RV4 Owner approved/closed 2026-09-12.
