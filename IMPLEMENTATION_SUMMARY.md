@@ -8,6 +8,11 @@ status updated on approval.
 
 ## MP-RV6 — Portfolio Typography and Visual Consistency
 
+**Owner review update (2026-09-13).** Owner approved and requested the next
+milestone. MP-RV6 is the last defined scope; no MP-RV7 is authorized or
+implemented. Prior validation limitations remain outstanding, not silently
+converted to passing checks. Await next scope before further implementation.
+
 **Authorization/objective.** Owner continued on 2026-09-13, approving MP-RV5
 and starting the requested page-wide mock-inspired typography milestone.
 
