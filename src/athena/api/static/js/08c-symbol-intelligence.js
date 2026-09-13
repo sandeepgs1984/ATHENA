@@ -5,6 +5,22 @@
     let siBundle = null;
     let siQuery = "";
     let siSearchTimer = null;
+    let siLoadGeneration = 0;
+    let siInFlightController = null;
+    let siInFlightMode = "";
+    let siInFlightQuery = "";
+
+    function siNormalizedQuery(value) {
+        return String(value || "").trim();
+    }
+
+    function siSameQuery(left, right) {
+        return siNormalizedQuery(left) === siNormalizedQuery(right);
+    }
+
+    function siShouldSuppressAnalyze(query) {
+        return siInFlightMode === "ANALYZE" && siSameQuery(query, siInFlightQuery);
+    }
 
     function siEscape(value) {
         return String(value ?? "")
@@ -69,6 +85,18 @@
         return `${siText(zone.lower)} – ${siText(zone.upper)}`;
     }
 
+    function siZoneLooksEmpty(zone) {
+        if (!zone) return true;
+        const lower = zone.lower;
+        const upper = zone.upper;
+        return (lower == null || lower === "") && (upper == null || upper === "");
+    }
+
+    function siOptionalZoneMetric(label, zone) {
+        if (siZoneLooksEmpty(zone)) return "";
+        return siMetric(label, siZoneShort(zone));
+    }
+
     function siMarketDataStatus(bundle) {
         const d1 = (bundle.sources || []).find(src => src.source === "D1_CANDLES");
         return siText(d1 && d1.status, "UNAVAILABLE");
@@ -100,6 +128,43 @@
         return "Latest quote";
     }
 
+    function siSmaStructureLabel(value) {
+        const raw = String(value || "");
+        if (raw === "UPTREND") return "Up";
+        if (raw === "DOWNTREND") return "Down";
+        if (raw === "SIDEWAYS") return "Sideways";
+        if (raw === "MIXED") return "Mixed";
+        return raw || "—";
+    }
+
+    function siSuperTrendLabel(value) {
+        const raw = String(value || "");
+        if (raw === "BULLISH") return "Up";
+        if (raw === "BEARISH") return "Down";
+        return raw || "—";
+    }
+
+    function siVolumeVsMa20(d1) {
+        if (!d1 || d1.volume_ma20 == null || d1.volume == null) return "—";
+        return Number(d1.volume) >= Number(d1.volume_ma20) ? "Above MA20" : "Below MA20";
+    }
+
+    function siSyncAnalyzeControl() {
+        const btn = document.getElementById("si-load-btn");
+        if (!btn) return;
+        const input = document.getElementById("si-symbol-input");
+        const typed = input ? siNormalizedQuery(input.value) : "";
+        const duplicateAnalyze = siInFlightMode === "ANALYZE" && siSameQuery(typed, siInFlightQuery);
+        btn.disabled = duplicateAnalyze;
+        btn.setAttribute("aria-busy", duplicateAnalyze ? "true" : "false");
+    }
+
+    function siSetInFlight(mode, query) {
+        siInFlightMode = mode || "";
+        siInFlightQuery = siInFlightMode ? siNormalizedQuery(query) : "";
+        siSyncAnalyzeControl();
+    }
+
     function siHeader(bundle) {
         const identity = bundle.identity || {};
         const d1 = bundle.d1 || {};
@@ -126,6 +191,38 @@
             </div>`;
     }
 
+    function siCoverageBanner(bundle) {
+        const market = siMarketDataStatus(bundle);
+        const coverage = siCoverageStatus(bundle);
+        const decision = bundle.decision || {};
+        let tone = "neutral";
+        let message = siCoverageReason(bundle);
+        if (coverage === "PARTIAL" && market === "CURRENT") {
+            tone = "partial";
+            message = "This stock can still be researched from current market evidence. ATHENA has not produced a Decision.";
+        } else if (coverage === "READY") {
+            tone = "ready";
+            message = message || "Market data is current and an ATHENA Decision is available.";
+        } else if (market === "STALE" || coverage === "STALE") {
+            tone = "stale";
+            message = message || "Completed D1 history is stale. Press Analyze to hydrate this symbol.";
+        } else if (coverage === "UNAVAILABLE" || market === "UNAVAILABLE") {
+            tone = "unavailable";
+            message = message || "Symbol Intelligence is unavailable for this symbol.";
+        }
+        const decisionLine = decision.present
+            ? ""
+            : "<div>ATHENA Decision unavailable</div>";
+        return `<div class="si-coverage-banner tone-${tone}" data-si-coverage="${siEscape(coverage)}" data-si-market="${siEscape(market)}">
+            <div class="si-coverage-facts">
+                <div>Market data: ${siEscape(market)}</div>
+                <div>SI coverage: ${siEscape(coverage)}</div>
+                ${decisionLine}
+            </div>
+            ${message ? `<p class="si-coverage-note">${siEscape(message)}</p>` : ""}
+        </div>`;
+    }
+
     function siPortfolioCard(portfolio) {
         if (!portfolio || portfolio.status === "NOT_HELD") {
             return `<div class="si-card"><h3>Portfolio Context</h3>
@@ -149,7 +246,7 @@
         if (!decision || !decision.present) {
             return `<div class="si-card"><h3>ATHENA Decision</h3>
                 <p class="si-empty">ATHENA has not produced a Decision for this symbol.</p>
-                <p class="si-pending">This does not limit Symbol Intelligence analysis.</p></div>`;
+                <p class="si-pending">This does not limit Symbol Intelligence analysis. SI research remains available.</p></div>`;
         }
         const plan = decision.trade_plan;
         const openHref = `/dashboard/decisions?decision=${encodeURIComponent(decision.decision_id)}`;
@@ -164,31 +261,18 @@
             <p><a class="btn" href="${siEscape(openHref)}">Open Decision Brief</a></p></div>`;
     }
 
-    function siMarketStateCard(bundle) {
-        const live = bundle.live || {};
-        const d1 = bundle.d1 || {};
-        return `<div class="si-card"><h3>Current Market State</h3>
-            <dl class="si-metrics">
-                ${siMetric(siQuotePriceLabel(live), live.present ? siMoney(live.last_price) : siMoney(d1.close))}
-                ${siMetric("Change", live.present ? siPct(live.change_pct) || "—" : "—")}
-                ${siMetric("Quote", live.present ? siText(live.quote_kind === "LIVE" ? "LIVE" : "LATEST QUOTE") : "LAST COMPLETED D1")}
-                ${siMetric("Market", siText(live.market_state || live.label, "—"))}
-                ${siMetric("Last completed D1", siMoney(d1.close))}
-            </dl>
-            <p class="si-pending">Quote and session state are not used in completed-D1 methodology.</p></div>`;
-    }
-
     function siTrendCard(d1) {
         if (!d1 || !d1.present) {
             return `<div class="si-card"><h3>Trend / Structure</h3><p class="si-empty">No completed D1 evidence.</p></div>`;
         }
         return `<div class="si-card"><h3>Trend / Structure</h3>
             <dl class="si-metrics">
-                ${siMetric("Trend", d1.symbol_trend)}
-                ${siMetric("SuperTrend", d1.supertrend_direction)}
+                ${siMetric("Daily SMA structure", siSmaStructureLabel(d1.symbol_trend), d1.symbol_trend)}
+                ${siMetric("SuperTrend (10,3)", siSuperTrendLabel(d1.supertrend_direction), d1.supertrend_direction)}
                 ${siMetric("SMA20", siNum(d1.fast_sma, 2))}
                 ${siMetric("SMA50", siNum(d1.slow_sma, 2))}
-            </dl></div>`;
+            </dl>
+            <p class="si-pending">SMA structure and SuperTrend are independent evidence. They are not blended.</p></div>`;
     }
 
     function siMomentumCard(bundle) {
@@ -197,44 +281,32 @@
             <p class="si-pending">Methodology pending</p>
             <dl class="si-metrics">
                 ${siMetric("RSI14", siNum(d1.rsi14, 1))}
-                ${siMetric("Volume vs MA20", d1.volume_ma20 == null || d1.volume == null ? "—" : Number(d1.volume) >= Number(d1.volume_ma20) ? "Above MA20" : "Below MA20")}
-            </dl></div>`;
-    }
-
-    function siEntryCard(bundle) {
-        return `<div class="si-card"><h3>Entry Evidence</h3>
-            <p class="si-pending">Methodology pending</p>
-            <dl class="si-metrics">
-                ${siMetric("Support 1", siZoneShort(bundle.d1 && bundle.d1.support_1))}
-                ${siMetric("Review trigger", siZoneShort(bundle.d1 && bundle.d1.review_trigger))}
+                ${siMetric("Volume vs MA20", siVolumeVsMa20(d1))}
             </dl></div>`;
     }
 
     function siLevelsCard(d1) {
         return `<div class="si-card"><h3>Key Levels</h3>
             <dl class="si-metrics">
-                ${siMetric("Support 1", siZoneShort(d1 && d1.support_1))}
-                ${siMetric("Major support", siZoneShort(d1 && d1.major_support))}
-                ${siMetric("Review trigger", siZoneShort(d1 && d1.review_trigger))}
-                ${siMetric("Target 1", siZoneShort(d1 && d1.target_1))}
-                ${siMetric("Target 2", siZoneShort(d1 && d1.target_2))}
-                ${siMetric("Target 3", siZoneShort(d1 && d1.target_3))}
+                ${siOptionalZoneMetric("Support 1", d1 && d1.support_1)}
+                ${siOptionalZoneMetric("Major support", d1 && d1.major_support)}
+                ${siOptionalZoneMetric("Review trigger", d1 && d1.review_trigger)}
+                ${siOptionalZoneMetric("Target 1", d1 && d1.target_1)}
+                ${siOptionalZoneMetric("Target 2", d1 && d1.target_2)}
+                ${siOptionalZoneMetric("Target 3", d1 && d1.target_3)}
+                ${siMetric("Available-history high", siMoney(d1 && d1.available_history_high))}
             </dl></div>`;
     }
 
-    function siFreshnessCard(bundle) {
-        const d1 = (bundle.sources || []).find(src => src.source === "D1_CANDLES") || {};
-        const hydration = bundle.hydration || {};
-        const coverageReason = siCoverageReason(bundle);
-        return `<div class="si-card"><h3>Data Freshness</h3>
-            <dl class="si-metrics">
-                ${siMetric("Market data", siMarketDataStatus(bundle))}
-                ${siMetric("SI coverage", siCoverageStatus(bundle))}
-                ${siMetric("D1", d1.status)}
-                ${siMetric("Hydration", hydration.status || "SKIPPED")}
-            </dl>
-            ${coverageReason ? `<p class="si-pending">${coverageReason}</p>` : ""}
-            ${hydration.status === "FAILED" ? `<p class="si-unavailable">${siText(hydration.detail)}</p>` : ""}</div>`;
+    function siAvailabilityChips(bundle) {
+        const fundamentals = bundle.fundamentals || {};
+        const news = bundle.news || {};
+        return `<div class="si-card"><h3>Additional sources</h3>
+            <div class="si-availability-chips">
+                <span class="si-chip">Fundamentals — Not ingested</span>
+                <span class="si-chip">News &amp; catalysts — Not ingested</span>
+            </div>
+            <p class="si-pending">Not available yet. ${siText(fundamentals.status, "NOT_INGESTED")} / ${siText(news.status, "NOT_INGESTED")} are not errors.</p></div>`;
     }
 
     function siDarvaxOverview(darvax) {
@@ -245,7 +317,7 @@
                 <p class="si-pending">${label}</p></div>`;
         }
         return `<div class="si-card"><h3>DarvaX</h3>
-            <p class="si-empty">Symbol 360 is available in the DarvaX segment.</p>
+            <p class="si-empty">Symbol 360 is available on the DarvaX surface. It is not mixed into Stock 360 evidence.</p>
             <p class="si-pending">${label}</p></div>`;
     }
 
@@ -263,29 +335,9 @@
             </div></div>`;
     }
 
-    function siTechnicalBlock(d1) {
-        if (!d1 || !d1.present) {
-            return `<div class="si-card"><h3>Technical / Structure</h3><p class="si-empty">No completed D1 evidence.</p></div>`;
-        }
-        return `<div class="si-card"><h3>Technical / Structure</h3>
+    function siChartBlock() {
+        return `<div class="si-card"><h3>Completed D1 chart</h3>
             <p class="si-pending">LAST COMPLETED D1 · unfinished session candles are excluded</p>
-            <dl class="si-metrics">
-                ${siMetric("Last D1", siMoney(d1.close))}
-                ${siMetric("RSI", siNum(d1.rsi14, 1))}
-                ${siMetric("SuperTrend", `${siText(d1.supertrend_direction)} ${siNum(d1.supertrend_value, 2)}`.trim())}
-                ${siMetric("Volume vs MA20", siNum(d1.volume_ma20, 0))}
-                ${siMetric("Trend", d1.symbol_trend)}
-                ${siMetric("Available-history high", siMoney(d1.available_history_high))}
-            </dl>
-            <h3>Key Structural Levels</h3>
-            <dl class="si-metrics">
-                ${siMetric("Support 1", siZoneShort(d1.support_1))}
-                ${siMetric("Major Support", siZoneShort(d1.major_support))}
-                ${siMetric("Review Trigger", siZoneShort(d1.review_trigger))}
-                ${siMetric("Target 1", siZoneShort(d1.target_1))}
-                ${siMetric("Target 2", siZoneShort(d1.target_2))}
-                ${siMetric("Target 3", siZoneShort(d1.target_3))}
-            </dl>
             <div class="si-chart-host" id="si-d1-chart-host"><p class="text-muted">Loading D1 chart…</p></div>
         </div>`;
     }
@@ -304,7 +356,7 @@
         const st = d1.supertrend_direction ? `SuperTrend remains ${String(d1.supertrend_direction).toLowerCase()}.` : "";
         const rsi = d1.rsi14 != null ? `RSI is ${siNum(d1.rsi14, 1)}.` : "RSI is unavailable.";
         return `<div class="si-card si-review">
-            <h3>Complete Review</h3>
+            <h3>Written summary</h3>
             <h4>Market Snapshot</h4>
             <p>${siSentence([
                 live.present
@@ -424,7 +476,7 @@
         </svg>`;
     }
 
-    async function loadSiD1Chart(instrumentId, d1) {
+    async function loadSiD1Chart(instrumentId, d1, generation) {
         const host = document.getElementById("si-d1-chart-host");
         if (!host || !instrumentId) return;
         try {
@@ -432,9 +484,16 @@
                 `/api/v1/market/instruments/${encodeURIComponent(instrumentId)}/candles?timeframe=1d&limit=180`,
                 { skipToast: true }
             );
-            renderSiD1Chart(host, payload && payload.data, d1);
+            if (generation !== siLoadGeneration) return;
+            const liveHost = document.getElementById("si-d1-chart-host");
+            if (!liveHost) return;
+            renderSiD1Chart(liveHost, payload && payload.data, d1);
         } catch (_err) {
-            host.innerHTML = "<p class=\"si-empty\">D1 chart could not be loaded from persisted candles.</p>";
+            if (generation !== siLoadGeneration) return;
+            const liveHost = document.getElementById("si-d1-chart-host");
+            if (liveHost) {
+                liveHost.innerHTML = "<p class=\"si-empty\">D1 chart could not be loaded from persisted candles.</p>";
+            }
         }
     }
 
@@ -446,38 +505,32 @@
         identityEl.innerHTML = siHeader(bundle);
         const d1 = bundle.d1 || {};
         bundleEl.innerHTML = `
-            <section class="si-section" data-si-panel="overview">
-                <div class="si-overview-grid">
-                    ${siMarketStateCard(bundle)}
+            <section class="si-section" data-si-panel="stock-360">
+                ${siCoverageBanner(bundle)}
+                <div class="si-360-core">
                     ${siTrendCard(d1)}
                     ${siMomentumCard(bundle)}
-                    ${siEntryCard(bundle)}
                     ${siDecisionCard(bundle.decision)}
-                    ${siDarvaxOverview(bundle.darvax)}
-                    ${siPortfolioCard(bundle.portfolio)}
                     ${siLevelsCard(d1)}
-                    ${siFreshnessCard(bundle)}
+                </div>
+                ${siChartBlock()}
+                <details class="si-written-summary">
+                    <summary>Written summary</summary>
+                    ${siCompleteReview(bundle)}
+                </details>
+                <div class="si-360-secondary">
+                    ${siPortfolioCard(bundle.portfolio)}
+                    ${siAvailabilityChips(bundle)}
+                    ${siDarvaxOverview(bundle.darvax)}
                 </div>
             </section>
-            <section class="si-section" data-si-panel="complete" hidden>${siCompleteReview(bundle)}</section>
             <section class="si-section" data-si-panel="decision" hidden>${siDecisionCard(bundle.decision)}</section>
             <section class="si-section" data-si-panel="experimental" hidden>${siDarvaxCard(bundle.darvax)}</section>
-            <section class="si-section" data-si-panel="technical" hidden>${siTechnicalBlock(d1)}</section>
-            <section class="si-section" data-si-panel="fundamentals" hidden>
-                <div class="si-card"><h3>Fundamentals</h3>
-                    <p class="si-empty">Not available yet</p>
-                    <p class="si-pending">PIT-safe fundamental ingestion is planned for a later SI milestone.</p></div>
-            </section>
-            <section class="si-section" data-si-panel="news" hidden>
-                <div class="si-card"><h3>News &amp; Catalysts</h3>
-                    <p class="si-empty">Not available yet</p>
-                    <p class="si-pending">No trusted event feed has been configured.</p></div>
-            </section>
             <section class="si-section" data-si-panel="audit" hidden>${siAuditTable(bundle)}</section>`;
-        showSiSection(document.querySelector(".si-section-nav-item.active")?.getAttribute("data-si-section") || "overview");
+        showSiSection(document.querySelector(".si-section-nav-item.active")?.getAttribute("data-si-section") || "stock-360");
         bindDarvaxFrame();
         if (bundle.identity && bundle.identity.instrument_id) {
-            loadSiD1Chart(bundle.identity.instrument_id, d1);
+            loadSiD1Chart(bundle.identity.instrument_id, d1, siLoadGeneration);
         }
     }
 
@@ -495,7 +548,15 @@
         return "COMPOSITION_UNAVAILABLE";
     }
 
+    function siIsAbortError(err) {
+        if (!err) return false;
+        if (err.name === "AbortError") return true;
+        const message = String(err.message || "");
+        return message === "AbortError" || /aborted|AbortError/i.test(message);
+    }
+
     function siShowWorkspaceError(code, detail) {
+        siBundle = null;
         const identityEl = document.getElementById("si-identity");
         const bundleEl = document.getElementById("si-bundle");
         if (identityEl) identityEl.innerHTML = "";
@@ -505,31 +566,52 @@
         }
     }
 
-    async function loadSymbolIntelligence(query) {
-        const needle = String(query || "").trim();
+    async function loadSymbolIntelligence(query, options = {}) {
+        const analyze = options.analyze === true;
+        const needle = siNormalizedQuery(query);
+        if (analyze && siShouldSuppressAnalyze(needle)) return;
         const input = document.getElementById("si-symbol-input");
         if (input && needle) input.value = needle;
+        const generation = ++siLoadGeneration;
+        if (siInFlightController) {
+            siInFlightController.abort();
+        }
+        siInFlightController = new AbortController();
+        const signal = siInFlightController.signal;
         if (!needle) {
             siShowWorkspaceError("EMPTY_SYMBOL", "Enter EXCHANGE:SYMBOL or an unambiguous ticker, then Analyze.");
+            siSetInFlight("");
             return;
         }
         siQuery = needle;
+        siSetInFlight(analyze ? "ANALYZE" : "GET", needle);
         const bundleEl = document.getElementById("si-bundle");
-        if (bundleEl) bundleEl.innerHTML = "<p class=\"text-muted\">Refreshing D1 history… Analyzing…</p>";
+        const identityEl = document.getElementById("si-identity");
+        if (identityEl) identityEl.innerHTML = "";
+        if (bundleEl) {
+            bundleEl.innerHTML = analyze
+                ? "<p class=\"text-muted\">Refreshing D1 history… Analyzing…</p>"
+                : "<p class=\"text-muted\">Loading persisted Symbol Intelligence…</p>";
+        }
         const path = `/api/v1/symbol-intelligence/${encodeURIComponent(needle)}`;
         let payload = null;
         let processNeedsRestart = false;
         try {
             try {
-                payload = await apiRequest(path, { method: "POST", body: "{}", skipToast: true });
+                if (analyze) {
+                    payload = await apiRequest(path, { method: "POST", body: "{}", skipToast: true, signal });
+                } else {
+                    payload = await apiRequest(path, { skipToast: true, signal });
+                }
             } catch (err) {
-                if (err && Number(err.status) === 405) {
+                if (analyze && err && Number(err.status) === 405) {
                     processNeedsRestart = true;
-                    payload = await apiRequest(path, { skipToast: true });
+                    payload = await apiRequest(path, { skipToast: true, signal });
                 } else {
                     throw err;
                 }
             }
+            if (generation !== siLoadGeneration) return;
             const bundle = payload && payload.data;
             if (!bundle) {
                 siShowWorkspaceError("COMPOSITION_UNAVAILABLE", "Symbol Intelligence returned an empty payload.");
@@ -537,9 +619,9 @@
             }
             renderSymbolIntelligence(bundle);
             if (processNeedsRestart) {
-                const identityEl = document.getElementById("si-identity");
-                if (identityEl) {
-                    identityEl.insertAdjacentHTML("afterbegin",
+                const header = document.getElementById("si-identity");
+                if (header) {
+                    header.insertAdjacentHTML("afterbegin",
                         `<p class="si-unavailable">This running ATHENA process does not yet accept Analyze (POST). Restart the server to hydrate stale D1. Showing persisted read-only composition.</p>`);
                 }
             }
@@ -549,6 +631,8 @@
                 window.history.replaceState({ tabId: "symbol-intelligence" }, "", url);
             }
         } catch (err) {
+            if (generation !== siLoadGeneration) return;
+            if (siIsAbortError(err)) return;
             const status = Number(err && err.status);
             if (status === 405) {
                 siShowWorkspaceError(
@@ -558,13 +642,17 @@
                 return;
             }
             siShowWorkspaceError("API_ERROR", siErrorText(err));
+        } finally {
+            if (generation === siLoadGeneration) {
+                siSetInFlight("");
+            }
         }
     }
 
     function requestSymbolIntelligenceLoad(event) {
         if (event) event.preventDefault();
         const input = document.getElementById("si-symbol-input");
-        loadSymbolIntelligence(input ? input.value : "");
+        loadSymbolIntelligence(input ? input.value : "", { analyze: true });
     }
 
     async function searchSymbolIntelligence(query) {
@@ -613,6 +701,7 @@
         requestSymbolIntelligenceLoad(event);
     });
     document.getElementById("si-symbol-input")?.addEventListener("input", event => {
+        siSyncAnalyzeControl();
         clearTimeout(siSearchTimer);
         siSearchTimer = setTimeout(() => searchSymbolIntelligence(event.target.value), 200);
     });

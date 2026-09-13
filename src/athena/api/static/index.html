@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.238.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.241.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -1097,22 +1097,18 @@
                                 <input id="si-symbol-input" class="si-symbol-input" type="search" placeholder="EXCHANGE:SYMBOL or ticker" maxlength="64" autocomplete="off">
                                 <button id="si-load-btn" class="btn" type="button">Analyze</button>
                             </div>
-                            <p class="metric-desc">Analyze hydrates stale D1 for this symbol, then recomputes Symbol Intelligence. It does not run DecisionEngine, Portfolio Sync, or a satellite scan.</p>
+                            <p class="metric-desc">Loading a symbol uses persisted evidence (GET). Analyze hydrates stale D1 for this symbol, then re-reads. It does not run DecisionEngine, Portfolio Sync, or a satellite scan.</p>
                         </div>
                         <div id="si-search-hits" class="si-search-hits" hidden></div>
                         <nav class="si-section-nav" aria-label="Symbol Intelligence sections">
-                            <button type="button" class="si-section-nav-item active" data-si-section="overview">Overview</button>
-                            <button type="button" class="si-section-nav-item" data-si-section="complete">Complete Review</button>
+                            <button type="button" class="si-section-nav-item active" data-si-section="stock-360">Stock 360</button>
                             <button type="button" class="si-section-nav-item" data-si-section="decision">ATHENA Decision</button>
                             <button type="button" class="si-section-nav-item" data-si-section="experimental">DarvaX</button>
-                            <button type="button" class="si-section-nav-item" data-si-section="technical">Technical / Structure</button>
-                            <button type="button" class="si-section-nav-item" data-si-section="fundamentals">Fundamentals</button>
-                            <button type="button" class="si-section-nav-item" data-si-section="news">News &amp; Catalysts</button>
-                            <button type="button" class="si-section-nav-item" data-si-section="audit">Evidence / Audit</button>
+                            <button type="button" class="si-section-nav-item" data-si-section="audit">Evidence</button>
                         </nav>
                         <div id="si-identity" class="si-identity"></div>
                         <div id="si-bundle" class="si-bundle">
-                            <p class="text-muted">Select a canonical instrument, then Analyze.</p>
+                            <p class="text-muted">Enter a canonical instrument to load persisted Symbol Intelligence. Analyze hydrates stale D1 when you need a refresh.</p>
                         </div>
                     </section>
                 </div>
@@ -2533,7 +2529,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.238.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.241.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

@@ -140,12 +140,6 @@
                 loaded.then(() => selectBriefing(targetDecisionId));
             }
         }
-        if (tab === "symbol-intelligence") {
-            const targetSymbol = new URLSearchParams(window.location.search).get("symbol");
-            if (targetSymbol && typeof loadSymbolIntelligence === "function") {
-                loaded.then(() => loadSymbolIntelligence(targetSymbol));
-            }
-        }
     }
 
     // Called only when the owner actively submits the login form — a fresh

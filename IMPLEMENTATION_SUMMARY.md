@@ -6,6 +6,94 @@ status updated on approval.
 
 ---
 
+## SI-P2A — Symbol Intelligence experience IA + request hardening
+
+**Authorization/objective.** Owner/Chief Architect approved the SI-P2 discovery
+and authorized SI-P2A only (2026-09-13). SI-P1 remains COMPLETE AND FROZEN.
+Reorganize the SI workspace IA and harden GET/POST/in-flight behavior without
+changing methodology, DTOs, hydration, or DarvaX isolation.
+
+**Scope completed.** Four primary surfaces (Stock 360, ATHENA Decision, DarvaX,
+Evidence). GET-first first paint; POST Analyze only on explicit Analyze/Enter.
+Removed initializeRoute/workspace double-POST. Generation token + AbortController
+so a slower prior symbol cannot paint over the current one. Repeated Analyze
+ignored while busy. Stock 360 coverage banner; independent SMA vs SuperTrend
+labels; Volume vs MA20 comparison; compact Fundamentals/News not-ingested chips;
+collapsible deterministic written summary; Decision display-only.
+
+**Files created.** `docs/research/SI-P2A-EXPERIENCE-IA-IMPLEMENTATION.md`;
+`tests/symbol_intelligence/test_si_p2a_experience.py`.
+**Files modified.** SI HTML/CSS/JS, app-shell route load, asset cache `9.239.0`,
+hosting/release-gate pins, `docs/MILESTONES.md`, `ATHENA_BRIEFING.md` §6, this log.
+
+**Tests/coverage.** P2A experience contracts (four-surface nav, GET-first, no
+auto duplicate POST, stale-response/repeated-Analyze protection, PARTIAL/READY/
+no-Decision copy, volume comparison, Evidence, DarvaX isolation, cache pin).
+Regression: SI-P1 composer/API, dashboard hosting, chart release-gate, DarvaX
+DX-4/AUX suites, core APIs. Ruff clean on the new test file. mypy (project
+domain/config files): Success, 13 source files.
+
+**Compliance/risks/debt.** No composer/DTO change. No DecisionEngine/Portfolio
+Sync/DarvaX scan. PARTIAL is informational, not an error tone. Written summary
+is the existing deterministic SI-P1 sentences, not an LLM. Status is
+**COMPLETE AND FROZEN** after Owner/Chief Architect source review of
+`9.241.0` and the 2026-09-13 owner live release gate (closed-market
+session; GET-first, races, READY/PARTIAL, DarvaX isolation, Evidence
+audit). Live evidence:
+`docs/research/si-p2a-live-gate/` and §8 of
+`docs/research/SI-P2A-EXPERIENCE-IA-IMPLEMENTATION.md`.
+
+**Remaining work.** Do not start SI-P2B (full Stock 360), P2C
+(chart SMA overlays), P2E (Decision request), SI-F0/SI-N0, or corporate actions
+on 360. Cosmetic density/narrow-rail polish is deferred to SI-P2B.
+
+**Consolidated commit message.**
+
+```text
+feat(review): harden SI-P2A experience IA and GET-first load
+
+- Replace eight SI tabs with Stock 360, Decision, DarvaX, and Evidence.
+- Load via GET; POST Analyze only on explicit action; ignore stale in-flight responses.
+- Track GET vs ANALYZE in-flight mode so a read cannot suppress same-symbol Analyze.
+- Let a different-symbol request supersede; suppress same-query Analyze duplicates only.
+```
+
+---
+
+## SI-P2 — Symbol Intelligence experience & coverage discovery
+
+**Authorization/objective.** Owner authorized SI-P2 discovery on 2026-09-13
+after SI-P1 COMPLETE AND FROZEN. Goal: determine what experience work is
+required so any valid NSE/BSE symbol is a coherent research workstation, without
+unfreezing SI-P1 contracts or inventing methodology/data vendors.
+
+**Scope completed.** Discovery-only review of SI search/Analyze, eight tabs,
+baseline screenshots, request model, Decision/DarvaX/Portfolio/CA/news/fundamentals
+sources. Proposed SI-P2A as next implementation (IA + state/request hygiene).
+No production code.
+
+**Files created.** `docs/research/SI-P2-SYMBOL-INTELLIGENCE-EXPERIENCE-DISCOVERY.md`.
+**Files modified.** `docs/MILESTONES.md`, `ATHENA_BRIEFING.md` §6, this log.
+
+**Tests/coverage.** None (discovery). SI-P1 suites untouched.
+
+**Compliance/risks/debt.** SI-P1 freeze preserved. Fundamentals/News deferred to
+later SI-F0/SI-N0 pending PIT source. Double POST Analyze and Technical
+volume-vs-MA20 label recorded as P2A presentation/request defects.
+
+**Remaining work.** Owner live-validated SI-P2A. SI-P2B not started.
+
+**Consolidated commit message.**
+
+```text
+docs(review): add SI-P2 experience and coverage discovery
+
+- Record Stock 360 / IA findings against frozen SI-P1 contracts and NSE:TI baselines.
+- Propose SI-P2A as the next implementation; keep fundamentals/news off that slice.
+```
+
+---
+
 ## SI-P1 — Symbol Intelligence universal workspace foundation
 
 **Authorization/objective.** Owner approved SI-P0 on 2026-09-13 and authorized

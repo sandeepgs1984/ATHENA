@@ -115,10 +115,89 @@
     opacity: 0.85;
 }
 
-.si-overview-grid {
+.si-overview-grid,
+.si-360-core,
+.si-360-secondary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
     gap: 12px;
+}
+
+.si-360-secondary {
+    margin-top: 12px;
+}
+
+.si-coverage-banner {
+    border: 1px solid var(--border, #2a3344);
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.si-coverage-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    font-size: 0.85rem;
+}
+
+.si-coverage-note {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.si-coverage-banner.tone-partial {
+    border-color: #5b8def;
+    background: #5b8def14;
+}
+
+.si-coverage-banner.tone-ready {
+    border-color: #3dba7e;
+    background: #3dba7e12;
+}
+
+.si-coverage-banner.tone-stale {
+    border-color: #d4a017;
+    background: #d4a01714;
+}
+
+.si-coverage-banner.tone-unavailable,
+.si-coverage-banner.tone-neutral {
+    background: transparent;
+}
+
+.si-availability-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.si-chip {
+    border: 1px dashed var(--border, #2a3344);
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    opacity: 0.88;
+}
+
+.si-written-summary {
+    margin: 12px 0 0;
+    border: 1px solid var(--border, #2a3344);
+    padding: 10px 14px;
+}
+
+.si-written-summary > summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.85;
+}
+
+#si-load-btn[disabled] {
+    opacity: 0.6;
+    cursor: wait;
 }
 
 .si-metrics {
@@ -212,6 +291,16 @@
 
 @media (max-width: 720px) {
     .si-identity {
+        grid-template-columns: 1fr;
+    }
+
+    .si-coverage-facts {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .si-360-core,
+    .si-360-secondary {
         grid-template-columns: 1fr;
     }
 }
