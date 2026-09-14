@@ -43,7 +43,8 @@ def test_symbol_intelligence_load_cannot_native_navigate(client: TestClient) -> 
     assert 'id="si-search-form"' in pane
     assert 'id="si-load-btn"' in pane
     assert 'type="submit"' not in pane
-    assert 'id="si-load-btn" class="btn" type="button">Analyze</button>' in pane
+    assert 'id="si-load-btn" class="btn" type="button"' in pane
+    assert "Analyze</span></button>" in pane
     assert "Read-only composition of persisted ATHENA sources" not in pane
     assert "08c-symbol-intelligence.js" in DASHBOARD_JS_PARTS
     assert 'getElementById("si-load-btn")' in js
@@ -357,8 +358,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.254.0" in html
-    assert "dashboard.js?v=9.254.0" in html
+    assert "dashboard.css?v=9.264.0" in html
+    assert "dashboard.js?v=9.264.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -1210,7 +1211,6 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function loadSymbolIntelligence(" in js
     assert "function requestSymbolIntelligenceLoad(event)" in js
     assert "/api/v1/symbol-intelligence/" in js
-    assert "Momentum Quality is not yet methodologically defined." in js
     assert "Not available yet" in js
     assert "ATHENA has not produced a Decision for this symbol." in js
     assert "EXPERIMENTAL_UNVALIDATED" in js
@@ -1218,8 +1218,8 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     assert "function siAuditTable" in js
     assert "function siMarketDataStatus" in js
     assert "function siCoverageStatus" in js
-    assert "Market data:" in js
-    assert "SI coverage:" in js
+    assert "Market data ·" in js
+    assert "SI coverage ·" in js
     assert "LATEST QUOTE · MARKET CLOSED" in js
     assert "LIVE · MARKET OPEN" in js
     assert "LIVE / CURRENT SESSION" not in js

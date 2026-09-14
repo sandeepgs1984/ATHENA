@@ -1,4 +1,18 @@
 /* Symbol Intelligence (SI-P1) — composition cockpit, ATHENA-owned. */
+
+/* Symbol-Intelligence-only palette -- deliberately richer than the rest of
+   the dashboard (gradient avatar/decorative fills, multi-color icon chips,
+   a gradient score gauge) per owner decision on the reference-matched Stock
+   360 revamp: "Adopt the richer reference palette... by documenting
+   properly." Scoped to THIS file only -- 00-tokens.css and every other tab
+   are unaffected. The price-ladder and score-gauge gradients are strictly
+   positional/magnitude scales ("lower value <-> higher value", "0 <-> 100"),
+   never a buy/sell or safety signal -- ATHENA issues no trading advice. */
+:root {
+    --si-gradient-cool: linear-gradient(135deg, #5b8def 0%, #7c3aed 100%);
+    --si-gradient-scale: linear-gradient(90deg, #e15b64 0%, #f5b942 50%, #3dba7e 100%);
+}
+
 #tab-symbol-intelligence {
     padding: 16px 20px 32px;
 }
@@ -11,95 +25,410 @@
 
 .si-toolbar {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .si-search-form {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
-    width: min(100%, 28rem);
-    flex: 1 1 16rem;
+    width: min(100%, 30rem);
     height: auto;
+}
+
+.si-search-icon {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.82rem;
+    pointer-events: none;
+    z-index: 1;
 }
 
 .si-symbol-input {
     flex: 1;
     min-width: 0;
-    height: 2.5rem;
+    height: 2.65rem;
     max-height: 3rem;
-    padding: 8px 10px;
+    padding: 8px 12px 8px 34px;
     box-sizing: border-box;
     line-height: 1.2;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 8px;
+    background: rgba(6, 11, 20, 0.55);
+    color: var(--text-primary, #f1f5f9);
+    font-size: 0.92rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.si-symbol-input:focus {
+    outline: none;
+    border-color: var(--accent, #5b8def);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #5b8def) 20%, transparent);
 }
 
 #si-load-btn {
     flex-shrink: 0;
-    height: 2.5rem;
+    height: 2.65rem;
     max-height: 3rem;
     box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 1px solid color-mix(in srgb, var(--accent, #5b8def) 55%, var(--border, #2a3344));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent, #5b8def) 16%, transparent);
+    color: #eaf2ff;
+    font-weight: 650;
+    padding-inline: 16px;
+    transition: filter 0.15s ease, transform 0.05s ease;
 }
 
-.si-toolbar .metric-desc {
-    max-width: 42rem;
+#si-load-btn:hover {
+    filter: brightness(1.12);
+}
+
+#si-load-btn:active {
+    transform: translateY(1px);
+}
+
+.si-btn-icon-only {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.65rem;
+    height: 2.65rem;
+    max-height: 3rem;
+    box-sizing: border-box;
+    padding: 0;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.9rem;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.si-btn-icon-only:hover:not([disabled]) {
+    border-color: color-mix(in srgb, var(--accent, #5b8def) 45%, var(--border, #2a3344));
+    background: color-mix(in srgb, var(--accent, #5b8def) 10%, transparent);
+    color: #eef4ff;
+}
+
+.si-btn-icon-only[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+#si-clear-btn:hover:not([disabled]) {
+    border-color: color-mix(in srgb, var(--bad, #e15b64) 45%, var(--border, #2a3344));
+    background: color-mix(in srgb, var(--bad, #e15b64) 10%, transparent);
+    color: var(--bad, #e15b64);
+}
+
+.si-toolbar-note {
+    max-width: 46rem;
     margin: 0;
-    opacity: 0.75;
-    font-size: 0.85rem;
+    opacity: 0.7;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.si-search-hits[hidden] {
+    display: none;
 }
 
 .si-search-hits {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    position: absolute;
+    /* Above the sticky section-nav (z-index 40) -- the dropdown is an
+       overlay and must fully cover the toolbar note/nav row beneath it
+       rather than being sliced through by them. */
+    z-index: 60;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    max-height: 21rem;
+    overflow-y: auto;
+    display: grid;
+    gap: 2px;
+    padding: 6px;
+    border: 1px solid color-mix(in srgb, var(--accent, #5b8def) 28%, var(--border, #2a3344));
+    border-radius: 10px;
+    background: rgba(9, 14, 24, 0.98);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
 }
 
 .si-search-hit {
-    border: 1px solid var(--border, #2a3344);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    border: 0;
+    border-radius: 6px;
     background: transparent;
-    color: inherit;
-    padding: 6px 10px;
+    color: var(--text-primary, #f1f5f9);
+    padding: 8px 10px;
     cursor: pointer;
+    text-align: left;
+    font: inherit;
+}
+
+.si-search-hit:hover,
+.si-search-hit:focus-visible {
+    background: color-mix(in srgb, var(--accent, #5b8def) 14%, transparent);
+    outline: none;
+}
+
+.si-search-hit-symbol {
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+}
+
+.si-search-hit-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.82rem;
+}
+
+.si-search-hits > .text-muted,
+.si-search-hits > .si-unavailable {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+}
+
+#si-nav-sentinel {
+    height: 0;
+    margin: 0;
+    padding: 0;
 }
 
 .si-section-nav {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    isolation: isolate;
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 3px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 10px;
+    /* Fully opaque and full-width -- a fit-content pill cluster left a stuck
+       bar that only covered its own small footprint, so scrolled content
+       visibly passed both behind AND beside it (looked like the bar was
+       bleeding/broken instead of a solid docked toolbar). */
+    background: var(--bg-primary, #0b0f19);
+    box-shadow: 0 10px 18px -6px rgba(0, 0, 0, 0.4);
+}
+
+/* .workspace-viewport (the scroll container this bar lives in) has its own
+   32px top padding. A sticky child only ever sticks to the padding EDGE --
+   that 32px padding strip itself has no opaque cover of its own, so scrolled
+   content (e.g. the D1 chart) was visible passing through that gap right
+   above the bar once it was actually stuck. This pseudo-element seals that
+   gap by extending the bar's own opaque background upward -- but ONLY once
+   JS marks the bar `.is-stuck` (see the sentinel/IntersectionObserver in
+   08c-symbol-intelligence.js). It must stay off by default: while the bar
+   sits in normal flow just below the toolbar there is only a 14px gap (not
+   32px) before the toolbar's own note text, so an unconditional 32px fill
+   would paint over that text. */
+.si-section-nav::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* A couple of px taller than the measured 32px gap, as a safety margin
+       against sub-pixel scroll/zoom rounding leaving a hairline uncovered. */
+    bottom: calc(100% - 2px);
+    height: calc(var(--space-32, 32px) + 4px);
+    background: var(--bg-primary, #0b0f19);
+    /* Match the bar's own top corner rounding -- a square-cornered fill
+       sitting on a rounded bar left two small triangular notches at the
+       top-left/top-right corners where the bar's own curve peeked out. */
+    border-radius: 10px 10px 0 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.si-section-nav.is-stuck::before {
+    opacity: 1;
 }
 
 .si-section-nav-item {
-    border: 1px solid var(--border, #2a3344);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 0;
+    border-radius: 7px;
     background: transparent;
-    color: inherit;
-    padding: 6px 10px;
+    color: var(--text-muted, #94a3b8);
+    padding: 7px 14px;
     cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.si-section-nav-item:hover {
+    color: var(--text-secondary, #cbd5e1);
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .si-section-nav-item.active {
-    border-color: var(--accent, #5b8def);
+    color: #eef4ff;
+    background: color-mix(in srgb, var(--accent, #5b8def) 22%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #5b8def) 40%, transparent);
+}
+
+.si-section-nav-item i {
+    font-size: 0.78em;
+    opacity: 0.85;
+}
+
+.si-identity:empty {
+    display: none;
 }
 
 .si-identity {
+    position: relative;
+    overflow: hidden;
     border: 1px solid var(--border, #2a3344);
-    padding: 14px 16px;
+    border-radius: 12px;
+    padding: 18px 20px;
     display: grid;
-    grid-template-columns: minmax(12rem, 1.2fr) minmax(12rem, 1fr) minmax(10rem, 0.8fr);
-    gap: 12px 20px;
+    grid-template-columns: minmax(14rem, 1.3fr) minmax(10rem, 0.8fr) minmax(10rem, 0.8fr) minmax(9rem, 0.7fr);
+    gap: 12px 24px;
     align-items: start;
+    background:
+        radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--accent, #5b8def) 8%, transparent), transparent 32rem),
+        rgba(9, 14, 23, 0.5);
+}
+
+.si-id-block {
+    display: flex;
+    align-items: flex-start;
+    gap: 13px;
+    min-width: 0;
+}
+
+.si-id-avatar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.9rem;
+    height: 2.9rem;
+    border-radius: 50%;
+    background: var(--si-gradient-cool);
+    color: #eef4ff;
+    font-size: 1.1rem;
+    box-shadow: 0 6px 16px rgba(91, 141, 239, 0.3);
+}
+
+.si-id-block-text {
+    min-width: 0;
+}
+
+.si-id-symbol-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.si-id-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.si-id-meta-tag {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 999px;
+    padding: 3px 10px;
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.7rem;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+/* Cap-tier is not a real persisted field yet (see the plan's real-vs-placeholder
+   ledger) -- dashed border + muted color keeps it visibly distinct from the
+   real exchange/sector tags beside it. */
+.si-id-tag-placeholder {
+    border-style: dashed;
+    color: var(--text-muted, #94a3b8);
+    opacity: 0.75;
+}
+
+.si-id-decorative {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 6.5rem;
+    border: 1px solid color-mix(in srgb, var(--accent, #5b8def) 30%, var(--border, #2a3344));
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--si-gradient-cool);
+}
+
+.si-id-decorative-art {
+    position: absolute;
+    inset: -25% -25% auto auto;
+    width: 8rem;
+    height: 8rem;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.32), transparent 70%);
+}
+
+.si-id-decorative-line {
+    position: relative;
+    margin: 0;
+    color: #f5f8ff;
+    font-size: 0.76rem;
+    font-weight: 650;
+    line-height: 1.4;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 960px) {
+    .si-id-decorative {
+        display: none;
+    }
 }
 
 .si-id-symbol {
-    font-size: 1.45rem;
-    font-weight: 650;
-    letter-spacing: 0.02em;
+    font-size: 1.55rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
 }
 
 .si-id-name {
+    margin-top: 2px;
     font-size: 0.95rem;
-    opacity: 0.9;
+    color: var(--text-secondary, #cbd5e1);
 }
 
 .si-id-meta,
@@ -108,26 +437,82 @@
     opacity: 0.75;
 }
 
-.si-id-price {
-    font-variant-numeric: tabular-nums;
-    font-size: 1.25rem;
-    font-weight: 600;
+.si-id-meta {
+    margin-top: 4px;
 }
 
-.si-id-change.up { color: var(--good, #3dba7e); }
-.si-id-change.down { color: var(--bad, #e15b64); }
+.si-id-session {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    max-width: 20rem;
+}
+
+.si-id-session strong {
+    color: var(--text-secondary, #cbd5e1);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.si-id-price-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.si-id-price {
+    font-variant-numeric: tabular-nums;
+    font-size: 1.7rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.si-id-change {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.si-id-change.up {
+    color: var(--good, #3dba7e);
+    background: rgba(61, 186, 126, 0.12);
+}
+
+.si-id-change.down {
+    color: var(--bad, #e15b64);
+    background: rgba(225, 91, 100, 0.12);
+}
+
+.si-id-quote-tag {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
 
 .si-card {
     border: 1px solid var(--border, #2a3344);
-    padding: 14px 16px;
+    border-radius: 10px;
+    padding: 16px 18px;
+    background: rgba(10, 15, 24, 0.32);
 }
 
 .si-card h3 {
-    margin: 0 0 10px;
-    font-size: 0.92rem;
-    letter-spacing: 0.04em;
+    margin: 0 0 12px;
+    color: var(--text-primary, #f1f5f9);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    opacity: 0.85;
+    opacity: 0.9;
 }
 
 .si-overview-grid,
@@ -136,11 +521,18 @@
 .si-360-secondary {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    gap: 14px;
 }
 
 .si-360-stack {
-    margin-top: 12px;
+    margin-top: 14px;
+    /* Price Map and ATHENA View side by side on wide viewports instead of
+       full-width stacked -- a dense dashboard row instead of two tall,
+       mostly-empty cards one under the other. Falls back to one column at
+       narrow widths via the auto-fit minmax, and collapses fully under the
+       shared max-width:720px rule below. */
+    grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+    align-items: start;
 }
 
 .si-scan-strip {
@@ -150,30 +542,79 @@
     margin-bottom: 4px;
 }
 
-.si-scan-item {
+.si-signal {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
     border: 1px solid var(--border, #2a3344);
-    padding: 8px 10px;
+    border-radius: 9px;
+    padding: 9px 11px 9px 14px;
+    min-width: 0;
+    background: rgba(10, 15, 24, 0.32);
+}
+
+.si-signal::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--tone-neutral-text, #cbd5e1);
+    opacity: 0.6;
+}
+
+.si-signal-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-right: 9px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.76rem;
+}
+
+.si-signal[data-tone="good"] .si-signal-icon { background: rgba(61, 186, 126, 0.16); color: var(--good, #3dba7e); }
+.si-signal[data-tone="bad"] .si-signal-icon { background: rgba(225, 91, 100, 0.16); color: var(--bad, #e15b64); }
+.si-signal[data-tone="warn"] .si-signal-icon { background: rgba(245, 185, 66, 0.16); color: var(--warn, #f5b942); }
+.si-signal[data-tone="info"] .si-signal-icon { background: rgba(91, 141, 239, 0.16); color: var(--accent, #5b8def); }
+
+.si-signal-text {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
 }
 
-.si-scan-item span {
+.si-signal[data-tone="good"]::before { background: var(--good, #3dba7e); }
+.si-signal[data-tone="bad"]::before { background: var(--bad, #e15b64); }
+.si-signal[data-tone="warn"]::before { background: var(--warn, #f5b942); }
+.si-signal[data-tone="info"]::before { background: var(--accent, #5b8def); }
+
+.si-signal-label {
     display: block;
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    opacity: 0.65;
+    letter-spacing: 0.05em;
+    color: var(--text-muted, #94a3b8);
 }
 
-.si-scan-item strong {
+.si-signal-value {
     display: block;
     margin-top: 4px;
     font-size: 0.98rem;
+    font-weight: 650;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    overflow-wrap: normal;
-    word-break: keep-all;
 }
+
+.si-signal[data-tone="good"] .si-signal-value { color: var(--good, #3dba7e); }
+.si-signal[data-tone="bad"] .si-signal-value { color: var(--bad, #e15b64); }
+.si-signal[data-tone="warn"] .si-signal-value { color: var(--warn, #f5b942); }
+.si-signal[data-tone="info"] .si-signal-value { color: #eaf2ff; }
 
 .si-note {
     margin: 10px 0 0;
@@ -181,28 +622,144 @@
     line-height: 1.4;
 }
 
-.si-level-list {
-    display: grid;
-    gap: 10px;
+/* Price Map — horizontal ladder. Every marker position is a real structural
+   level (same values the old stacked rows showed); the red-to-green track
+   is a purely positional "lower price <-> higher price" spectrum, never a
+   buy/sell or safety signal (see --si-gradient-scale above). */
+.si-price-ladder {
+    /* Reserves room for the label cards, which float above the track via
+       absolute positioning (see .si-ladder-card below) and so consume no
+       space of their own in normal flow -- must clear the tallest tier's
+       own offset plus a full card's height, or a card overflows above this
+       box and collides with the note paragraph above it. */
+    padding-top: 250px;
 }
 
-.si-level-row dt {
-    font-size: 0.72rem;
+.si-ladder-track {
+    position: relative;
+    height: 6px;
+    margin: 0 6px;
+    border-radius: 999px;
+    background: var(--si-gradient-scale);
+    opacity: 0.55;
+}
+
+/* Centered exactly on the track's vertical midline (matching
+   .si-ladder-current below) -- the dot then renders at this point's own
+   natural position, and the card is pinned above it with `bottom`, so
+   neither one can ever drift off the track regardless of the card's own
+   height or tier. */
+.si-ladder-point {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.si-ladder-dot {
+    display: block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--bg-primary, #0b0f19);
+    border: 2px solid var(--tone-neutral-text, #cbd5e1);
+    box-shadow: 0 0 0 3px rgba(10, 15, 24, 0.6);
+}
+
+.si-ladder-point[data-si-level="support"] .si-ladder-dot { border-color: #7dd3fc; }
+.si-ladder-point[data-si-level="major-support"] .si-ladder-dot { border-color: #c4b5fd; }
+.si-ladder-point[data-si-level="trigger"] .si-ladder-dot { border-color: #f5b942; }
+.si-ladder-point[data-si-level="target"] .si-ladder-dot { border-color: #4ade80; }
+.si-ladder-point[data-si-level="high"] .si-ladder-dot { border-color: #8aa0c4; }
+
+.si-ladder-card {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 10px);
+    transform: translateX(-50%);
+    min-width: 6.5rem;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 8px;
+    padding: 6px 10px;
+    background: rgba(10, 15, 24, 0.85);
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* Three tiers -- cycled by sorted position (see siPriceLadder) so levels
+   close enough in value to sit near each other horizontally never render
+   overlapping cards, even with up to 7 real points in a narrow column. Each
+   tier clears a full card's height above the one below it, or two
+   same-tier neighbors (a real, observed case: Review Trigger and Target 1
+   sharing one price) still vertically overlap despite being staggered. */
+.si-ladder-point--tier1 .si-ladder-card {
+    bottom: calc(100% + 86px);
+}
+
+.si-ladder-point--tier2 .si-ladder-card {
+    bottom: calc(100% + 162px);
+}
+
+.si-ladder-label {
+    display: block;
+    font-size: 0.62rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    opacity: 0.65;
+    color: var(--text-muted, #94a3b8);
 }
 
-.si-level-row dd {
-    margin: 4px 0 0;
+.si-ladder-value {
+    display: block;
+    margin-top: 2px;
     font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
+    font-size: 0.92rem;
+    font-weight: 650;
 }
 
-.si-level-dist {
-    margin: 4px 0 0;
-    font-size: 0.8rem;
-    opacity: 0.8;
+.si-ladder-dist {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.7rem;
+    color: var(--text-muted, #94a3b8);
+}
+
+.si-ladder-current {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.si-ladder-current-dot {
+    display: block;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #eef4ff;
+    border: 2px solid var(--bg-primary, #0b0f19);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #5b8def) 55%, transparent);
+}
+
+.si-ladder-current-label {
+    position: relative;
+    margin-top: 28px;
+    transform: translateX(-50%);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.si-ladder-current-label strong {
+    display: block;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.92rem;
+    color: var(--text-primary, #f1f5f9);
+}
+
+.si-ladder-current-label span {
+    display: block;
+    margin-top: 1px;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, #94a3b8);
 }
 
 .si-actions {
@@ -214,12 +771,26 @@
 
 .si-jump,
 .si-actions .btn {
+    display: inline-flex;
+    align-items: center;
     border: 1px solid var(--border, #2a3344);
-    background: transparent;
-    color: inherit;
-    padding: 6px 10px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary, #cbd5e1);
+    padding: 7px 12px;
     cursor: pointer;
     font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.si-jump:hover,
+.si-actions .btn:hover {
+    border-color: color-mix(in srgb, var(--accent, #5b8def) 45%, var(--border, #2a3344));
+    background: color-mix(in srgb, var(--accent, #5b8def) 10%, transparent);
+    color: #eef4ff;
 }
 
 .si-chart-card {
@@ -797,44 +1368,78 @@
 }
 
 .si-coverage-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
     border: 1px solid var(--border, #2a3344);
-    padding: 12px 14px;
-    margin-bottom: 12px;
-    display: grid;
-    gap: 8px;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: rgba(10, 15, 24, 0.3);
 }
 
 .si-coverage-facts {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 16px;
+    gap: 8px;
     font-size: 0.85rem;
 }
 
+.si-coverage-facts > div {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 999px;
+    padding: 3px 11px;
+    font-size: 0.72rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
 .si-coverage-note {
+    flex: 1 1 16rem;
+    min-width: 0;
     margin: 0;
-    font-size: 0.88rem;
+    font-size: 0.85rem;
     line-height: 1.4;
+    color: var(--text-secondary, #cbd5e1);
 }
 
 .si-coverage-banner.tone-partial {
-    border-color: #5b8def;
-    background: #5b8def14;
+    border-color: color-mix(in srgb, var(--accent, #5b8def) 45%, var(--border, #2a3344));
+    background: color-mix(in srgb, var(--accent, #5b8def) 8%, transparent);
+}
+
+.si-coverage-banner.tone-partial .si-coverage-facts > div {
+    border-color: color-mix(in srgb, var(--accent, #5b8def) 45%, var(--border, #2a3344));
+    color: #cfe0ff;
 }
 
 .si-coverage-banner.tone-ready {
-    border-color: #3dba7e;
-    background: #3dba7e12;
+    border-color: color-mix(in srgb, var(--good, #3dba7e) 45%, var(--border, #2a3344));
+    background: color-mix(in srgb, var(--good, #3dba7e) 7%, transparent);
+}
+
+.si-coverage-banner.tone-ready .si-coverage-facts > div {
+    border-color: color-mix(in srgb, var(--good, #3dba7e) 45%, var(--border, #2a3344));
+    color: var(--good, #3dba7e);
 }
 
 .si-coverage-banner.tone-stale {
-    border-color: #d4a017;
-    background: #d4a01714;
+    border-color: color-mix(in srgb, var(--warn, #f5b942) 45%, var(--border, #2a3344));
+    background: color-mix(in srgb, var(--warn, #f5b942) 8%, transparent);
+}
+
+.si-coverage-banner.tone-stale .si-coverage-facts > div {
+    border-color: color-mix(in srgb, var(--warn, #f5b942) 45%, var(--border, #2a3344));
+    color: var(--warn, #f5b942);
 }
 
 .si-coverage-banner.tone-unavailable,
 .si-coverage-banner.tone-neutral {
-    background: transparent;
+    background: rgba(10, 15, 24, 0.3);
 }
 
 .si-availability-chips {
@@ -844,32 +1449,72 @@
 }
 
 .si-chip {
-    border: 1px dashed var(--border, #2a3344);
-    padding: 6px 10px;
-    font-size: 0.8rem;
-    opacity: 0.88;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 5px 12px;
+    font-size: 0.76rem;
+    color: var(--text-muted, #94a3b8);
+}
+
+.si-chip.tone-warn {
+    border-color: color-mix(in srgb, var(--warn, #f5b942) 40%, var(--border, #2a3344));
+    background: color-mix(in srgb, var(--warn, #f5b942) 8%, transparent);
+    color: var(--warn, #f5b942);
+}
+
+.si-chip.tone-warn b {
+    color: var(--warn, #f5b942);
+    font-weight: 700;
 }
 
 .si-written-summary {
-    margin: 12px 0 0;
+    margin: 14px 0 0;
     border: 1px solid var(--border, #2a3344);
-    padding: 10px 14px;
+    border-radius: 10px;
+    padding: 4px 16px 14px;
+    background: rgba(10, 15, 24, 0.28);
 }
 
 .si-written-summary > summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 -16px;
+    padding: 13px 16px;
     cursor: pointer;
-    font-size: 0.85rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    opacity: 0.85;
+    list-style: none;
+    color: var(--text-primary, #f1f5f9);
+    font-size: 0.86rem;
+    font-weight: 650;
+}
+
+.si-written-summary > summary::-webkit-details-marker {
+    display: none;
+}
+
+.si-written-summary > summary::before {
+    content: "\f078";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    font-size: 0.7rem;
+    color: var(--text-muted, #94a3b8);
+    transition: transform 0.15s ease;
+}
+
+.si-written-summary[open] > summary::before {
+    transform: rotate(180deg);
 }
 
 .si-review {
-    margin-top: 10px;
+    margin-top: 12px;
 }
 
 .si-review h3 {
-    margin-bottom: 4px;
+    display: none;
 }
 
 .si-research-brief {
@@ -878,10 +1523,12 @@
 }
 
 .si-brief-row {
+    position: relative;
     display: grid;
-    grid-template-columns: 7rem minmax(0, 1fr);
+    grid-template-columns: 1.6rem 7rem minmax(0, 1fr);
+    align-items: baseline;
     gap: 14px;
-    padding: 8px 0;
+    padding: 10px 0;
     border-top: 1px solid color-mix(in srgb, var(--border, #2a3344) 72%, transparent);
     line-height: 1.4;
 }
@@ -889,6 +1536,22 @@
 .si-brief-row:first-child {
     border-top: 0;
 }
+
+.si-brief-row::before {
+    content: "";
+    align-self: center;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--tone-neutral-text, #cbd5e1);
+    opacity: 0.7;
+}
+
+.si-brief-row[data-si-summary-kind="STRUCTURE"]::before { background: #7dd3fc; }
+.si-brief-row[data-si-summary-kind="MOMENTUM"]::before { background: #c4b5fd; }
+.si-brief-row[data-si-summary-kind="LEVEL_POSITION"]::before { background: #f5b942; }
+.si-brief-row[data-si-summary-kind="ATHENA_DECISION"]::before { background: var(--accent, #5b8def); }
+.si-brief-row[data-si-summary-kind="PORTFOLIO"]::before { background: var(--good, #3dba7e); }
 
 .si-brief-row dt {
     color: var(--text-muted, #94a3b8);
@@ -1013,31 +1676,700 @@
     cursor: wait;
 }
 
-.si-metrics {
+/* SI-P2E — persisted ATHENA Decision, evidence first. */
+.si-decision-experience {
+    --si-decision-tone: #7c9cff;
+    --si-decision-tone-soft: rgba(124, 156, 255, 0.12);
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-    gap: 10px;
+    gap: 14px;
+    border: 1px solid color-mix(in srgb, var(--si-decision-tone) 35%, var(--border, #2a3344));
+    border-radius: 12px;
+    padding: 18px;
+    background:
+        radial-gradient(circle at 12% 0%, var(--si-decision-tone-soft), transparent 34rem),
+        color-mix(in srgb, var(--surface, #0d1420) 96%, transparent);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16);
 }
 
-.si-metric {
+.si-decision-experience.tone-trade {
+    --si-decision-tone: #36d399;
+    --si-decision-tone-soft: rgba(54, 211, 153, 0.11);
+}
+
+.si-decision-experience.tone-watch {
+    --si-decision-tone: #f5b942;
+    --si-decision-tone-soft: rgba(245, 185, 66, 0.1);
+}
+
+.si-decision-experience.tone-pass {
+    --si-decision-tone: #8aa0c4;
+    --si-decision-tone-soft: rgba(138, 160, 196, 0.1);
+}
+
+.si-decision-hero,
+.si-decision-title-row,
+.si-decision-block-head,
+.si-decision-footer {
+    display: flex;
+    align-items: center;
+}
+
+.si-decision-hero {
+    justify-content: space-between;
+    gap: 16px;
+    padding: 2px 2px 4px;
+}
+
+.si-decision-eyebrow {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.67rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.si-decision-title-row {
+    flex-wrap: wrap;
+    gap: 9px;
+}
+
+.si-decision-title-row h2,
+.si-decision-empty-state h2 {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: clamp(1.65rem, 3vw, 2.35rem);
+    font-weight: 720;
+    letter-spacing: -0.035em;
+    line-height: 1;
+}
+
+.si-decision-direction,
+.si-decision-status,
+.si-decision-gate-summary {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.7rem;
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.045em;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.si-decision-direction {
+    color: var(--si-decision-tone);
+    background: var(--si-decision-tone-soft);
+}
+
+.si-decision-status {
+    color: #b9c7dd;
+    background: rgba(111, 132, 166, 0.1);
+}
+
+.si-decision-status.decision-current,
+.si-decision-status.plan-fresh {
+    color: var(--good, #3dba7e);
+    background: rgba(61, 186, 126, 0.1);
+}
+
+.si-decision-status.decision-stale,
+.si-decision-status.plan-aging,
+.si-decision-status.plan-stale {
+    color: var(--warn, #f5b942);
+    background: rgba(245, 185, 66, 0.1);
+}
+
+.si-decision-status.plan-expired {
+    color: var(--bad, #e15b64);
+    background: rgba(225, 91, 100, 0.1);
+}
+
+.si-decision-asof {
+    margin: 7px 0 0;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.si-decision-warning {
+    border: 1px solid rgba(245, 185, 66, 0.32);
+    border-left: 3px solid var(--warn, #f5b942);
+    border-radius: 7px;
+    padding: 9px 12px;
+    background: rgba(245, 185, 66, 0.07);
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.si-decision-warning p {
+    margin: 0;
+}
+
+.si-decision-warning p + p {
+    margin-top: 5px;
+}
+
+.si-decision-strength {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: hidden;
     border: 1px solid var(--border, #2a3344);
+    border-radius: 9px;
+    background: rgba(5, 11, 20, 0.34);
+}
+
+.si-decision-strength > div {
+    min-width: 0;
+    padding: 12px 14px;
+}
+
+.si-decision-strength > div + div {
+    border-left: 1px solid var(--border, #2a3344);
+}
+
+.si-decision-strength span,
+.si-decision-plan-metric dt {
+    display: block;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.66rem;
+    font-weight: 650;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+}
+
+.si-decision-strength strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-primary, #f8fafc);
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: break-word;
+}
+
+.si-decision-strength small {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.72em;
+    font-weight: 550;
+}
+
+.si-decision-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
+    gap: 14px;
+    align-items: start;
+}
+
+.si-decision-block {
+    min-width: 0;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 9px;
+    padding: 15px;
+    background: rgba(5, 11, 20, 0.3);
+}
+
+.si-decision-block-head {
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 11px;
+}
+
+.si-decision-block h3 {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.94rem;
+    font-weight: 680;
+    letter-spacing: 0;
+    text-transform: none;
+    opacity: 1;
+}
+
+.si-decision-gate-summary.all-passed {
+    color: var(--good, #3dba7e);
+    background: rgba(61, 186, 126, 0.08);
+}
+
+.si-decision-gate-summary.has-failures {
+    color: var(--bad, #e15b64);
+    background: rgba(225, 91, 100, 0.08);
+}
+
+.si-decision-explanation {
+    margin: 0 0 13px;
+    border-left: 2px solid var(--si-decision-tone);
+    padding: 1px 0 1px 11px;
+    color: var(--text-secondary, #d7e0ed);
+    font-size: 0.88rem;
+    line-height: 1.55;
+}
+
+.si-decision-gates {
+    display: grid;
+    gap: 5px;
+}
+
+.si-decision-gate {
+    border: 1px solid color-mix(in srgb, var(--border, #2a3344) 78%, transparent);
+    border-radius: 7px;
+    background: rgba(8, 15, 25, 0.38);
+}
+
+.si-decision-gate[open] {
+    border-color: color-mix(in srgb, currentColor 28%, var(--border, #2a3344));
+}
+
+.si-decision-gate summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 2.45rem;
+    padding: 7px 10px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.si-decision-gate summary::-webkit-details-marker {
+    display: none;
+}
+
+.si-decision-gate-state {
+    width: 0.48rem;
+    height: 0.48rem;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.si-decision-gate.is-pass { color: var(--good, #3dba7e); }
+.si-decision-gate.is-fail { color: var(--bad, #e15b64); }
+
+.si-decision-gate-name {
+    min-width: 0;
+    color: var(--text-secondary, #d7e0ed);
+    font-size: 0.78rem;
+    font-weight: 620;
+}
+
+.si-decision-gate summary strong {
+    font-size: 0.66rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.si-decision-disclosure {
+    color: var(--text-muted, #94a3b8);
+    transition: transform 0.16s ease;
+}
+
+.si-decision-gate[open] .si-decision-disclosure {
+    transform: rotate(180deg);
+}
+
+.si-decision-gate p {
+    margin: 0;
+    border-top: 1px solid var(--border, #2a3344);
+    padding: 8px 10px 9px 26px;
+    color: var(--text-muted, #aebbd0);
+    font-size: 0.73rem;
+    line-height: 1.45;
+    overflow-wrap: break-word;
+}
+
+.si-decision-muted,
+.si-decision-empty-plan,
+.si-decision-plan-note,
+.si-decision-footer p {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+
+.si-decision-muted,
+.si-decision-empty-plan,
+.si-decision-plan-note {
+    margin: 0;
+}
+
+.si-decision-empty-plan {
+    border: 1px dashed var(--border, #2a3344);
+    border-radius: 7px;
+    padding: 14px;
+}
+
+.si-decision-plan-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+}
+
+.si-decision-plan-metric {
+    min-width: 0;
+    border: 1px solid color-mix(in srgb, var(--border, #2a3344) 78%, transparent);
+    border-radius: 7px;
+    padding: 9px 10px;
+    background: rgba(8, 15, 25, 0.38);
+}
+
+.si-decision-plan-metric.is-primary {
+    grid-column: 1 / -1;
+    border-color: color-mix(in srgb, var(--si-decision-tone) 32%, var(--border, #2a3344));
+    background: var(--si-decision-tone-soft);
+}
+
+.si-decision-plan-metric dd {
+    margin: 4px 0 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.88rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 620;
+    overflow-wrap: break-word;
+}
+
+.si-decision-plan-note {
+    margin-top: 9px;
+}
+
+.si-decision-footer {
+    justify-content: space-between;
+    gap: 14px;
+    border-top: 1px solid var(--border, #2a3344);
+    padding-top: 13px;
+}
+
+.si-decision-footer p {
+    max-width: 42rem;
+    margin: 0;
+}
+
+.si-decision-primary-action {
+    border-color: color-mix(in srgb, var(--si-decision-tone) 65%, var(--border, #2a3344)) !important;
+    background: var(--si-decision-tone-soft) !important;
+}
+
+.si-decision-empty-state {
+    display: grid;
+    justify-items: start;
+    gap: 10px;
+    min-height: 11rem;
+    align-content: center;
+    border-radius: 12px;
+    background: radial-gradient(circle at 0 0, rgba(124, 156, 255, 0.1), transparent 30rem);
+}
+
+.si-decision-empty-state p {
+    max-width: 42rem;
+    margin: 0;
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+/* Portfolio Context — small fixed set of headline tiles (one card, not a
+   repeated pattern across the page) plus a status pill and a colored
+   callout footer reusing the existing interpretation/next-action text. */
+.si-portfolio-status-pill {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    border: 1px solid color-mix(in srgb, var(--good, #3dba7e) 40%, var(--border, #2a3344));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--good, #3dba7e) 12%, transparent);
+    padding: 2px 10px;
+    color: var(--good, #3dba7e);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+.si-portfolio-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.si-tile {
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 8px;
     padding: 10px 12px;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.si-tile dt {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, #94a3b8);
+}
+
+.si-tile dd {
+    margin: 4px 0 0;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.02rem;
+    font-weight: 620;
+    color: var(--text-primary, #f1f5f9);
+    overflow-wrap: anywhere;
+}
+
+.si-tile.si-pnl.is-good dd { color: var(--good, #3dba7e); }
+.si-tile.si-pnl.is-bad dd { color: var(--bad, #e15b64); }
+
+.si-portfolio-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-top: 12px;
+    border: 1px solid color-mix(in srgb, var(--accent, #5b8def) 30%, var(--border, #2a3344));
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--accent, #5b8def) 7%, transparent);
+}
+
+.si-portfolio-callout i {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: var(--accent, #5b8def);
+}
+
+.si-portfolio-callout p {
+    margin: 0;
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+
+/* Capability availability — warning-toned pills (Fundamentals/News are
+   confirmed-absent capabilities, not errors; the warn tone signals "not
+   yet available", never a fault). */
+.si-experimental-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    border: 1px solid color-mix(in srgb, var(--warn, #f5b942) 45%, var(--border, #2a3344));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--warn, #f5b942) 14%, transparent);
+    padding: 2px 10px;
+    color: var(--warn, #f5b942);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+/* DarvaX card — abstract background pattern, deliberately not shaped like a
+   real chart of this instrument (see the plan's real-vs-placeholder ledger:
+   this must never look like live DarvaX data leaking into Stock 360). */
+.si-darvax-panel {
+    position: relative;
+    overflow: hidden;
+}
+
+.si-darvax-art {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.06;
+    background-image: repeating-linear-gradient(
+        115deg,
+        var(--accent, #5b8def) 0,
+        var(--accent, #5b8def) 2px,
+        transparent 2px,
+        transparent 26px
+    );
+}
+
+.si-darvax-panel > *:not(.si-darvax-art) {
+    position: relative;
+    z-index: 1;
+}
+
+/* ATHENA View — decision-forward hero: big tone-coded verdict, a plain
+   0-100 fill (no invented threshold ticks — the persisted explanation
+   text is the only place methodology thresholds are allowed to live),
+   confidence + gate strength read at a glance. */
+.si-athena-view {
+    --si-view-tone: var(--tone-neutral-text, #cbd5e1);
+}
+
+.si-athena-view.tone-trade { --si-view-tone: var(--good, #3dba7e); }
+.si-athena-view.tone-watch { --si-view-tone: var(--warn, #f5b942); }
+.si-athena-view.tone-no_trade,
+.si-athena-view.tone-pass { --si-view-tone: #8aa0c4; }
+
+.si-view-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.si-view-decision {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid color-mix(in srgb, var(--si-view-tone) 45%, var(--border, #2a3344));
+    border-radius: 999px;
+    padding: 5px 14px;
+    background: color-mix(in srgb, var(--si-view-tone) 14%, transparent);
+    color: var(--si-view-tone);
+    font-size: 0.95rem;
+    font-weight: 750;
+    letter-spacing: 0.02em;
+}
+
+.si-view-asof {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.76rem;
+}
+
+.si-view-strength {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.si-view-stat {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 8px;
+    padding: 9px 12px;
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.si-view-stat-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--si-view-tone) 16%, transparent);
+    color: var(--si-view-tone);
+    font-size: 0.8rem;
+}
+
+.si-view-stat-text {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
 }
 
-.si-metric dt {
+.si-view-stat-text dt {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, #94a3b8);
+}
+
+.si-view-stat-text dd {
+    margin: 3px 0 0;
+    font-size: 0.9rem;
+    font-weight: 650;
+    color: var(--text-primary, #f1f5f9);
+    overflow-wrap: break-word;
+}
+
+.si-view-gauge {
+    grid-column: 1 / -1;
+    border: 1px solid var(--border, #2a3344);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.si-view-gauge-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    opacity: 0.65;
+    color: var(--text-muted, #94a3b8);
 }
 
-.si-metric dd {
-    margin: 4px 0 0;
+.si-view-gauge-row strong {
+    font-size: 0.95rem;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-primary, #f1f5f9);
     font-variant-numeric: tabular-nums;
-    font-size: 1.05rem;
-    overflow-wrap: anywhere;
 }
+
+/* Gradient 0-100 gauge -- a plain magnitude scale (red=low, green=high), the
+   standard gauge convention, never a buy/sell or trading signal. The mask is
+   an opaque dark overlay covering the UNFILLED remainder of the gradient
+   track, docked to the right edge, so the gradient "fills" from the left up
+   to the score. */
+.si-view-gauge-bar {
+    position: relative;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--si-gradient-scale);
+    overflow: hidden;
+}
+
+.si-view-gauge-mask {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: rgba(11, 15, 25, 0.88);
+}
+
+.si-view-gates {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.si-view-gate-dot {
+    flex: 1;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.si-view-gate-dot.is-passed {
+    background: var(--good, #3dba7e);
+}
+
+.si-view-explanation {
+    margin: 0 0 12px;
+    border-left: 2px solid var(--si-view-tone);
+    padding-left: 11px;
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+/* Secondary insight row — Portfolio / Capability / DarvaX, presented as
+   three peer glass tiles instead of three unrelated full-width cards. */
+.si-360-secondary {
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.si-pnl.is-good { color: var(--good, #3dba7e); }
+.si-pnl.is-bad { color: var(--bad, #e15b64); }
 
 .si-pending {
     font-size: 0.78rem;
@@ -1180,8 +2512,114 @@
     .si-360-stack,
     .si-360-secondary,
     .si-scan-strip,
-    .si-metrics {
+    .si-portfolio-tiles {
         grid-template-columns: 1fr;
+    }
+
+    /* Below this width there is not enough horizontal room for 3 tiers of
+       staggered cards to stay clear of each other (a real level count of up
+       to 7 makes some same-tier cards land pixel-close no matter the tier),
+       so the ladder falls back to a plain wrapping grid of cards -- no
+       absolute positioning, no spectrum track -- which guarantees every
+       card stays fully legible regardless of how close two real values are. */
+    .si-price-ladder {
+        padding-top: 0;
+    }
+
+    .si-ladder-track {
+        position: static;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        height: auto;
+        margin: 10px 0 0;
+        background: none;
+        opacity: 1;
+    }
+
+    .si-ladder-point {
+        position: static !important;
+        transform: none !important;
+    }
+
+    .si-ladder-card {
+        position: static !important;
+        bottom: auto !important;
+        transform: none !important;
+    }
+
+    .si-ladder-dot {
+        display: none;
+    }
+
+    .si-ladder-current {
+        display: none;
+    }
+
+    .si-ladder-current-label {
+        position: static;
+        margin-top: 10px;
+        transform: none;
+        text-align: left;
+    }
+
+    .si-decision-experience {
+        gap: 11px;
+        padding: 12px;
+        border-radius: 9px;
+    }
+
+    .si-decision-hero,
+    .si-decision-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .si-decision-strength,
+    .si-decision-layout,
+    .si-decision-plan-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .si-decision-strength > div + div {
+        border-top: 1px solid var(--border, #2a3344);
+        border-left: 0;
+    }
+
+    .si-decision-block {
+        padding: 12px;
+    }
+
+    .si-decision-block-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .si-decision-plan-metric.is-primary {
+        grid-column: auto;
+    }
+
+    .si-decision-gate summary {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+
+    .si-decision-disclosure {
+        display: none;
+    }
+
+    .si-decision-footer .si-actions,
+    .si-decision-footer .si-actions .btn,
+    .si-decision-footer .si-actions .si-jump,
+    .si-decision-empty-state .si-actions,
+    .si-decision-empty-state .si-actions .si-jump {
+        width: 100%;
+    }
+
+    .si-decision-footer .si-actions .btn,
+    .si-decision-footer .si-actions .si-jump,
+    .si-decision-empty-state .si-actions .si-jump {
+        justify-content: center;
+        text-align: center;
     }
 
     .si-toolbar {
@@ -1191,15 +2629,34 @@
 
     .si-search-form {
         flex: 0 0 auto;
-        flex-direction: column;
+        flex-wrap: wrap;
         align-items: stretch;
         width: 100%;
         height: auto;
     }
 
-    .si-symbol-input,
-    #si-load-btn {
+    .si-search-icon {
+        top: 1.25rem;
+    }
+
+    .si-symbol-input {
+        flex-basis: 100%;
         width: 100%;
+        height: 2.5rem;
+        max-height: 3rem;
+        min-height: 2.5rem;
+    }
+
+    #si-load-btn {
+        flex: 1 1 auto;
+        height: 2.5rem;
+        max-height: 3rem;
+        min-height: 2.5rem;
+    }
+
+    .si-btn-icon-only {
+        flex: 0 0 auto;
+        width: 2.5rem;
         height: 2.5rem;
         max-height: 3rem;
         min-height: 2.5rem;

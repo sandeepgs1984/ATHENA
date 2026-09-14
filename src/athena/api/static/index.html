@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.254.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.264.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -1093,22 +1093,26 @@
                     <section class="si-workstation" aria-label="Symbol Intelligence">
                         <div class="si-toolbar">
                             <div id="si-search-form" class="si-search-form" role="search">
+                                <i class="fas fa-magnifying-glass si-search-icon" aria-hidden="true"></i>
                                 <label class="sr-only" for="si-symbol-input">Symbol</label>
                                 <input id="si-symbol-input" class="si-symbol-input" type="search" placeholder="EXCHANGE:SYMBOL or ticker" maxlength="64" autocomplete="off">
-                                <button id="si-load-btn" class="btn" type="button">Analyze</button>
+                                <button id="si-load-btn" class="btn" type="button"><i class="fas fa-bolt" aria-hidden="true"></i> <span class="si-btn-label">Analyze</span></button>
+                                <button id="si-refresh-btn" class="btn si-btn-icon-only" type="button" title="Refresh persisted data for this symbol" aria-label="Refresh" disabled><i class="fas fa-rotate-right" aria-hidden="true"></i></button>
+                                <button id="si-clear-btn" class="btn si-btn-icon-only" type="button" title="Clear this symbol" aria-label="Clear" disabled><i class="fas fa-xmark" aria-hidden="true"></i></button>
+                                <div id="si-search-hits" class="si-search-hits" hidden></div>
                             </div>
-                            <p class="metric-desc">Loading a symbol uses persisted evidence (GET). Analyze hydrates stale D1 for this symbol, then re-reads. It does not run DecisionEngine, Portfolio Sync, or a satellite scan.</p>
+                            <p class="metric-desc si-toolbar-note">Loading a symbol uses persisted evidence (GET). Analyze hydrates stale D1 for this symbol, then re-reads. It does not run DecisionEngine, Portfolio Sync, or a satellite scan.</p>
                         </div>
-                        <div id="si-search-hits" class="si-search-hits" hidden></div>
+                        <div id="si-nav-sentinel" aria-hidden="true"></div>
                         <nav class="si-section-nav" aria-label="Symbol Intelligence sections">
-                            <button type="button" class="si-section-nav-item active" data-si-section="stock-360">Stock 360</button>
-                            <button type="button" class="si-section-nav-item" data-si-section="decision">ATHENA Decision</button>
-                            <button type="button" class="si-section-nav-item" data-si-section="experimental">DarvaX</button>
-                            <button type="button" class="si-section-nav-item" data-si-section="audit">Evidence</button>
+                            <button type="button" class="si-section-nav-item active" data-si-section="stock-360"><i class="fas fa-layer-group" aria-hidden="true"></i> Stock 360</button>
+                            <button type="button" class="si-section-nav-item" data-si-section="decision"><i class="fas fa-brain" aria-hidden="true"></i> ATHENA Decision</button>
+                            <button type="button" class="si-section-nav-item" data-si-section="experimental"><i class="fas fa-shuffle" aria-hidden="true"></i> DarvaX</button>
+                            <button type="button" class="si-section-nav-item" data-si-section="audit"><i class="fas fa-clipboard-check" aria-hidden="true"></i> Evidence</button>
                         </nav>
                         <div id="si-identity" class="si-identity"></div>
                         <div id="si-bundle" class="si-bundle">
-                            <p class="text-muted">Enter a canonical instrument to load persisted Symbol Intelligence. Analyze hydrates stale D1 when you need a refresh.</p>
+                            <p class="text-muted si-empty-state">Enter a canonical instrument to load persisted Symbol Intelligence. Analyze hydrates stale D1 when you need a refresh.</p>
                         </div>
                     </section>
                 </div>
@@ -2536,7 +2540,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.254.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.264.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

@@ -22,10 +22,10 @@ def _si_pane(html: str) -> str:
 def test_si_p2a_four_primary_surfaces_replace_eight_tabs() -> None:
     html = HTML.read_text(encoding="utf-8")
     pane = _si_pane(html)
-    assert 'data-si-section="stock-360">Stock 360</button>' in pane
-    assert 'data-si-section="decision">ATHENA Decision</button>' in pane
-    assert 'data-si-section="experimental">DarvaX</button>' in pane
-    assert 'data-si-section="audit">Evidence</button>' in pane
+    assert 'data-si-section="stock-360"' in pane and "Stock 360</button>" in pane
+    assert 'data-si-section="decision"' in pane and "ATHENA Decision</button>" in pane
+    assert 'data-si-section="experimental"' in pane and "DarvaX</button>" in pane
+    assert 'data-si-section="audit"' in pane and "Evidence</button>" in pane
     assert pane.count("data-si-section=") == 4
     assert 'data-si-section="complete"' not in pane
     assert 'data-si-section="technical"' not in pane
@@ -69,7 +69,7 @@ def test_si_p2a_stale_response_and_repeated_analyze_protection() -> None:
     assert 'siSetInFlight("")' in js
     assert "siSyncAnalyzeControl" in js
     assert "btn.disabled = duplicateAnalyze;" in js
-    assert 'btn.textContent = analyzeInFlight ? "Analyzing…" : "Analyze";' in js
+    assert 'label.textContent = analyzeInFlight ? "Analyzing…" : "Analyze";' in js
     assert "const loadInFlight = Boolean(siInFlightMode);" in js
     assert 'overlay?.classList.toggle("active", loadInFlight);' in js
     assert 'document.body.classList.toggle("si-analyze-blocked", loadInFlight);' in js
@@ -183,8 +183,8 @@ def test_si_p2a_get_does_not_masquerade_as_analyze_busy() -> None:
 def test_si_p2a_partial_ready_and_no_decision_presentation() -> None:
     js = JS.read_text(encoding="utf-8")
     css = CSS.read_text(encoding="utf-8")
-    assert "Market data: ${siEscape(market)}" in js
-    assert "SI coverage: ${siEscape(coverage)}" in js
+    assert "Market data · ${siEscape(market)}" in js
+    assert "SI coverage · ${siEscape(coverage)}" in js
     assert "ATHENA Decision unavailable" in js
     assert "This stock can still be researched from current market evidence. ATHENA has not produced a Decision." in js
     assert 'tone = "partial"' in js
@@ -196,18 +196,17 @@ def test_si_p2a_partial_ready_and_no_decision_presentation() -> None:
     assert "Trend Health" not in js
     assert "Bullishness" not in js
     assert "52-week high" not in js
-    assert "Available-history high" in js
+    assert "Available High" in js
 
 
 def test_si_p2a_volume_vs_ma20_uses_overview_comparison() -> None:
     js = JS.read_text(encoding="utf-8")
     assert "function siVolumeVsMa20(d1)" in js
     assert 'Number(d1.volume) >= Number(d1.volume_ma20) ? "Above MA20" : "Below MA20"' in js
-    assert '${siMetric("Volume vs MA20", siVolumeVsMa20(d1))}' in js
+    assert "const volumeLabel = siVolumeVsMa20(d1);" in js
     assert 'siMetric("Volume vs MA20", siNum(d1.volume_ma20' not in js
     assert "Daily SMA structure" in js
     assert "SuperTrend (10,3)" in js
-    assert "SMA structure and SuperTrend are independent evidence" in js
 
 
 def test_si_p2a_evidence_and_darvax_isolation() -> None:
@@ -222,10 +221,10 @@ def test_si_p2a_evidence_and_darvax_isolation() -> None:
     assert "It is not mixed into Stock 360 evidence" in js
     assert 'data-si-panel="experimental"' in js
     assert 'id="si-darvax-frame"' in js
-    assert 'data-si-section="experimental">DarvaX' in pane
+    assert 'data-si-section="experimental"' in pane and "DarvaX</button>" in pane
     assert pane.count('id="si-darvax-frame"') == 0
-    assert "Fundamentals — Not ingested" in js
-    assert "News &amp; catalysts — Not ingested" in js
+    assert "Fundamentals <b>Not ingested</b>" in js
+    assert "News &amp; catalysts <b>Not ingested</b>" in js
     assert "Not available yet" in js
 
 
@@ -234,11 +233,11 @@ def test_si_p2a_dashboard_assets_and_hosted_nav() -> None:
     pane = _si_pane(html)
     assembled = assemble_dashboard_js(str(STATIC))
     css = (STATIC / "dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.254.0" in html
-    assert "dashboard.js?v=9.254.0" in html
+    assert "dashboard.css?v=9.264.0" in html
+    assert "dashboard.js?v=9.264.0" in html
     assert 'data-si-section="stock-360"' in pane
     assert "08c-symbol-intelligence.js" in DASHBOARD_JS_PARTS
     assert "function loadSymbolIntelligence(" in assembled
     assert "siLoadGeneration" in assembled
     assert "siInFlightMode" in assembled
-    assert "css/15-symbol-intelligence.css?v=9.254.0" in css
+    assert "css/15-symbol-intelligence.css?v=9.264.0" in css

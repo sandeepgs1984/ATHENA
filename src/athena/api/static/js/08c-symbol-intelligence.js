@@ -115,6 +115,19 @@
         return siEscape(text.slice(0, 10));
     }
 
+    function siDecisionDate(value) {
+        if (!value) return "—";
+        const key = String(value).slice(0, 10);
+        const date = new Date(`${key}T12:00:00+05:30`);
+        if (Number.isNaN(date.getTime())) return siEscape(key);
+        return siEscape(new Intl.DateTimeFormat("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+        }).format(date));
+    }
+
     function siNormalizeLabel(value) {
         return String(value || "").trim().toUpperCase().replace(/[\s.\-_/:]/g, "");
     }
@@ -130,17 +143,6 @@
         const instrumentTail = instrument.includes(":") ? instrument.split(":").pop() : instrument;
         if (instrumentTail && normalizedName === siNormalizeLabel(instrumentTail)) return "";
         return name;
-    }
-
-    function siStructureDiffers(d1) {
-        const sma = String((d1 && d1.symbol_trend) || "");
-        const st = String((d1 && d1.supertrend_direction) || "");
-        if (!sma || !st) return false;
-        if (sma === "UPTREND" && st === "BEARISH") return true;
-        if (sma === "DOWNTREND" && st === "BULLISH") return true;
-        if (sma === "SIDEWAYS" && (st === "BULLISH" || st === "BEARISH")) return true;
-        if (sma === "MIXED" && (st === "BULLISH" || st === "BEARISH")) return true;
-        return false;
     }
 
     function siPriceMapRelation(signedDelta, denominator) {
@@ -185,8 +187,9 @@
         return `${label} is ${rel.magnitude}% ${rel.direction} completed-D1 close.`;
     }
 
-    function siJumpButton(section, label) {
-        return `<button type="button" class="si-jump" data-si-jump="${siEscape(section)}">${siEscape(label)}</button>`;
+    function siJumpButton(section, label, icon) {
+        const iconHtml = icon ? `<i class="fas ${icon}" aria-hidden="true"></i> ` : "";
+        return `<button type="button" class="si-jump" data-si-jump="${siEscape(section)}">${iconHtml}${siEscape(label)}</button>`;
     }
 
     function siPersistedScore(decision) {
@@ -210,21 +213,11 @@
         });
     }
 
-    function siMetric(label, value, title) {
-        const tip = title ? ` title="${siEscape(title)}"` : "";
-        return `<div class="si-metric"${tip}><dt>${siEscape(label)}</dt><dd>${siText(value)}</dd></div>`;
-    }
-
     function siZoneLooksEmpty(zone) {
         if (!zone) return true;
         const lower = zone.lower;
         const upper = zone.upper;
         return (lower == null || lower === "") && (upper == null || upper === "");
-    }
-
-    function siOptionalZoneMetric(label, zone) {
-        if (siZoneLooksEmpty(zone)) return "";
-        return siMetric(label, siZoneShort(zone));
     }
 
     function siMarketDataStatus(bundle) {
@@ -250,12 +243,6 @@
         }
         const market = (live && (live.market_state || live.label)) || "";
         return market ? `LAST COMPLETED D1 · ${siEscape(market)}` : "LAST COMPLETED D1";
-    }
-
-    function siQuotePriceLabel(live) {
-        if (!live || !live.present) return "Last completed D1";
-        if (live.quote_kind === "LIVE") return "Live";
-        return "Latest quote";
     }
 
     function siSmaStructureLabel(value) {
@@ -288,9 +275,15 @@
         const loadInFlight = Boolean(siInFlightMode);
         if (btn) {
             btn.disabled = duplicateAnalyze;
-            btn.textContent = analyzeInFlight ? "Analyzing…" : "Analyze";
+            const label = btn.querySelector(".si-btn-label");
+            if (label) label.textContent = analyzeInFlight ? "Analyzing…" : "Analyze";
             btn.setAttribute("aria-busy", analyzeInFlight ? "true" : "false");
         }
+        const refreshBtn = document.getElementById("si-refresh-btn");
+        const clearBtn = document.getElementById("si-clear-btn");
+        const hasSymbol = Boolean(siBundle || siQuery);
+        if (refreshBtn) refreshBtn.disabled = loadInFlight || !hasSymbol;
+        if (clearBtn) clearBtn.disabled = loadInFlight || !hasSymbol;
         const overlay = document.getElementById("si-analyze-overlay");
         overlay?.classList.toggle("active", loadInFlight);
         overlay?.setAttribute("aria-hidden", loadInFlight ? "false" : "true");
@@ -318,29 +311,97 @@
         siSyncAnalyzeControl();
     }
 
+    function siDecisionChipClass(decisionType) {
+        const type = String(decisionType || "").toLowerCase();
+        if (type === "trade" || type === "watch" || type === "no_trade") return `type-chip type-${type}`;
+        return "type-chip";
+    }
+
+    // Real-derived: chosen from the persisted identity.sector string. Never a
+    // per-company logo -- no such field exists anywhere in the backend.
+    function siSectorIcon(sector) {
+        const s = String(sector || "").toLowerCase();
+        if (/energy|power|solar|renewable/.test(s)) return "fa-bolt";
+        if (/\bit\b|software|technology|tech/.test(s)) return "fa-microchip";
+        if (/bank|financ|insur|nbfc/.test(s)) return "fa-landmark";
+        if (/pharma|health|hospital/.test(s)) return "fa-pills";
+        if (/fmcg|consumer|retail/.test(s)) return "fa-bag-shopping";
+        if (/auto|vehicle/.test(s)) return "fa-car";
+        if (/metal|material|mining|steel|cement/.test(s)) return "fa-industry";
+        if (/infra|construction|real estate|realty/.test(s)) return "fa-building";
+        return "fa-chart-simple";
+    }
+
+    function siSignedMoney(value) {
+        const amount = siFiniteNumber(value);
+        if (amount == null) return "";
+        const abs = Math.abs(amount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (amount > 0) return `+₹${abs}`;
+        if (amount < 0) return `-₹${abs}`;
+        return `₹${abs}`;
+    }
+
+    // Real-derived: last_price - previous_close, both persisted live-quote fields.
+    function siAbsChange(live) {
+        if (!live || !live.present) return null;
+        const last = siFiniteNumber(live.last_price);
+        const prev = siFiniteNumber(live.previous_close);
+        if (last == null || prev == null) return null;
+        return last - prev;
+    }
+
+    function siPriceChangeBadge(live) {
+        if (!live || !live.present) return "";
+        const pct = siPct(live.change_pct);
+        const abs = siAbsChange(live);
+        const text = [abs != null ? siSignedMoney(abs) : "", pct ? `(${pct})` : ""].filter(Boolean).join(" ");
+        if (!text) return "";
+        const signal = abs != null ? abs : Number(live.change_pct);
+        const cls = signal > 0 ? "up" : signal < 0 ? "down" : "";
+        return `<span class="si-id-change ${cls}">${siEscape(text)}</span>`;
+    }
+
     function siHeader(bundle) {
         const identity = bundle.identity || {};
         const d1 = bundle.d1 || {};
         const live = bundle.live || {};
+        const decision = bundle.decision || {};
         const price = live.present ? live.last_price : d1.close;
-        const change = live.present ? siPct(live.change_pct) : "";
-        const changeClass = Number(live.change_pct) > 0 ? "up" : Number(live.change_pct) < 0 ? "down" : "";
         const company = siCompanyName(identity);
+        const decisionChip = decision.present
+            ? `<span class="${siDecisionChipClass(decision.decision_type)}">${siEscape(siEnumLabel(decision.decision_type))}</span>`
+            : "";
+        const sector = siText(identity.sector, "");
         return `<div class="si-id-block">
-                <div class="si-id-symbol">${siText(identity.symbol || identity.instrument_id, identity.query || "Unresolved")}</div>
-                ${company ? `<div class="si-id-name">${siText(company, "")}</div>` : ""}
-                <div class="si-id-meta">${siText(identity.exchange, "")}${identity.instrument_id ? ` · ${siText(identity.instrument_id)}` : ""}</div>
+                <div class="si-id-avatar" aria-hidden="true"><i class="fas ${siSectorIcon(identity.sector)}"></i></div>
+                <div class="si-id-block-text">
+                    <div class="si-id-symbol-row">
+                        <span class="si-id-symbol">${siText(identity.symbol || identity.instrument_id, identity.query || "Unresolved")}</span>
+                        ${decisionChip}
+                    </div>
+                    ${company ? `<div class="si-id-name">${siText(company, "")}</div>` : ""}
+                    <div class="si-id-tags">
+                        <span class="si-id-meta-tag">${siText(identity.exchange, "")}${identity.instrument_id ? ` · ${siText(identity.instrument_id)}` : ""}</span>
+                        ${sector ? `<span class="si-id-meta-tag">${sector}</span>` : ""}
+                        <span class="si-id-meta-tag si-id-tag-placeholder" data-si-placeholder="true" title="Market-cap classification is not yet available from ATHENA's persisted data -- shown as a placeholder for a future field, never a guessed value.">Cap tier — pending</span>
+                    </div>
+                </div>
             </div>
             <div>
-                <div class="si-id-price">${siMoney(price)}</div>
-                <div class="si-id-change ${changeClass}">${siEscape(change)}</div>
-                <div class="si-id-session">${siQuoteCaption(live)}</div>
-                <div class="si-id-session">${siQuotePriceLabel(live)}</div>
+                <div class="si-id-price-row">
+                    <span class="si-id-price">${siMoney(price)}</span>
+                    ${siPriceChangeBadge(live)}
+                </div>
+                <span class="si-id-quote-tag">${siQuoteCaption(live)}</span>
             </div>
             <div>
-                <div class="si-id-session">Completed D1 as-of: ${siDate(d1.latest_session)}</div>
-                <div class="si-id-session">Last completed D1 close: ${siMoney(d1.close)}</div>
+                <div class="si-id-session"><span>Completed D1 as-of</span><strong>${siDate(d1.latest_session)}</strong></div>
+                <div class="si-id-session"><span>Last completed close</span><strong>${siMoney(d1.close)}</strong></div>
                 ${identity.resolved ? "" : `<p class="si-unavailable">${siText(identity.unresolved_reason)}</p>`}
+            </div>
+            <div class="si-id-decorative" data-si-placeholder="true" aria-hidden="true">
+                <div class="si-id-decorative-art"></div>
+                <p class="si-id-decorative-line">Evidence-led.<br>Always explainable.</p>
             </div>`;
     }
 
@@ -372,12 +433,16 @@
             : "<div>ATHENA Decision unavailable</div>";
         return `<div class="si-coverage-banner tone-${tone}" data-si-coverage="${siEscape(coverage)}" data-si-market="${siEscape(market)}">
             <div class="si-coverage-facts">
-                <div>Market data: ${siEscape(market)}</div>
-                <div>SI coverage: ${siEscape(coverage)}</div>
+                <div>Market data · ${siEscape(market)}</div>
+                <div>SI coverage · ${siEscape(coverage)}</div>
                 ${decisionLine}
             </div>
             ${message ? `<p class="si-coverage-note">${siEscape(message)}</p>` : ""}
         </div>`;
+    }
+
+    function siTile(label, value, tone) {
+        return `<div class="si-tile${tone ? ` ${tone}` : ""}"><dt>${siEscape(label)}</dt><dd>${siText(value)}</dd></div>`;
     }
 
     function siPortfolioCard(portfolio) {
@@ -388,169 +453,423 @@
         const banned = [portfolio.interpretation_status, portfolio.next_action, portfolio.daily_review_status]
             .filter(value => SI_HOLDING_GUIDANCE.has(String(value || "")));
         const interpretation = banned.length
-            ? `<p class="si-empty">Held. Portfolio-owned status ${siText(portfolio.interpretation_status)}.</p>`
-            : `<p class="si-empty">${siText(portfolio.interpretation_status)} · ${siText(portfolio.next_action)}</p>`;
-        return `<div class="si-card"><h3>Portfolio Context</h3>
+            ? `Held. Portfolio-owned status ${siText(portfolio.interpretation_status)}.`
+            : `${siText(portfolio.interpretation_status)} · ${siText(portfolio.next_action)}`;
+        const statusRaw = String(portfolio.interpretation_status || "");
+        const statusBanned = SI_HOLDING_GUIDANCE.has(statusRaw);
+        const pillText = !statusBanned && statusRaw ? `Held &amp; ${siEscape(siEnumLabel(statusRaw))}` : "Held";
+        const pnlAmount = siFiniteNumber(portfolio.pnl);
+        const pnlTone = pnlAmount == null ? "" : pnlAmount >= 0 ? "is-good" : "is-bad";
+        const pnlText = `${siMoney(portfolio.pnl)}${siPct(portfolio.pnl_pct) ? ` (${siEscape(siPct(portfolio.pnl_pct))})` : ""}`;
+        return `<div class="si-card">
+            <h3>Portfolio Context <span class="si-portfolio-status-pill">${pillText}</span></h3>
             <p class="si-pending">These facts are Portfolio-owned. Symbol Intelligence does not issue BUY/HOLD/SELL.</p>
-            <dl class="si-metrics">
-                ${siMetric("Quantity", siInteger(portfolio.quantity))}
-                ${siMetric("Average", siMoney(portfolio.avg_price))}
-                ${siMetric("Last", siMoney(portfolio.last_price))}
-                ${siMetric("Current value", siMoney(portfolio.current_value))}
-                ${siMetric("Investment", siMoney(portfolio.investment))}
-                ${siMetric("P&L", `${siMoney(portfolio.pnl)}${siPct(portfolio.pnl_pct) ? ` (${siEscape(siPct(portfolio.pnl_pct))})` : ""}`)}
-            </dl>
-            ${interpretation}</div>`;
+            <div class="si-portfolio-tiles">
+                ${siTile("Quantity", siInteger(portfolio.quantity))}
+                ${siTile("Average price", siMoney(portfolio.avg_price))}
+                ${siTile("Last price", siMoney(portfolio.last_price))}
+                ${siTile("Investment", siMoney(portfolio.investment))}
+                ${siTile("Current value", siMoney(portfolio.current_value))}
+                ${siTile("P&L", pnlText, `si-pnl ${pnlTone}`)}
+            </div>
+            <div class="si-portfolio-callout">
+                <i class="fas fa-circle-info" aria-hidden="true"></i>
+                <p>${siEscape(interpretation)}</p>
+            </div>
+        </div>`;
     }
 
-    function siDecisionCard(decision) {
-        if (!decision || !decision.present) {
-            return `<div class="si-card"><h3>ATHENA Decision</h3>
-                <p class="si-empty">ATHENA has not produced a Decision for this symbol.</p>
-                <p class="si-pending">This does not limit Symbol Intelligence analysis. SI research remains available.</p></div>`;
+    function siDecisionSource(bundle) {
+        return ((bundle && bundle.sources) || []).find(source => (
+            source && source.source === "ATHENA_DECISION"
+        )) || null;
+    }
+
+    function siDecisionTone(decisionType) {
+        const type = String(decisionType || "").toUpperCase();
+        if (type === "TRADE") return "trade";
+        if (type === "WATCH") return "watch";
+        if (type === "NO_TRADE") return "pass";
+        return "neutral";
+    }
+
+    function siDecisionGateLabel(value) {
+        const labels = {
+            DATA: "Data quality",
+            EVIDENCE: "Evidence quality",
+            RISK: "Risk quality",
+            EXPLAINABILITY: "Explainability",
+            CONFIDENCE: "Confidence quality",
+            MARKET: "Market quality",
+        };
+        return labels[String(value || "").toUpperCase()] || siEnumLabel(value, "Quality check");
+    }
+
+    function siDecisionGateRows(decision) {
+        const gates = Array.isArray(decision && decision.gates) ? decision.gates : [];
+        if (!gates.length) {
+            return `<p class="si-decision-muted">No gate results were persisted for this Decision.</p>`;
         }
-        const plan = decision.trade_plan;
+        return `<div class="si-decision-gates">${gates.map(gate => {
+            const passed = gate && gate.passed === true;
+            const detail = gate && gate.detail
+                ? siText(gate.detail)
+                : "No persisted detail is available.";
+            return `<details class="si-decision-gate ${passed ? "is-pass" : "is-fail"}" ${passed ? "" : "open"}>
+                <summary>
+                    <span class="si-decision-gate-state" aria-hidden="true"></span>
+                    <span class="si-decision-gate-name">${siEscape(siDecisionGateLabel(gate && gate.gate))}</span>
+                    <strong>${passed ? "Passed" : "Failed"}</strong>
+                    <span class="si-decision-disclosure" aria-hidden="true">⌄</span>
+                </summary>
+                <p>${detail}</p>
+            </details>`;
+        }).join("")}</div>`;
+    }
+
+    function siDecisionPlanMetric(label, value, formatter = siText) {
+        if (value === null || value === undefined || value === "") return "";
+        return `<div class="si-decision-plan-metric"><dt>${siEscape(label)}</dt><dd>${formatter(value)}</dd></div>`;
+    }
+
+    function siDecisionTradePlan(decision) {
+        const plan = decision && decision.trade_plan;
+        if (!plan) {
+            return `<section class="si-decision-block si-decision-plan" aria-labelledby="si-decision-plan-title">
+                <div class="si-decision-block-head">
+                    <div><span class="si-decision-eyebrow">Decision-owned levels</span>
+                    <h3 id="si-decision-plan-title">Persisted TradePlan</h3></div>
+                </div>
+                <p class="si-decision-empty-plan">No persisted trade plan for this Decision.</p>
+            </section>`;
+        }
+        const targets = (Array.isArray(plan.targets) ? plan.targets : [])
+            .filter(value => value !== null && value !== undefined && value !== "")
+            .map((value, index) => siDecisionPlanMetric(`Target ${index + 1}`, value, siMoney))
+            .join("");
+        const freshness = decision.plan_freshness || {};
+        const entryLow = plan.entry_low;
+        const entryHigh = plan.entry_high;
+        const entry = entryLow !== null && entryLow !== undefined
+            && entryHigh !== null && entryHigh !== undefined
+            ? (Number(entryLow) === Number(entryHigh)
+                ? siMoney(entryLow)
+                : `${siMoney(entryLow)} – ${siMoney(entryHigh)}`)
+            : "";
+        const rr = siFiniteNumber(plan.risk_reward);
+        return `<section class="si-decision-block si-decision-plan" aria-labelledby="si-decision-plan-title">
+            <div class="si-decision-block-head">
+                <div><span class="si-decision-eyebrow">Decision-owned levels</span>
+                <h3 id="si-decision-plan-title">Persisted TradePlan</h3></div>
+                ${freshness.status ? `<span class="si-decision-status plan-${siEscape(String(freshness.status).toLowerCase())}">${siEscape(siEnumLabel(freshness.status))}</span>` : ""}
+            </div>
+            <dl class="si-decision-plan-grid">
+                ${entry ? `<div class="si-decision-plan-metric is-primary"><dt>Entry band</dt><dd>${entry}</dd></div>` : ""}
+                ${siDecisionPlanMetric("Stop loss", plan.stop_loss, siMoney)}
+                ${targets}
+                ${rr != null ? `<div class="si-decision-plan-metric"><dt>Risk / reward</dt><dd>${siEscape(rr.toFixed(2))} : 1</dd></div>` : ""}
+                ${siDecisionPlanMetric("Position size", plan.position_size, siInteger)}
+                ${siDecisionPlanMetric("Risk amount", plan.risk_amount, siMoney)}
+                ${siDecisionPlanMetric("Valid from", plan.valid_from, siDecisionDate)}
+                ${siDecisionPlanMetric("Valid until", plan.valid_until, siDecisionDate)}
+            </dl>
+            ${freshness.summary ? `<p class="si-decision-plan-note">${siText(freshness.summary)}</p>` : ""}
+        </section>`;
+    }
+
+    function siDecisionCard(bundle) {
+        const identity = (bundle && bundle.identity) || {};
+        const decision = (bundle && bundle.decision) || {};
+        if (!identity.resolved) {
+            return `<div class="si-card si-decision-empty-state">
+                <span class="si-decision-eyebrow">ATHENA Decision</span>
+                <h2>Symbol unavailable</h2>
+                <p>Resolve a valid instrument before inspecting persisted Decision evidence.</p>
+            </div>`;
+        }
+        if (!decision.present) {
+            return `<div class="si-card si-decision-empty-state">
+                <span class="si-decision-eyebrow">ATHENA Decision</span>
+                <h2>No persisted decision</h2>
+                <p>ATHENA has not produced a Decision for this symbol. SI research remains available in Stock 360.</p>
+                <div class="si-actions">
+                    ${siJumpButton("stock-360", "Back to Stock 360")}
+                    ${siJumpButton("audit", "View Evidence")}
+                </div>
+            </div>`;
+        }
+
         const openHref = `/dashboard/decisions?decision=${encodeURIComponent(decision.decision_id)}`;
         const score = siPersistedScore(decision);
-        const gates = siGatePassSummary(decision);
-        const freshness = decision.plan_freshness && decision.plan_freshness.status
-            ? siMetric("Plan freshness", siEnumLabel(decision.plan_freshness.status))
-            : "";
-        return `<div class="si-card"><h3>ATHENA Decision</h3>
-            <dl class="si-metrics">
-                ${siMetric("Type", siEnumLabel(decision.decision_type))}
-                ${siMetric("Direction", siEnumLabel(decision.direction))}
-                ${siMetric("Confidence", decision.confidence_level)}
-                ${score != null ? siMetric("Score", siScore(score)) : ""}
-                ${gates ? siMetric("Gates", gates) : ""}
-                ${siMetric("Decision as-of", siDate(decision.ts))}
-                ${freshness}
-            </dl>
-            <p>${siText(siDisplayExplanation(decision.explanation))}</p>
-            ${plan ? `<p>TradePlan ${siMoney(plan.entry_low)} / ${siMoney(plan.entry_high)}</p>` : ""}
-            <p><a class="btn" href="${siEscape(openHref)}">Open Decision Brief</a></p></div>`;
+        const gates = Array.isArray(decision.gates) ? decision.gates : [];
+        const passed = gates.filter(gate => gate && gate.passed === true).length;
+        const failed = gates.filter(gate => gate && gate.passed === false).length;
+        const gateSummary = gates.length
+            ? `${passed} of ${gates.length} gates passed`
+            : "Gate evidence unavailable";
+        const decisionSource = siDecisionSource(bundle);
+        const decisionFreshness = decisionSource && decisionSource.status
+            ? String(decisionSource.status).toUpperCase()
+            : "UNAVAILABLE";
+        const marketStatus = siMarketDataStatus(bundle);
+        const direction = String(decision.direction || "").toUpperCase();
+        const tone = siDecisionTone(decision.decision_type);
+        return `<div class="si-decision-experience tone-${tone}">
+            <header class="si-decision-hero">
+                <div class="si-decision-hero-main">
+                    <span class="si-decision-eyebrow">Persisted ATHENA Decision</span>
+                    <div class="si-decision-title-row">
+                        <h2>${siEscape(siEnumLabel(decision.decision_type, "Decision"))}</h2>
+                        ${direction && direction !== "NONE" ? `<span class="si-decision-direction">${siEscape(siEnumLabel(direction))}</span>` : ""}
+                    </div>
+                    <p class="si-decision-asof">Decision as of ${siDecisionDate(decision.ts)}</p>
+                </div>
+                <span class="si-decision-status decision-${siEscape(decisionFreshness.toLowerCase())}">${siEscape(siEnumLabel(decisionFreshness))}</span>
+            </header>
+
+            ${(decisionFreshness === "STALE" || marketStatus === "STALE") ? `<div class="si-decision-warning" role="status">
+                ${decisionFreshness === "STALE" ? `<p><strong>Decision is stale.</strong> ${siText(decisionSource && decisionSource.explanation)}</p>` : ""}
+                ${marketStatus === "STALE" ? `<p><strong>Completed-D1 evidence is stale.</strong> The persisted Decision remains visible as historical evidence.</p>` : ""}
+            </div>` : ""}
+
+            <div class="si-decision-strength" aria-label="Persisted Decision strength">
+                ${decision.confidence_level ? `<div><span>Confidence</span><strong>${siEscape(siEnumLabel(decision.confidence_level))}</strong></div>` : ""}
+                ${score != null ? `<div><span>Persisted score</span><strong>${siEscape(siScore(score))}<small> / 100</small></strong></div>` : ""}
+                <div><span>Safety checks</span><strong>${siEscape(gateSummary)}</strong></div>
+            </div>
+
+            <div class="si-decision-layout">
+                <section class="si-decision-block si-decision-why" aria-labelledby="si-decision-why-title">
+                    <div class="si-decision-block-head">
+                        <div><span class="si-decision-eyebrow">Persisted explanation</span>
+                        <h3 id="si-decision-why-title">Why ATHENA decided this</h3></div>
+                        ${gates.length ? `<span class="si-decision-gate-summary ${failed ? "has-failures" : "all-passed"}">${failed ? `${failed} failed` : "All passed"}</span>` : ""}
+                    </div>
+                    <p class="si-decision-explanation">${siText(siDisplayExplanation(decision.explanation), "No persisted explanation is available.")}</p>
+                    ${siDecisionGateRows(decision)}
+                </section>
+                ${siDecisionTradePlan(decision)}
+            </div>
+
+            <footer class="si-decision-footer">
+                <p>Deep analytical trace and provenance remain in the authoritative Decision Brief.</p>
+                <div class="si-actions">
+                    <a class="btn si-decision-primary-action" href="${siEscape(openHref)}">Open Decision Brief</a>
+                    ${siJumpButton("audit", "View Evidence")}
+                </div>
+            </footer>
+        </div>`;
+    }
+
+    function siViewTone(decisionType) {
+        const type = String(decisionType || "").toLowerCase();
+        return ["trade", "watch", "no_trade"].includes(type) ? type : "neutral";
     }
 
     function siAthenaView(decision) {
         if (!decision || !decision.present) {
             return `<div class="si-card si-athena-view"><h3>ATHENA View</h3>
-                <p class="si-empty">ATHENA Decision</p>
-                <p class="si-empty">Not available for this symbol</p>
+                <p class="si-empty">ATHENA Decision not available for this symbol</p>
                 <p class="si-pending">Stock 360 research remains available. This is not an Analyze failure.</p>
-                ${siJumpButton("decision", "Open ATHENA Decision")}
-                ${siJumpButton("audit", "View evidence")}</div>`;
+                <p class="si-actions">
+                    ${siJumpButton("decision", "Open ATHENA Decision", "fa-brain")}
+                    ${siJumpButton("audit", "View evidence", "fa-clipboard-check")}
+                </p></div>`;
         }
         const openHref = `/dashboard/decisions?decision=${encodeURIComponent(decision.decision_id)}`;
         const score = siPersistedScore(decision);
-        const gates = siGatePassSummary(decision);
-        return `<div class="si-card si-athena-view"><h3>ATHENA View</h3>
-            <dl class="si-metrics">
-                ${siMetric("Decision", siEnumLabel(decision.decision_type))}
-                ${siMetric("Confidence", decision.confidence_level)}
-                ${score != null ? siMetric("Score", siScore(score)) : ""}
-                ${gates ? siMetric("Gates", gates) : ""}
-                ${siMetric("As-of", siDate(decision.ts))}
-                ${decision.plan_freshness && decision.plan_freshness.status ? siMetric("Plan freshness", siEnumLabel(decision.plan_freshness.status)) : ""}
-            </dl>
-            <p>${siText(siDisplayExplanation(decision.explanation))}</p>
+        const gates = Array.isArray(decision.gates) ? decision.gates : [];
+        const passed = gates.filter(gate => gate && gate.passed === true).length;
+        const gateDots = gates.length
+            ? `<div class="si-view-gates" aria-label="${passed} of ${gates.length} gates passed">
+                ${gates.map(gate => `<span class="si-view-gate-dot${gate && gate.passed === true ? " is-passed" : ""}"></span>`).join("")}
+            </div>`
+            : "";
+        const clampedScore = score != null ? Math.max(0, Math.min(100, score)) : null;
+        return `<div class="si-card si-athena-view tone-${siViewTone(decision.decision_type)}"><h3>ATHENA View</h3>
+            <div class="si-view-head">
+                <span class="si-view-decision">${siEscape(siEnumLabel(decision.decision_type))}</span>
+                <span class="si-view-asof">As of ${siDate(decision.ts)}</span>
+            </div>
+            <div class="si-view-strength">
+                ${decision.confidence_level ? siViewStatTile("fa-shield-halved", "Confidence", siEnumLabel(decision.confidence_level)) : ""}
+                ${decision.plan_freshness && decision.plan_freshness.status ? siViewStatTile("fa-calendar-check", "Plan freshness", siEnumLabel(decision.plan_freshness.status)) : ""}
+                ${clampedScore != null ? `<div class="si-view-gauge">
+                    <div class="si-view-gauge-row"><span>Score</span><strong>${siScore(score)} / 100</strong></div>
+                    <div class="si-view-gauge-bar"><div class="si-view-gauge-mask" style="width:${100 - clampedScore}%"></div></div>
+                    ${gateDots}
+                </div>` : gateDots}
+            </div>
+            <p class="si-view-explanation">${siText(siDisplayExplanation(decision.explanation))}</p>
             <p class="si-actions">
-                ${siJumpButton("decision", "Open ATHENA Decision")}
-                <a class="btn" href="${siEscape(openHref)}">Open Decision Brief</a>
-                ${siJumpButton("audit", "View evidence")}
+                ${siJumpButton("decision", "Open ATHENA Decision", "fa-brain")}
+                <a class="btn" href="${siEscape(openHref)}"><i class="fas fa-file-lines" aria-hidden="true"></i> Open Decision Brief</a>
+                ${siJumpButton("audit", "View evidence", "fa-clipboard-check")}
             </p></div>`;
     }
 
-    function siTrendCard(d1) {
-        if (!d1 || !d1.present) {
-            return `<div class="si-card"><h3>Technical Structure</h3><p class="si-empty">No completed D1 evidence.</p></div>`;
+    function siViewStatTile(icon, label, value) {
+        return `<div class="si-view-stat">
+            <span class="si-view-stat-icon"><i class="fas ${icon}" aria-hidden="true"></i></span>
+            <span class="si-view-stat-text"><dt>${siEscape(label)}</dt><dd>${siText(value)}</dd></span>
+        </div>`;
+    }
+
+    // Collects every real structural level into one flat list so the ladder
+    // can position them on a shared scale. Each point's value is the exact
+    // same boundary the old stacked rows used (upper for support zones,
+    // lower for trigger/target zones) -- purely a layout change, not a new
+    // methodology.
+    // siFiniteNumber(null) coerces via Number(null) === 0, which IS finite --
+    // it cannot tell "genuinely absent" from "zero". A plain scalar field
+    // (unlike a zone object, already guarded by siZoneLooksEmpty) needs its
+    // own null/undefined check first, or an absent value renders as a
+    // fabricated real "₹0.00" point instead of being omitted.
+    function siNullableFiniteNumber(value) {
+        if (value === null || value === undefined) return null;
+        return siFiniteNumber(value);
+    }
+
+    function siPriceLadderPoints(d1) {
+        const close = siNullableFiniteNumber(d1 && d1.close);
+        const points = [];
+        function addZone(category, label, zone, bound) {
+            if (siZoneLooksEmpty(zone)) return;
+            const value = siFiniteNumber(bound === "upper" ? zone.upper : zone.lower);
+            if (value == null) return;
+            points.push({ category, label, value, display: siZoneShort(zone) });
         }
-        const differ = siStructureDiffers(d1);
-        const note = differ
-            ? `<p class="si-note" data-si-structure-note="disagree">Daily SMA structure and SuperTrend currently differ. They are independent measurements, not a blended verdict. Neither is treated as authoritative here.</p>`
-            : `<p class="si-pending">SMA structure and SuperTrend are independent evidence. They are not blended.</p>`;
-        return `<div class="si-card"><h3>Technical Structure</h3>
-            <dl class="si-metrics">
-                ${siMetric("Daily SMA structure", siSmaStructureLabel(d1.symbol_trend), d1.symbol_trend)}
-                ${siMetric("SuperTrend (10,3)", siSuperTrendLabel(d1.supertrend_direction), d1.supertrend_direction)}
-                ${siMetric("SuperTrend value", siMoney(d1.supertrend_value))}
-                ${siMetric("SMA20", siMoney(d1.fast_sma))}
-                ${siMetric("SMA50", siMoney(d1.slow_sma))}
-            </dl>
-            ${note}</div>`;
+        addZone("support", "Support 1", d1 && d1.support_1, "upper");
+        addZone("major-support", "Major Support", d1 && d1.major_support, "upper");
+        addZone("trigger", "Review Trigger", d1 && d1.review_trigger, "lower");
+        addZone("target", "Target 1", d1 && d1.target_1, "lower");
+        addZone("target", "Target 2", d1 && d1.target_2, "lower");
+        addZone("target", "Target 3", d1 && d1.target_3, "lower");
+        const high = siNullableFiniteNumber(d1 && d1.available_history_high);
+        if (high != null) points.push({ category: "high", label: "Available High", value: high, display: siMoney(high) });
+        return { close, points };
     }
 
-    function siMomentumCard(bundle) {
-        const d1 = bundle.d1 || {};
-        return `<div class="si-card"><h3>Momentum / Participation</h3>
-            <dl class="si-metrics">
-                ${siMetric("RSI (14)", siRsi(d1.rsi14))}
-                ${siMetric("Volume vs MA20", siVolumeVsMa20(d1))}
-            </dl>
-            <p class="si-pending">Volume vs 20D average uses completed-D1 volume against MA20. Momentum Quality is not yet methodologically defined.</p></div>`;
+    function siLadderDistText(value, close) {
+        const rel = siLevelVsClose(value, close);
+        if (!rel) return "";
+        if (rel.direction === "at") return "at close";
+        return `${rel.direction === "above" ? "+" : "-"}${rel.magnitude}%`;
     }
 
-    function siLevelRow(label, zone, close, { perspective, bound } = {}) {
-        if (siZoneLooksEmpty(zone)) return "";
-        const level = bound === "upper" ? zone.upper : zone.lower;
-        const distLine = perspective === "close-vs-boundary"
-            ? siCloseVsBoundarySentence(label, close, level)
-            : siLevelVsCloseSentence(label, level, close);
-        return `<div class="si-level-row">
-            <div><dt>${siEscape(label)}</dt><dd>${siZoneShort(zone)}</dd></div>
-            ${distLine ? `<p class="si-level-dist">${siEscape(distLine)}</p>` : ""}
+    // Horizontal price ladder -- replaces the old stacked level rows. Every
+    // position is a real value on a shared min-close-max scale; the
+    // red-to-green track color is purely positional ("lower price on the
+    // left, higher on the right"), never a trading instruction of any kind.
+    function siPriceLadder(d1) {
+        const { close, points } = siPriceLadderPoints(d1);
+        if (!points.length || close == null) {
+            return `<p class="si-empty">No structural levels are available for this symbol.</p>`;
+        }
+        const values = [...points.map(p => p.value), close];
+        const min = Math.min(...values);
+        const max = Math.min(Math.max(...values), Number.MAX_SAFE_INTEGER);
+        const span = (max - min) || Math.max(1, Math.abs(close) * 0.02);
+        const pad = span * 0.1;
+        const lo = min - pad;
+        const hi = max + pad;
+        const denom = (hi - lo) || 1;
+        const pct = value => Math.max(0, Math.min(100, ((value - lo) / denom) * 100));
+        const sorted = [...points].sort((a, b) => a.value - b.value);
+        // Adjacent points can land close enough together (in % terms) that
+        // their label cards would overlap horizontally. A 2-tier zig-zag
+        // only guarantees clearance between immediate neighbors -- with up
+        // to 7 real points (the frozen d1 schema's max: support_1,
+        // major_support, review_trigger, target_1/2/3, available_history_high)
+        // in a narrower column, same-tier points 2 apart in sort order can
+        // still collide. 3 tiers keeps any two same-tier points at least 3
+        // sort-positions apart, without measuring actual rendered widths.
+        const markers = sorted.map((p, index) => {
+            const dist = siLadderDistText(p.value, close);
+            const tier = index % 3;
+            const tierClass = tier === 1 ? " si-ladder-point--tier1" : tier === 2 ? " si-ladder-point--tier2" : "";
+            return `<div class="si-ladder-point${tierClass}" data-si-level="${siEscape(p.category)}" style="left:${pct(p.value)}%">
+                <div class="si-ladder-card">
+                    <span class="si-ladder-label">${siEscape(p.label)}</span>
+                    <span class="si-ladder-value">${siEscape(p.display)}</span>
+                    ${dist ? `<span class="si-ladder-dist">${siEscape(dist)}</span>` : ""}
+                </div>
+                <span class="si-ladder-dot"></span>
+            </div>`;
+        }).join("");
+        return `<div class="si-price-ladder">
+            <div class="si-ladder-track">
+                ${markers}
+                <div class="si-ladder-current" style="left:${pct(close)}%"><span class="si-ladder-current-dot"></span></div>
+            </div>
+            <div class="si-ladder-current-label" style="left:${pct(close)}%">
+                <strong>${siMoney(close)}</strong><span>D1 close</span>
+            </div>
         </div>`;
     }
 
     function siLevelsCard(d1) {
-        const close = d1 && d1.close;
-        const highLine = siLevelVsCloseSentence(
-            "Available-history high",
-            d1 && d1.available_history_high,
-            close
-        );
         return `<div class="si-card si-price-map"><h3>Price Map</h3>
             <p class="si-pending">Distances use completed-D1 close against completed-D1 levels. Live/latest quote is not mixed in.</p>
-            <div class="si-level-list">
-                ${siLevelRow("Support 1", d1 && d1.support_1, close, { perspective: "close-vs-boundary", bound: "upper" })}
-                ${siLevelRow("Major support", d1 && d1.major_support, close, { perspective: "close-vs-boundary", bound: "upper" })}
-                ${siLevelRow("Review trigger", d1 && d1.review_trigger, close, { perspective: "level-vs-close", bound: "lower" })}
-                ${siLevelRow("Target 1", d1 && d1.target_1, close, { perspective: "level-vs-close", bound: "lower" })}
-                ${siOptionalZoneMetric("Target 2", d1 && d1.target_2)}
-                ${siOptionalZoneMetric("Target 3", d1 && d1.target_3)}
-                ${d1 && d1.available_history_high != null ? `<div class="si-level-row">
-                    <div><dt>Available-history high</dt><dd>${siMoney(d1.available_history_high)}</dd></div>
-                    ${highLine ? `<p class="si-level-dist">${siEscape(highLine)}</p>` : ""}
-                </div>` : ""}
-            </div></div>`;
+            ${siPriceLadder(d1 || {})}
+        </div>`;
+    }
+
+    function siSignalTone(kind, value) {
+        const raw = String(value || "").toUpperCase();
+        if (kind === "structure") {
+            if (raw === "UPTREND") return "good";
+            if (raw === "DOWNTREND") return "bad";
+            return "";
+        }
+        if (kind === "supertrend") {
+            if (raw === "BULLISH") return "good";
+            if (raw === "BEARISH") return "bad";
+            return "";
+        }
+        if (kind === "volume") return raw === "Above MA20" ? "good" : "";
+        if (kind === "decision") {
+            if (raw === "TRADE") return "good";
+            if (raw === "WATCH") return "warn";
+            return "";
+        }
+        return "";
+    }
+
+    function siSignalIcon(kind) {
+        switch (kind) {
+            case "structure": return "fa-arrow-trend-up";
+            case "supertrend": return "fa-wave-square";
+            case "rsi": return "fa-gauge-high";
+            case "volume": return "fa-chart-column";
+            case "decision": return "fa-bullseye";
+            default: return "fa-circle-dot";
+        }
+    }
+
+    function siSignalChip(kind, label, value, tone, title) {
+        const tip = title ? ` title="${siEscape(title)}"` : "";
+        return `<div class="si-signal" data-tone="${tone || ""}">
+            <span class="si-signal-icon"><i class="fas ${siSignalIcon(kind)}" aria-hidden="true"></i></span>
+            <span class="si-signal-text">
+                <span class="si-signal-label">${siEscape(label)}</span>
+                <span class="si-signal-value"${tip}>${value}</span>
+            </span>
+        </div>`;
     }
 
     function siScanStrip(bundle) {
         const d1 = bundle.d1 || {};
         const decision = bundle.decision || {};
         const decisionLabel = decision.present ? siEnumLabel(decision.decision_type) : "Not available";
+        const volumeLabel = siVolumeVsMa20(d1);
         return `<div class="si-scan-strip" aria-label="Compact technical snapshot">
-            <div class="si-scan-item"><span>Daily SMA structure</span><strong title="${siEscape(d1.symbol_trend || "")}">${siSmaStructureLabel(d1.symbol_trend)}</strong></div>
-            <div class="si-scan-item"><span>SuperTrend (10,3)</span><strong title="${siEscape(d1.supertrend_direction || "")}">${siSuperTrendLabel(d1.supertrend_direction)}</strong></div>
-            <div class="si-scan-item"><span>RSI (14)</span><strong>${siRsi(d1.rsi14)}</strong></div>
-            <div class="si-scan-item"><span>Volume vs MA20</span><strong>${siVolumeVsMa20(d1)}</strong></div>
-            <div class="si-scan-item"><span>ATHENA Decision</span><strong>${siEscape(decisionLabel)}</strong></div>
+            ${siSignalChip("structure", "Daily SMA structure", siSmaStructureLabel(d1.symbol_trend), siSignalTone("structure", d1.symbol_trend), d1.symbol_trend || "")}
+            ${siSignalChip("supertrend", "SuperTrend (10,3)", siSuperTrendLabel(d1.supertrend_direction), siSignalTone("supertrend", d1.supertrend_direction), d1.supertrend_direction || "")}
+            ${siSignalChip("rsi", "RSI (14)", siRsi(d1.rsi14), "")}
+            ${siSignalChip("volume", "Volume vs MA20", volumeLabel, siSignalTone("volume", volumeLabel))}
+            ${siSignalChip("decision", "ATHENA Decision", siEscape(decisionLabel), siSignalTone("decision", decision.decision_type))}
         </div>`;
-    }
-
-    function siMarketSnapshot(bundle) {
-        const d1 = bundle.d1 || {};
-        const live = bundle.live || {};
-        return `<div class="si-card"><h3>Market Snapshot</h3>
-            <dl class="si-metrics">
-                ${live.present ? siMetric(siQuotePriceLabel(live), siMoney(live.last_price)) : ""}
-                ${live.present && siPct(live.change_pct) ? siMetric("Change", siPct(live.change_pct)) : ""}
-                ${siMetric("Quote", siQuoteCaption(live))}
-                ${siMetric("Completed D1 close", siMoney(d1.close))}
-                ${siMetric("Completed D1 date", siDate(d1.latest_session))}
-                ${d1.present ? siMetric("D1 open / high / low", `${siMoney(d1.open)} / ${siMoney(d1.high)} / ${siMoney(d1.low)}`) : ""}
-                ${siMetric("Available-history high", siMoney(d1.available_history_high))}
-            </dl>
-            <p class="si-pending">Available-history high is prior persisted D1 history, not an official 52-week or all-time high.</p></div>`;
     }
 
     function siAvailabilityChips(bundle) {
@@ -558,25 +877,28 @@
         const news = bundle.news || {};
         return `<div class="si-card si-capability"><h3>Capability availability</h3>
             <div class="si-availability-chips">
-                <span class="si-chip">Fundamentals — Not ingested</span>
-                <span class="si-chip">News &amp; catalysts — Not ingested</span>
+                <span class="si-chip tone-warn">Fundamentals <b>Not ingested</b></span>
+                <span class="si-chip tone-warn">News &amp; catalysts <b>Not ingested</b></span>
             </div>
             <p class="si-pending">Not available yet. ${siText(fundamentals.status, "NOT_INGESTED")} / ${siText(news.status, "NOT_INGESTED")} are not errors.</p>
-            ${siJumpButton("audit", "View evidence")}</div>`;
+            ${siJumpButton("audit", "View evidence", "fa-clipboard-check")}</div>`;
     }
 
     function siDarvaxOverview(darvax) {
         const label = siText(darvax && darvax.experimental_label, "EXPERIMENTAL_UNVALIDATED");
+        const badge = `<span class="si-experimental-badge">Experimental</span>`;
         if (!darvax || darvax.status !== "ENABLED_IFRAME") {
             return `<div class="si-card"><h3>DarvaX</h3>
                 <p class="si-empty">DARVAX UNAVAILABLE</p>
                 <p class="si-pending">${label}</p></div>`;
         }
-        return `<div class="si-card"><h3>DarvaX</h3>
+        return `<div class="si-card si-darvax-panel">
+            <div class="si-darvax-art" data-si-placeholder="true" aria-hidden="true"></div>
+            <h3>DarvaX ${badge}</h3>
             <p class="si-empty">DarvaX experimental view available</p>
             <p class="si-empty">Symbol 360 is available on the DarvaX surface. It is not mixed into Stock 360 evidence.</p>
             <p class="si-pending">${label}</p>
-            ${siJumpButton("experimental", "Open DarvaX")}</div>`;
+            ${siJumpButton("experimental", "Open DarvaX", "fa-arrow-up-right-from-square")}</div>`;
     }
 
     function siDarvaxCard(darvax) {
@@ -1859,15 +2181,12 @@
                 ${siCoverageBanner(bundle)}
                 ${identity.resolved ? siScanStrip(bundle) : ""}
                 ${identity.resolved ? `<div class="si-360-stack">
-                    ${siMarketSnapshot(bundle)}
-                    ${siTrendCard(d1)}
-                    ${siMomentumCard(bundle)}
                     ${siLevelsCard(d1)}
                     ${siAthenaView(bundle.decision)}
                 </div>` : ""}
                 ${siChartBlock(identity, d1)}
-                ${identity.resolved ? `<details class="si-written-summary">
-                    <summary>Written summary</summary>
+                ${identity.resolved ? `<details class="si-written-summary" open>
+                    <summary>Research Brief</summary>
                     ${siCompleteReview(bundle)}
                 </details>
                 <div class="si-360-secondary">
@@ -1876,7 +2195,7 @@
                     ${siDarvaxOverview(bundle.darvax)}
                 </div>` : ""}
             </section>
-            <section class="si-section" data-si-panel="decision" hidden>${siDecisionCard(bundle.decision)}</section>
+            <section class="si-section" data-si-panel="decision" hidden>${siDecisionCard(bundle)}</section>
             <section class="si-section" data-si-panel="experimental" hidden>${siDarvaxCard(bundle.darvax)}</section>
             <section class="si-section" data-si-panel="audit" hidden>${siAuditTable(bundle)}</section>`;
         showSiSection(document.querySelector(".si-section-nav-item.active")?.getAttribute("data-si-section") || "stock-360");
@@ -1924,6 +2243,8 @@
         if (analyze && siShouldSuppressAnalyze(needle)) return;
         const input = document.getElementById("si-symbol-input");
         if (input && needle) input.value = needle;
+        const hitsEl = document.querySelector("#si-search-hits");
+        if (hitsEl) { hitsEl.hidden = true; hitsEl.innerHTML = ""; }
         const generation = ++siLoadGeneration;
         if (siInFlightController) {
             siInFlightController.abort();
@@ -2007,6 +2328,47 @@
         loadSymbolIntelligence(input ? input.value : "", { analyze: true });
     }
 
+    function siCurrentSymbolQuery() {
+        if (siQuery) return siQuery;
+        const identity = siBundle && siBundle.identity;
+        return (identity && (identity.instrument_id || identity.symbol)) || "";
+    }
+
+    function requestSymbolIntelligenceRefresh(event) {
+        if (event) event.preventDefault();
+        const current = siCurrentSymbolQuery();
+        if (!current) return;
+        loadSymbolIntelligence(current);
+    }
+
+    function siClearWorkspace(event) {
+        if (event) event.preventDefault();
+        siLoadGeneration++;
+        if (siInFlightController) {
+            siInFlightController.abort();
+            siInFlightController = null;
+        }
+        siBundle = null;
+        siQuery = "";
+        const input = document.getElementById("si-symbol-input");
+        if (input) input.value = "";
+        const hitsEl = document.querySelector("#si-search-hits");
+        if (hitsEl) { hitsEl.hidden = true; hitsEl.innerHTML = ""; }
+        const identityEl = document.getElementById("si-identity");
+        if (identityEl) identityEl.innerHTML = "";
+        const bundleEl = document.getElementById("si-bundle");
+        if (bundleEl) {
+            bundleEl.innerHTML = `<p class="text-muted si-empty-state">Enter a canonical instrument to load persisted Symbol Intelligence. Analyze hydrates stale D1 when you need a refresh.</p>`;
+        }
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("symbol")) {
+            url.searchParams.delete("symbol");
+            window.history.replaceState({ tabId: "symbol-intelligence" }, "", url);
+        }
+        siSetInFlight("");
+        if (input) input.focus();
+    }
+
     async function searchSymbolIntelligence(query) {
         const hitsEl = document.getElementById("si-search-hits");
         if (!hitsEl) return;
@@ -2026,7 +2388,10 @@
             }
             hitsEl.hidden = false;
             hitsEl.innerHTML = hits.map(hit => (
-                `<button type="button" class="si-search-hit" data-si-id="${siEscape(hit.instrument_id)}">${siText(hit.instrument_id)}${hit.name ? ` · ${siText(hit.name)}` : ""}</button>`
+                `<button type="button" class="si-search-hit" data-si-id="${siEscape(hit.instrument_id)}">
+                    <span class="si-search-hit-symbol">${siText(hit.instrument_id)}</span>
+                    ${hit.name ? `<span class="si-search-hit-name">${siText(hit.name)}</span>` : ""}
+                </button>`
             )).join("");
         } catch (err) {
             hitsEl.hidden = false;
@@ -2035,18 +2400,26 @@
     }
 
     async function loadSymbolIntelligenceWorkspace() {
+        // Revisiting this tab must never re-fetch or re-render on its own —
+        // the pane's DOM survives a tab switch untouched, and an owner
+        // flagged the previous always-reload-on-revisit behavior as
+        // disruptive. Auto-load only ever fires once per page load, and
+        // only to honor a deep-linked ?symbol= URL; every later visit while
+        // a bundle is already held is a no-op, and refreshing afterwards is
+        // an explicit Refresh/Analyze action.
+        if (siBundle) return;
         const params = new URLSearchParams(window.location.search);
         const fromUrl = params.get("symbol");
         const input = document.getElementById("si-symbol-input");
-        const next = fromUrl || siQuery || (input && input.value.trim()) || "";
+        const next = fromUrl || (input && input.value.trim()) || "";
         if (next) {
             await loadSymbolIntelligence(next);
-        } else if (siBundle) {
-            renderSymbolIntelligence(siBundle);
         }
     }
 
     document.getElementById("si-load-btn")?.addEventListener("click", requestSymbolIntelligenceLoad);
+    document.getElementById("si-refresh-btn")?.addEventListener("click", requestSymbolIntelligenceRefresh);
+    document.getElementById("si-clear-btn")?.addEventListener("click", siClearWorkspace);
     document.getElementById("si-symbol-input")?.addEventListener("keydown", event => {
         if (event.key !== "Enter") return;
         event.preventDefault();
@@ -2072,3 +2445,40 @@
         if (!jump) return;
         showSiSection(jump.getAttribute("data-si-jump"));
     });
+
+    // The sticky section-nav needs to know when it is actually stuck (vs.
+    // sitting in normal flow just below the toolbar) so its CSS can seal the
+    // scroll container's own top padding only while stuck -- otherwise that
+    // fill would paint over the toolbar note text above it before scrolling.
+    // Driven directly off scroll position (not IntersectionObserver): a
+    // zero-height sentinel sits immediately before the bar in normal flow,
+    // so once its own top has scrolled above the bar's stuck offset, the
+    // bar is stuck.
+    (function initSiNavStuckTracking() {
+        const sentinel = document.getElementById("si-nav-sentinel");
+        const nav = document.querySelector(".si-section-nav");
+        const viewport = document.querySelector(".workspace-viewport");
+        if (!sentinel || !nav || !viewport) return;
+        let scheduled = false;
+        function syncStuck() {
+            scheduled = false;
+            // The point nav sticks to (its CSS "top: 0") is fixed relative to
+            // the viewport's own padding edge, which never moves on screen --
+            // only its scrolled content does. The sentinel sits in normal
+            // flow immediately before nav; once the sentinel's own top has
+            // scrolled above that fixed point, nav has nowhere left to go
+            // but to stay pinned there, i.e. it is stuck.
+            const viewportRect = viewport.getBoundingClientRect();
+            const paddingTop = parseFloat(getComputedStyle(viewport).paddingTop) || 0;
+            const stickyThreshold = viewportRect.top + paddingTop;
+            const sentinelTop = sentinel.getBoundingClientRect().top;
+            nav.classList.toggle("is-stuck", sentinelTop < stickyThreshold);
+        }
+        function requestSync() {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(syncStuck);
+        }
+        viewport.addEventListener("scroll", requestSync, { passive: true });
+        requestSync();
+    })();

@@ -405,11 +405,11 @@ def test_si_p2d_rendering_is_compact_traceable_accessible_and_responsive() -> No
     assert "Momentum Quality" not in html and "Entry Quality" not in html
     assert "UPTREND" not in html and "BULLISH" not in html
     js = _js()
-    assert '<details class="si-written-summary">' in js
+    assert '<details class="si-written-summary" open>' in js
     assert "function siComposeResearchSummary(bundle)" in js
     assert "function siSummaryFamilyLabel(kind)" in js
     css = CSS.read_text(encoding="utf-8")
-    assert "grid-template-columns: 7rem minmax(0, 1fr)" in css
+    assert "grid-template-columns: 1.6rem 7rem minmax(0, 1fr)" in css
     narrow = css[css.index("@media (max-width: 720px)") :]
     assert ".si-brief-row" in narrow
     assert "grid-template-columns: minmax(0, 1fr)" in narrow
@@ -480,6 +480,6 @@ def test_si_p2d_stale_footer_is_bounded_and_visually_distinct() -> None:
 def test_si_p2d_asset_cache_pin() -> None:
     html = HTML.read_text(encoding="utf-8")
     css = Path("src/athena/api/static/dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.254.0" in html
-    assert "dashboard.js?v=9.254.0" in html
-    assert "css/15-symbol-intelligence.css?v=9.254.0" in css
+    assert "dashboard.css?v=9.264.0" in html
+    assert "dashboard.js?v=9.264.0" in html
+    assert "css/15-symbol-intelligence.css?v=9.264.0" in css

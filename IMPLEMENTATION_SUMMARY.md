@@ -6,6 +6,120 @@ status updated on approval.
 
 ---
 
+## SI-P2B.1 — Stock 360 Reference-Matched Visual Revamp
+
+**Authorization/objective.** After several same-day incremental UX passes on
+the Stock 360 tab, the owner supplied a polished external reference mock and
+asked for an exact-UX match, planned properly before further ad-hoc changes.
+A full plan (real-data-vs-placeholder ledger, palette decision, section-by-
+section scope, explicit non-goals for the D1 chart and app-shell sidebar) was
+written and owner-approved before implementation, per two clarifying
+questions the owner answered directly (keep decorative flourishes but label
+them; adopt the reference's richer palette, scoped to Symbol Intelligence
+only). SI-P2B's own frozen contract is unchanged — this is a visual/UX
+revamp of that same surface, not a new methodology or DTO change.
+
+**Scope completed.** Rewrote the identity hero (sector-derived icon avatar,
+real/placeholder tag row, richer price-change badge, decorative gradient side
+panel), the scan strip (icon chips), Portfolio Context (status pill, 6-tile
+grid, colored callout), the Price Map (rebuilt from stacked rows into a
+horizontal ladder with real level positions on a positional-only red-green
+scale), ATHENA View (icon stat-tiles, a real gradient 0-100 score gauge), and
+the DarvaX card (experimental badge, abstract background pattern). Removed
+the duplicate Technical Detail card and all now-orphaned CSS. Added a new
+Symbol-Intelligence-only palette documented as a deliberate, scoped exception.
+Changed the Price Map / ATHENA View row from full-width stacked to a
+responsive side-by-side grid on wide viewports. During verification against
+real and synthetic data shapes, found and fixed three genuine rendering
+defects (not merely cosmetic preferences): ladder dots that were never
+actually anchored to the track (position depended on card height instead of
+the track's own midline), overlapping labels for levels sharing an exact or
+near-exact price (a real case the owner's own data exhibited), and a
+fabricated `₹0.00` "Available High" point for a genuinely absent
+`available_history_high` (`siFiniteNumber(null)` coerces to `0`, not `null`).
+Added a narrow-viewport (<720px) fallback where the ladder becomes a plain
+wrapping card list, since no fixed tier count fits every level count on phone
+width.
+
+**Files created.** `docs/research/SI-P2B1-STOCK-360-REFERENCE-REVAMP.md`.
+**Files modified.** `src/athena/api/static/js/08c-symbol-intelligence.js`;
+`src/athena/api/static/css/15-symbol-intelligence.css`;
+`src/athena/api/static/index.html` and `dashboard.css` (asset cache pin
+`9.264.0`); `tests/symbol_intelligence/test_si_p2a_experience.py`,
+`tests/symbol_intelligence/test_si_p2b_stock_360.py`,
+`tests/api/platform/test_dashboard_hosting.py`,
+`tests/api/platform/test_decision_chart_release_gate.py`; `docs/MILESTONES.md`;
+this log. No backend, API, DTO, schema, persistence, Decision, Portfolio, or
+DarvaX file changed; the D1 chart card and app-shell sidebar are untouched.
+
+**Tests/coverage.** `tests/symbol_intelligence/` +
+`tests/api/platform/test_dashboard_hosting.py` +
+`tests/api/platform/test_decision_chart_release_gate.py`: **95 passed**, 1
+pre-existing failure unrelated to this work
+(`test_si_p2e_no_decision_and_invalid_symbol_are_distinct`, owned by the
+concurrent SI-P2E track). Visual verification used an isolated throwaway
+server (scratch config/DB, single-user bypass, never the owner's real
+`db/athena.db`) with synthetic bundles covering sector present/absent,
+portfolio held/not-held, decision present/absent, empty Price Map levels,
+tied Price Map values matching the owner's own reported data, a 7-distinct-
+level case, and 375px mobile width — each state pixel-level collision-checked
+via JavaScript (not just screenshots), confirming zero overlapping label
+cards and every ladder dot sitting exactly on the track. `node --check` and a
+CSS brace-balance check passed after every edit.
+
+**Compliance/risks/debt.** Presentation-only under ATHENA-002's report/render
+boundary; no persisted field added, no methodology invented (the Price Map
+and score-gauge color scales are explicitly documented as positional/
+magnitude-only, never a buy/sell or safety signal, preserving ATHENA's
+no-trading-advice rule). No ADR required. The new Symbol-Intelligence-only
+palette is a deliberate, documented, scoped exception to the shared
+`00-tokens.css` — it does not affect any other dashboard tab.
+
+**Remaining work.** Owner/Chief Architect visual and source review. SI-P2B.1
+is **IMPLEMENTED / REVIEW-READY**, not frozen, on asset `9.264.0`. The
+owner's own post-ship comparison against the reference mock found the page
+still reads noticeably sparser than the mock beyond the defects fixed above.
+Five concrete structural gaps — chart position (reference puts it right
+after the identity hero; here it sits after Price Map/ATHENA View), a
+missing chart-side Trend/Momentum/Volume panel, card grouping not matching
+the reference's two 3-column rows (DarvaX belongs with Price Map/ATHENA
+View, not Portfolio/Capability; Research Brief stays full-width here instead
+of joining that row), a missing header/footer tagline, and pipe-text vs.
+bordered-pill tag styling — are itemized with exact file/function pointers
+in `docs/research/SI-P2B1-STOCK-360-REFERENCE-REVAMP.md`'s "Known gaps vs.
+the reference mock" section for whoever picks up a possible SI-P2B.2. That
+same section also lists 4 intentional deviations (coverage banner, Refresh/
+Clear controls, the app-shell sidebar, shared header pills) that must not be
+removed just to chase an exact visual match.
+
+**Suggested consolidated commit message.**
+
+```text
+feat(dashboard): revamp Symbol Intelligence Stock 360 to match reference UX
+
+- Redesign identity hero, scan strip, portfolio/capability/darvax cards,
+  and price map with richer icons, tiles, and a horizontal ladder layout,
+  per the owner-approved reference-matched plan (chart card untouched)
+- Add a scoped Symbol-Intelligence-only palette and document real-data vs.
+  decorative-placeholder elements per the owner's explicit decision
+- Remove the duplicate Technical Detail card and its now-orphaned CSS
+- Fix the price-ladder dot never actually sitting on the track (it was a
+  flex-flow child pushed below the card, not pinned to the track center)
+- Move Price Map and ATHENA View to a side-by-side row on wide screens
+  instead of full-width stacked, closing most of the density gap vs. the
+  reference
+- Add a 3-tier stagger (up from 2) so same-priced or near-priced levels
+  never render overlapping text, verified against real coincident values
+- Add a narrow-viewport fallback where the ladder becomes a plain wrapping
+  card list, since no tier count fits on phone width
+- Fix a data-correctness bug where a null available_history_high rendered
+  as a fabricated "₹0.00" point (siFiniteNumber(null) coerces to 0)
+- Update Symbol Intelligence tests for the renamed/removed functions and
+  new markup; bump the dashboard asset cache version
+```
+
+---
+
 ## SI-P2D — Deterministic Written Research Summary
 
 **Authorization/objective.** Owner/Chief Architect authorized SI-P2D on

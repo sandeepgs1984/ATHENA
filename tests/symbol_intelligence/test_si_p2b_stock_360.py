@@ -25,7 +25,7 @@ def _js() -> str:
 def test_si_p2b_keeps_four_p2a_surfaces_and_stock_360_default() -> None:
     pane = _si_pane(HTML.read_text(encoding="utf-8"))
     assert pane.count("data-si-section=") == 4
-    assert 'data-si-section="stock-360">Stock 360</button>' in pane
+    assert 'data-si-section="stock-360"' in pane and "Stock 360</button>" in pane
     assert 'class="si-section-nav-item active" data-si-section="stock-360"' in pane
     assert "Complete Review" not in pane
     js = _js()
@@ -44,10 +44,8 @@ def test_si_p2b_independent_structure_no_blend() -> None:
     js = _js()
     assert "Daily SMA structure" in js
     assert "SuperTrend (10,3)" in js
-    assert "function siStructureDiffers(d1)" in js
-    assert 'sma === "UPTREND" && st === "BEARISH"' in js
-    assert "They are independent measurements, not a blended verdict" in js
-    assert "SMA structure and SuperTrend are independent evidence" in js
+    assert "function siSummaryStructure(d1, reportedMissing)" in js
+    assert "the two measurements disagree" in js
     assert "Overall Trend" not in js
     assert "Moderately Bullish" not in js
     assert "Trend Health" not in js
@@ -56,42 +54,40 @@ def test_si_p2b_independent_structure_no_blend() -> None:
 
 def test_si_p2b_rsi_volume_levels_and_omit_empty_targets() -> None:
     js = _js()
-    assert '${siMetric("RSI (14)", siRsi(d1.rsi14))}' in js
-    assert '${siMetric("Volume vs MA20", siVolumeVsMa20(d1))}' in js
+    assert 'siSignalChip("rsi", "RSI (14)", siRsi(d1.rsi14), "")' in js
+    assert "const volumeLabel = siVolumeVsMa20(d1);" in js
     assert 'Number(d1.volume) >= Number(d1.volume_ma20) ? "Above MA20" : "Below MA20"' in js
-    assert 'siLevelRow("Support 1"' in js
-    assert 'siLevelRow("Major support"' in js
-    assert 'siLevelRow("Review trigger"' in js
-    assert 'siLevelRow("Target 1"' in js
-    assert 'siOptionalZoneMetric("Target 2"' in js
-    assert 'siOptionalZoneMetric("Target 3"' in js
+    assert 'addZone("support", "Support 1"' in js
+    assert 'addZone("major-support", "Major Support"' in js
+    assert 'addZone("trigger", "Review Trigger"' in js
+    assert 'addZone("target", "Target 1"' in js
+    assert 'addZone("target", "Target 2"' in js
+    assert 'addZone("target", "Target 3"' in js
     assert "function siZoneLooksEmpty(zone)" in js
-    assert "Available-history high" in js
+    assert "if (siZoneLooksEmpty(zone)) return;" in js
+    assert "Available High" in js
     assert "52-week high" not in js
     assert "function siPriceMapRelation" in js
     assert "function siCloseVsBoundary" in js
     assert "function siLevelVsClose" in js
     assert "siPriceMapRelation(closeN - boundaryN, boundaryN)" in js
     assert "siPriceMapRelation(levelN - closeN, closeN)" in js
-    assert 'bound: "upper"' in js
-    assert 'bound: "lower"' in js
-    assert 'perspective: "close-vs-boundary"' in js
-    assert 'perspective: "level-vs-close"' in js
+    assert 'bound === "upper" ? zone.upper : zone.lower' in js
     assert "Live/latest quote is not mixed in" in js
 
 
 def test_si_p2b_decision_portfolio_partial_and_capabilities() -> None:
     js = _js()
     assert "function siAthenaView(decision)" in js
-    assert "Not available for this symbol" in js
+    assert "ATHENA Decision not available for this symbol" in js
     assert "Stock 360 research remains available" in js
     assert "ATHENA has not produced a Decision for this symbol." in js
     assert "SI research remains available" in js
     assert 'tone = "partial"' in js
     assert "Not held in My Portfolio" in js
     assert "Symbol Intelligence does not issue BUY/HOLD/SELL" in js
-    assert "Fundamentals — Not ingested" in js
-    assert "News &amp; catalysts — Not ingested" in js
+    assert "Fundamentals <b>Not ingested</b>" in js
+    assert "News &amp; catalysts <b>Not ingested</b>" in js
     assert "DarvaX experimental view available" in js
     assert "It is not mixed into Stock 360 evidence" in js
     assert "View evidence" in js
@@ -130,9 +126,9 @@ def test_si_p2b_p2a_request_lifecycle_untouched() -> None:
 def test_si_p2b_asset_cache_pin() -> None:
     html = HTML.read_text(encoding="utf-8")
     css = (STATIC / "dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.254.0" in html
-    assert "dashboard.js?v=9.254.0" in html
-    assert "css/15-symbol-intelligence.css?v=9.254.0" in css
+    assert "dashboard.css?v=9.264.0" in html
+    assert "dashboard.js?v=9.264.0" in html
+    assert "css/15-symbol-intelligence.css?v=9.264.0" in css
 
 
 def _finite(value: object) -> float | None:
@@ -264,19 +260,24 @@ process.stdout.write(JSON.stringify(Object.fromEntries(cases)));
 
 def test_si_p2b_price_map_no_action_semantics_or_live_quote_distance() -> None:
     js = _js()
-    price_map = js[js.index("function siLevelRow") : js.index("function siScanStrip")]
-    assert "d1 && d1.close" in price_map or "const close = d1 && d1.close" in price_map
+    price_map = js[js.index("function siPriceLadderPoints") : js.index("function siSignalTone")]
+    assert "const close = siNullableFiniteNumber(d1 && d1.close);" in price_map
+    # siFiniteNumber(null) coerces via Number(null) === 0 and is NOT null-safe
+    # on its own -- a genuinely-absent available_history_high must never
+    # render as a fabricated real "Available High" point at value 0.
+    assert "const high = siNullableFiniteNumber(d1 && d1.available_history_high);" in price_map
     assert "live.last_price" not in price_map
     assert "live.change_pct" not in price_map
     assert 'bound === "upper" ? zone.upper : zone.lower' in price_map
-    assert 'siLevelRow("Support 1"' in price_map
-    assert 'bound: "upper"' in price_map
-    assert 'siLevelRow("Major support"' in price_map
-    assert 'siLevelRow("Review trigger"' in price_map
-    assert 'bound: "lower"' in price_map
-    assert 'siLevelRow("Target 1"' in price_map
-    assert 'siOptionalZoneMetric("Target 2"' in price_map
-    assert 'siOptionalZoneMetric("Target 3"' in price_map
+    assert 'addZone("support", "Support 1"' in price_map
+    assert 'addZone("major-support", "Major Support"' in price_map
+    assert 'addZone("trigger", "Review Trigger"' in price_map
+    assert 'addZone("target", "Target 1"' in price_map
+    assert 'addZone("target", "Target 2"' in price_map
+    assert 'addZone("target", "Target 3"' in price_map
+    # Purely positional/stylistic red-green track -- never a safety/danger or
+    # buy/sell signal (owner-mandated no-trading-advice framing).
+    assert "--si-gradient-scale" in price_map or "si-price-ladder" in price_map
     import re
 
     for banned in (
@@ -286,6 +287,41 @@ def test_si_p2b_price_map_no_action_semantics_or_live_quote_distance() -> None:
     ):
         assert banned not in price_map.lower()
     assert re.search(r"\b(safe|healthy|broken|exit|sell|buy|hold)\b", price_map, re.I) is None
+
+
+def test_si_p2b_ladder_null_available_high_omitted_not_zeroed() -> None:
+    import json
+    import shutil
+    import subprocess
+
+    js = _js()
+    finite_helper = js[js.index("function siFiniteNumber") : js.index("function siMoney")]
+    nullable_helper = js[js.index("function siNullableFiniteNumber") : js.index("function siPriceLadderPoints")]
+    node = shutil.which("node")
+    assert node is not None
+    script = (
+        finite_helper
+        + nullable_helper
+        + """
+const cases = {
+  nullHigh: siNullableFiniteNumber(null),
+  undefinedHigh: siNullableFiniteNumber(undefined),
+  realHigh: siNullableFiniteNumber(1980.4),
+  zeroIsStillZero: siNullableFiniteNumber(0),
+  legacyCoercesNullToZero: siFiniteNumber(null),
+};
+process.stdout.write(JSON.stringify(cases));
+"""
+    )
+    result = subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+    observed = json.loads(result.stdout)
+    assert observed["nullHigh"] is None
+    assert observed["undefinedHigh"] is None
+    assert observed["realHigh"] == 1980.4
+    assert observed["zeroIsStillZero"] == 0
+    # Documents the exact footgun siNullableFiniteNumber exists to guard
+    # against -- siFiniteNumber alone is not safe for a plain optional field.
+    assert observed["legacyCoercesNullToZero"] == 0
 
 
 def test_si_p2b_presentation_formatters_and_toolbar() -> None:
@@ -299,7 +335,7 @@ def test_si_p2b_presentation_formatters_and_toolbar() -> None:
     assert "amount < 0 ? `-₹${formatted}`" in js
     assert "lower.toFixed(2) === upper.toFixed(2)" in js
     assert ".toLowerCase()" in js
-    assert "live.present ? siMetric(siQuotePriceLabel(live), siMoney(live.last_price))" in js
+    assert "live.present ? live.last_price : d1.close" in js
     assert 'Symbol could not be resolved against the canonical instrument catalog.</p></div>`}' not in js
     assert "si-audit-wrap" in js
     assert "si-audit-cards" in js
@@ -312,7 +348,7 @@ def test_si_p2b_presentation_formatters_and_toolbar() -> None:
     media = css[css.index("@media (max-width: 720px)") :]
     assert "flex-direction: column" in media
     assert ".si-audit-cards" in media
-    assert "overflow-wrap: anywhere" not in css[css.index(".si-scan-item strong") : css.index(".si-note")]
+    assert "overflow-wrap: anywhere" not in css[css.index(".si-signal-value") : css.index(".si-note")]
 
 
 def test_si_p2b_presentation_js_helpers_match_owner_examples() -> None:
