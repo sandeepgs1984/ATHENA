@@ -6,6 +6,7 @@
     let siQuery = "";
     let siSearchTimer = null;
     let siLoadGeneration = 0;
+    let siChartOutsidePointerHandler = null;
     let siInFlightController = null;
     let siInFlightMode = "";
     let siInFlightQuery = "";
@@ -577,8 +578,12 @@
             return `<div class="si-card si-chart-card"><h3>Completed D1 chart</h3>
                 <p class="si-empty">Completed D1 chart unavailable.</p></div>`;
         }
-        return `<div class="si-card si-chart-card"><h3>Completed D1 chart</h3>
-            <p class="si-pending">LAST COMPLETED D1 · unfinished session candles are excluded</p>
+        return `<div class="si-card si-chart-card">
+            <div class="si-chart-header">
+                <div><h3>Completed D1 chart</h3>
+                    <p class="si-pending si-chart-subtitle">LAST COMPLETED D1 · unfinished session candles are excluded</p></div>
+                <div class="si-chart-controls-slot"></div>
+            </div>
             <div class="si-chart-host si-chart-pending" id="si-d1-chart-host"><p class="text-muted">Loading D1 chart…</p></div>
         </div>`;
     }
@@ -692,61 +697,748 @@
         });
     }
 
-    function renderSiD1Chart(host, series, d1) {
-        const candles = (series && series.candles) || [];
+    function siChartDateKey(value) {
+        const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+        return match ? match[1] : "";
+    }
+
+    function siChartCandle(value) {
+        if (!value) return null;
+        const date = siChartDateKey(value.ts_open || value.ts);
+        const open = siFiniteNumber(value.open);
+        const high = siFiniteNumber(value.high);
+        const low = siFiniteNumber(value.low);
+        const close = siFiniteNumber(value.close);
+        const volume = siFiniteNumber(value.volume);
+        if (!date || [open, high, low, close, volume].some(item => item == null)) return null;
+        if (open <= 0 || high <= 0 || low <= 0 || close <= 0 || volume < 0) return null;
+        if (high < low || high < Math.max(open, close) || low > Math.min(open, close)) return null;
+        return {
+            ts_open: String(value.ts_open || value.ts),
+            date,
+            open,
+            high,
+            low,
+            close,
+            volume,
+        };
+    }
+
+    function siChartTrailingSma(values, period) {
+        const result = values.map(() => null);
+        if (!Number.isInteger(period) || period < 1 || values.length < period) return result;
+        let windowSum = 0;
+        for (let index = 0; index < values.length; index += 1) {
+            windowSum += values[index];
+            if (index >= period) windowSum -= values[index - period];
+            if (index >= period - 1) result[index] = windowSum / period;
+        }
+        return result;
+    }
+
+    function siPrepareD1ChartSeries(series, completedSession) {
+        const cutoff = siChartDateKey(completedSession);
+        const rows = Array.isArray(series && series.candles) ? series.candles : [];
+        let invalidCount = 0;
+        let excludedAfterCutoff = 0;
+        const candles = [];
+        rows.forEach(row => {
+            const candle = siChartCandle(row);
+            if (!candle) {
+                invalidCount += 1;
+                return;
+            }
+            if (!cutoff || candle.date > cutoff) {
+                excludedAfterCutoff += 1;
+                return;
+            }
+            candles.push(candle);
+        });
+        candles.sort((left, right) => left.ts_open.localeCompare(right.ts_open));
+        const closes = candles.map(candle => candle.close);
+        return {
+            cutoff,
+            candles,
+            sma20: siChartTrailingSma(closes, 20),
+            sma50: siChartTrailingSma(closes, 50),
+            invalidCount,
+            excludedAfterCutoff,
+        };
+    }
+
+    function siChartSameDisplayedPrice(left, right) {
+        const a = siFiniteNumber(left);
+        const b = siFiniteNumber(right);
+        if (a == null || b == null) return a == null && b == null;
+        return a.toFixed(2) === b.toFixed(2);
+    }
+
+    function siChartReconciliation(prepared, d1) {
+        const candles = prepared.candles;
+        const last = candles[candles.length - 1] || null;
+        const final20 = prepared.sma20[prepared.sma20.length - 1] ?? null;
+        const final50 = prepared.sma50[prepared.sma50.length - 1] ?? null;
+        const expected20 = siFiniteNumber(d1 && d1.fast_sma);
+        const expected50 = siFiniteNumber(d1 && d1.slow_sma);
+        const closeMatches = Boolean(last && siChartSameDisplayedPrice(last.close, d1 && d1.close));
+        const sma20Matches = expected20 == null ? null : siChartSameDisplayedPrice(final20, expected20);
+        const sma50Matches = expected50 == null ? null : siChartSameDisplayedPrice(final50, expected50);
+        return {
+            final20,
+            final50,
+            closeMatches,
+            sma20Matches,
+            sma50Matches,
+            coherent: closeMatches && sma20Matches !== false && sma50Matches !== false,
+        };
+    }
+
+    function siChartLevels(d1) {
+        if (!d1 || d1.structural_is_coherent !== true) return [];
+        const definitions = [
+            ["S1", "Support 1", d1.support_1, "upper"],
+            ["MS", "Major Support", d1.major_support, "upper"],
+            ["RT", "Review Trigger", d1.review_trigger, "lower"],
+            ["T1", "Target 1", d1.target_1, "lower"],
+            ["T2", "Target 2", d1.target_2, "lower"],
+            ["T3", "Target 3", d1.target_3, "lower"],
+        ];
+        return definitions.flatMap(([short, label, zone, anchor]) => {
+            if (!zone || zone.lineage !== "PORTFOLIO_STRUCTURAL_REVIEW") return [];
+            const lower = siFiniteNumber(zone.lower);
+            const upper = siFiniteNumber(zone.upper);
+            if (lower == null || upper == null || lower <= 0 || upper <= 0 || lower > upper) return [];
+            return [{ short, label, lower, upper, anchor, anchorPrice: anchor === "upper" ? upper : lower }];
+        });
+    }
+
+    function siChartPlaceLevelTag(naturalY, d1Y, top, bottom, minimumGap = 6) {
+        const levelHalfHeight = 12;
+        const d1HalfHeight = 9;
+        const clampedNatural = Math.max(top + levelHalfHeight, Math.min(bottom - levelHalfHeight, naturalY));
+        const d1Top = d1Y - d1HalfHeight;
+        const d1Bottom = d1Y + d1HalfHeight;
+        const overlapsD1 = clampedNatural + levelHalfHeight + minimumGap > d1Top
+            && clampedNatural - levelHalfHeight - minimumGap < d1Bottom;
+        if (!overlapsD1) return { naturalY, labelY: clampedNatural, d1Y };
+        const above = d1Top - minimumGap - levelHalfHeight;
+        const below = d1Bottom + minimumGap + levelHalfHeight;
+        const aboveFits = above - levelHalfHeight >= top;
+        const belowFits = below + levelHalfHeight <= bottom;
+        let labelY;
+        if (naturalY <= d1Y && aboveFits) labelY = above;
+        else if (naturalY > d1Y && belowFits) labelY = below;
+        else if (aboveFits && belowFits) {
+            labelY = Math.abs(above - clampedNatural) <= Math.abs(below - clampedNatural) ? above : below;
+        } else if (aboveFits) labelY = above;
+        else if (belowFits) labelY = below;
+        else labelY = clampedNatural;
+        return { naturalY, labelY, d1Y };
+    }
+
+    function siChartCreateLevelInteraction(levelIds, initialPersistent = null) {
+        const allowed = new Set(levelIds);
+        let persistentLevelId = allowed.has(initialPersistent) ? initialPersistent : null;
+        let persistentSource = persistentLevelId ? "retained" : null;
+        let transientLevelId = null;
+        let transientSource = null;
+        const valid = levelId => allowed.has(levelId) ? levelId : null;
+        const snapshot = () => ({
+            persistentLevelId,
+            persistentSource,
+            transientLevelId,
+            transientSource,
+            activeLevelId: transientLevelId || persistentLevelId,
+        });
+        return {
+            snapshot,
+            select(levelId, source) {
+                persistentLevelId = valid(levelId);
+                persistentSource = persistentLevelId ? source : null;
+                transientLevelId = null;
+                transientSource = null;
+                return snapshot();
+            },
+            preview(levelId, source) {
+                transientLevelId = valid(levelId);
+                transientSource = transientLevelId ? source : null;
+                return snapshot();
+            },
+            clearPreview(source = null) {
+                if (source && transientSource !== source) return snapshot();
+                transientLevelId = null;
+                transientSource = null;
+                return snapshot();
+            },
+            clearSelection() {
+                persistentLevelId = null;
+                persistentSource = null;
+                return snapshot();
+            },
+            clearAll() {
+                persistentLevelId = null;
+                persistentSource = null;
+                transientLevelId = null;
+                transientSource = null;
+                return snapshot();
+            },
+        };
+    }
+
+    function siChartPath(values, xAt, y) {
+        let path = "";
+        let drawing = false;
+        values.forEach((value, index) => {
+            if (value == null) {
+                drawing = false;
+                return;
+            }
+            path += `${drawing ? " L" : "M"}${xAt(index).toFixed(2)} ${y(value).toFixed(2)}`;
+            drawing = true;
+        });
+        return path;
+    }
+
+    function siChartWindowCount(windowKey, total) {
+        if (windowKey === "3M") return Math.min(total, 63);
+        if (windowKey === "ALL") return total;
+        return Math.min(total, 126);
+    }
+
+    function siChartDateTickIndices(total, compact, wide) {
+        if (total <= 0) return [];
+        const count = Math.min(total, compact ? 2 : wide ? 5 : 3);
+        if (count === 1) return [0];
+        return Array.from(
+            new Set(Array.from({ length: count }, (_, index) => (
+                Math.round(index * (total - 1) / (count - 1))
+            )))
+        );
+    }
+
+    function siChartPriceScale(values, targetIntervals) {
+        const rawMin = Math.min(...values);
+        const rawMax = Math.max(...values);
+        const rawSpan = Math.max(rawMax - rawMin, Math.abs(rawMax || 1) * 0.005);
+        const paddedMin = rawMin - rawSpan * 0.06;
+        const paddedMax = rawMax + rawSpan * 0.06;
+        const rawStep = (paddedMax - paddedMin) / Math.max(1, targetIntervals);
+        const baseExponent = Math.floor(Math.log10(rawStep));
+        const candidates = [];
+        for (let exponent = baseExponent - 1; exponent <= baseExponent + 1; exponent += 1) {
+            const magnitude = 10 ** exponent;
+            for (const factor of [1, 2, 2.5, 5, 10]) candidates.push(factor * magnitude);
+        }
+        const desiredTicks = Math.max(2, targetIntervals + 1);
+        const evaluated = [...new Set(candidates)].map(step => {
+            const first = Math.ceil((paddedMin - step * 0.001) / step) * step;
+            const last = Math.floor((paddedMax + step * 0.001) / step) * step;
+            const tickCount = last < first ? 0 : Math.floor((last - first) / step + 0.5) + 1;
+            const densityPenalty = tickCount < 2 || tickCount > 7 ? 100 : 0;
+            return {
+                step,
+                score: densityPenalty + Math.abs(tickCount - desiredTicks) + Math.abs(step - rawStep) / rawStep * 0.01,
+            };
+        }).sort((left, right) => left.score - right.score || left.step - right.step);
+        const step = evaluated[0].step;
+        const min = paddedMin;
+        const max = paddedMax;
+        const precision = Math.max(0, -Math.floor(Math.log10(step)) + 1);
+        const ticks = [];
+        const tickMax = Math.floor((max + step * 0.001) / step) * step;
+        for (let value = tickMax; value >= min - step * 0.001; value -= step) {
+            ticks.push(Number(value.toFixed(precision)));
+        }
+        return { min, max, step, ticks };
+    }
+
+    function siChartAxisPrice(value, step) {
+        const decimals = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
+        return `₹${Number(value).toLocaleString("en-IN", {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        })}`;
+    }
+
+    function siChartLongDate(value) {
+        const key = siChartDateKey(value);
+        if (!key) return "—";
+        const date = new Date(`${key}T12:00:00+05:30`);
+        if (Number.isNaN(date.getTime())) return key;
+        return new Intl.DateTimeFormat("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        }).format(date);
+    }
+
+    function siChartAxisZone(level) {
+        if (siChartSameDisplayedPrice(level.lower, level.upper)) return siMoney(level.lower);
+        return `${siMoney(level.lower)}–${siMoney(level.upper).replace("₹", "")}`;
+    }
+
+    function siChartResolveLevelAtY(levels, pointerY, yAt, tolerance = 8) {
+        const candidates = levels.map((level, sourceOrder) => {
+            const first = yAt(level.lower);
+            const second = yAt(level.upper);
+            const top = Math.min(first, second);
+            const bottom = Math.max(first, second);
+            const inside = pointerY >= top && pointerY <= bottom;
+            const distance = inside
+                ? Math.min(Math.abs(pointerY - top), Math.abs(pointerY - bottom))
+                : Math.min(Math.abs(pointerY - top), Math.abs(pointerY - bottom));
+            return { level, sourceOrder, inside, distance };
+        }).filter(candidate => candidate.inside || candidate.distance <= tolerance);
+        candidates.sort((left, right) => left.distance - right.distance || left.sourceOrder - right.sourceOrder);
+        return candidates[0] ? candidates[0].level : null;
+    }
+
+    function siChartInspectionHtml(candle, sma20, sma50) {
+        return `<b class="si-chart-inspection-date">${siChartLongDate(candle.date)}</b>
+            <span class="si-chart-inspection-ohlc"><span>O <b>${siMoney(candle.open)}</b></span><span>H <b>${siMoney(candle.high)}</b></span><span>L <b>${siMoney(candle.low)}</b></span><span>C <b>${siMoney(candle.close)}</b></span></span>
+            <span class="si-chart-inspection-volume">Vol <b>${siInteger(candle.volume)}</b></span>
+            <span class="si-chart-inspection-secondary"><span>SMA20 <b>${sma20 == null ? "—" : siMoney(sma20)}</b></span><span>SMA50 <b>${sma50 == null ? "—" : siMoney(sma50)}</b></span></span>`;
+    }
+
+    function renderSiD1Chart(host, series, d1, windowKey = "6M") {
         if (!host) return;
-        if (!candles.length) {
-            host.innerHTML = "<p class=\"si-empty\">No D1 candles available for charting.</p>";
+        if (siChartOutsidePointerHandler) {
+            document.removeEventListener("pointerdown", siChartOutsidePointerHandler);
+            siChartOutsidePointerHandler = null;
+        }
+        const retainedPersistentLevel = host._siChartPersistentLevelId || null;
+        const card = host.closest(".si-chart-card");
+        const controlsSlot = card && card.querySelector(".si-chart-controls-slot");
+        if (controlsSlot) controlsSlot.innerHTML = "";
+        const prepared = siPrepareD1ChartSeries(series, d1 && d1.latest_session);
+        const allCandles = prepared.candles;
+        host.classList.remove("si-chart-pending");
+        if (!prepared.cutoff) {
+            host.innerHTML = "<p class=\"si-empty\">Completed-D1 chart cutoff is unavailable.</p>";
             return;
         }
-        const width = 720;
-        const height = 360;
-        const margin = { top: 12, right: 56, bottom: 36, left: 12 };
+        if (!allCandles.length) {
+            host.innerHTML = "<p class=\"si-empty\">No valid completed D1 candles available for charting.</p>";
+            return;
+        }
+        const reconciliation = siChartReconciliation(prepared, d1);
+        if (!reconciliation.closeMatches) {
+            host.innerHTML = `<p class="si-empty">D1 chart unavailable: candle close does not reconcile with Stock 360 at ${siText(prepared.cutoff)}.</p>`;
+            return;
+        }
+        const visibleCount = siChartWindowCount(windowKey, allCandles.length);
+        const visibleStart = allCandles.length - visibleCount;
+        const candles = allCandles.slice(visibleStart);
+        const visibleSma20 = prepared.sma20.slice(visibleStart);
+        const visibleSma50 = prepared.sma50.slice(visibleStart);
+        const measuredWidth = Math.round(host.clientWidth || 840);
+        const compact = measuredWidth < 520;
+        const width = Math.max(200, measuredWidth);
+        const height = compact ? 350 : width < 900 ? 420 : 460;
+        const margin = compact
+            ? {
+                top: 12,
+                right: 12,
+                bottom: 34,
+                left: width < 280 ? 32 : 40,
+            }
+            : { top: 18, right: 112, bottom: 28, left: 58 };
         const plotWidth = width - margin.left - margin.right;
-        const priceHeight = 250;
-        const volumeTop = margin.top + priceHeight + 8;
-        const volumeHeight = 34;
-        const highs = candles.map(c => Number(c.high));
-        const lows = candles.map(c => Number(c.low));
-        let minPrice = Math.min(...lows);
-        let maxPrice = Math.max(...highs);
-        const span = Math.max(maxPrice - minPrice, Math.abs(maxPrice || 1) * 0.005);
-        minPrice -= span * 0.08;
-        maxPrice += span * 0.08;
+        const volumeHeight = compact ? 44 : 60;
+        const volumeBottom = height - margin.bottom;
+        const volumeTop = volumeBottom - volumeHeight;
+        const priceHeight = volumeTop - margin.top - (compact ? 14 : 18);
+        const levels = siChartLevels(d1);
+        const plotted20 = reconciliation.sma20Matches === false ? visibleSma20.map(() => null) : visibleSma20;
+        const plotted50 = reconciliation.sma50Matches === false ? visibleSma50.map(() => null) : visibleSma50;
+        const priceValues = [
+            ...candles.flatMap(candle => [candle.low, candle.high]),
+            ...plotted20.filter(value => value != null),
+            ...plotted50.filter(value => value != null),
+            ...levels.flatMap(level => [level.lower, level.upper]),
+        ];
+        const priceScale = siChartPriceScale(priceValues, compact ? 2 : 4);
+        const minPrice = priceScale.min;
+        const maxPrice = priceScale.max;
         const y = price => margin.top + ((maxPrice - Number(price)) / (maxPrice - minPrice)) * priceHeight;
         const slot = plotWidth / candles.length;
-        const bodyWidth = Math.max(2.2, Math.min(8, slot * 0.62));
+        const bodyWidth = Math.max(1.8, Math.min(7, slot * 0.66));
         const xAt = index => margin.left + slot * index + slot / 2;
-        const maxVol = Math.max(...candles.map(c => Number(c.volume) || 0), 1);
-        const bodies = candles.map((c, index) => {
-            const open = Number(c.open);
-            const close = Number(c.close);
+        const maxVol = Math.max(...candles.map(candle => candle.volume), 1);
+        const grid = priceScale.ticks.map(price => {
+            const gridY = y(price);
+            return `<line class="si-chart-grid" x1="${margin.left}" y1="${gridY}" x2="${margin.left + plotWidth}" y2="${gridY}"/>
+                <text class="si-chart-axis" x="${margin.left - (compact ? 4 : 8)}" y="${gridY + 3}" text-anchor="end">${siChartAxisPrice(price, priceScale.step)}</text>`;
+        }).join("");
+        const bodies = candles.map((candle, index) => {
             const x = xAt(index);
-            const up = close >= open;
-            const top = y(Math.max(open, close));
-            const bottom = y(Math.min(open, close));
-            const volH = (Number(c.volume) || 0) / maxVol * volumeHeight;
-            return `<line x1="${x}" y1="${y(c.high)}" x2="${x}" y2="${y(c.low)}" stroke="${up ? "#3dba7e" : "#e15b64"}" stroke-width="1"/>
-                <rect x="${x - bodyWidth / 2}" y="${top}" width="${bodyWidth}" height="${Math.max(1, bottom - top)}" fill="${up ? "#3dba7e" : "#e15b64"}"/>
-                <rect x="${x - bodyWidth / 2}" y="${volumeTop + volumeHeight - volH}" width="${bodyWidth}" height="${volH}" fill="${up ? "#3dba7e55" : "#e15b6455"}"/>`;
+            const up = candle.close >= candle.open;
+            const top = y(Math.max(candle.open, candle.close));
+            const bottom = y(Math.min(candle.open, candle.close));
+            const volH = candle.volume / maxVol * volumeHeight;
+            const tone = up ? "up" : "down";
+            return `<g class="si-chart-candle ${tone}" data-si-candle-index="${index}">
+                <line x1="${x}" y1="${y(candle.high)}" x2="${x}" y2="${y(candle.low)}"/>
+                <rect x="${x - bodyWidth / 2}" y="${top}" width="${bodyWidth}" height="${Math.max(1, bottom - top)}"/>
+                <rect class="si-chart-volume" x="${x - bodyWidth / 2}" y="${volumeTop + volumeHeight - volH}" width="${bodyWidth}" height="${volH}"/>
+            </g>`;
+        }).join("");
+        const levelBands = levels.map(level => {
+            const upperY = y(level.upper);
+            const lowerY = y(level.lower);
+            const hitY = Math.min(upperY, lowerY) - 6;
+            const hitHeight = Math.max(12, Math.abs(lowerY - upperY) + 12);
+            const accessible = `${level.label}, ${siZoneShort(level)}. Source: Portfolio Structural Review. Completed D1.`;
+            if (siChartSameDisplayedPrice(level.lower, level.upper)) {
+                return `<g class="si-chart-level" data-si-level="${level.short}" tabindex="0" role="button" aria-label="${siEscape(accessible)}">
+                    <line class="si-chart-level-emphasis" x1="${margin.left}" y1="${upperY}" x2="${margin.left + plotWidth}" y2="${upperY}"/>
+                    <line class="si-chart-level-line" x1="${margin.left}" y1="${upperY}" x2="${margin.left + plotWidth}" y2="${upperY}"/>
+                    <rect class="si-chart-level-hit" x="${margin.left}" y="${hitY}" width="${plotWidth}" height="${hitHeight}"/>
+                </g>`;
+            }
+            const visualTop = Math.min(upperY, lowerY);
+            const visualHeight = Math.max(6, Math.abs(lowerY - upperY));
+            const visualY = (upperY + lowerY) / 2 - visualHeight / 2;
+            return `<g class="si-chart-level" data-si-level="${level.short}" tabindex="0" role="button" aria-label="${siEscape(accessible)}">
+                <rect class="si-chart-level-emphasis" x="${margin.left}" y="${visualY}" width="${plotWidth}" height="${visualHeight}"/>
+                <rect class="si-chart-level-band" x="${margin.left}" y="${visualTop}" width="${plotWidth}" height="${Math.max(1, Math.abs(lowerY - upperY))}"/>
+                <line class="si-chart-level-edge" x1="${margin.left}" y1="${upperY}" x2="${margin.left + plotWidth}" y2="${upperY}"/>
+                <line class="si-chart-level-edge" x1="${margin.left}" y1="${lowerY}" x2="${margin.left + plotWidth}" y2="${lowerY}"/>
+                <rect class="si-chart-level-hit" x="${margin.left}" y="${hitY}" width="${plotWidth}" height="${hitHeight}"/>
+            </g>`;
         }).join("");
         const last = candles[candles.length - 1];
         const lastY = y(last.close);
-        const zones = [
-            ["S1", d1 && d1.support_1 && d1.support_1.upper],
-            ["MS", d1 && d1.major_support && d1.major_support.upper],
-            ["RT", d1 && d1.review_trigger && d1.review_trigger.lower],
-        ].filter(item => item[1] != null && Number.isFinite(Number(item[1])));
-        const zoneLines = zones.map(([name, px]) => (
-            `<line x1="${margin.left}" y1="${y(px)}" x2="${margin.left + plotWidth}" y2="${y(px)}" stroke="#5b8def88" stroke-dasharray="4 3"/>
-             <text x="${margin.left + plotWidth + 4}" y="${y(px) + 3}" fill="#8aa0c4" font-size="10">${name}</text>`
-        )).join("");
-        host.innerHTML = `<svg class="si-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="D1 candlestick chart">
+        const levelLabels = levels.map(level => {
+            const naturalY = (y(level.lower) + y(level.upper)) / 2;
+            const placement = siChartPlaceLevelTag(
+                naturalY,
+                lastY,
+                margin.top,
+                margin.top + priceHeight
+            );
+            const markerY = placement.labelY;
+            const markerX = margin.left + plotWidth + 7;
+            return `<g class="si-chart-level-tag" data-si-level-tag="${level.short}" aria-hidden="true">
+                <line class="si-chart-level-connector" x1="${margin.left + plotWidth}" y1="${naturalY}" x2="${markerX}" y2="${markerY}"/>
+                <circle class="si-chart-level-anchor" cx="${margin.left + plotWidth}" cy="${naturalY}" r="3"/>
+                <rect class="si-chart-level-label-bg" x="${markerX}" y="${markerY - 12}" width="52" height="24" rx="4"/>
+                <text class="si-chart-level-label" x="${markerX + 26}" y="${markerY + 4}" text-anchor="middle">${level.short}</text>
+            </g>`;
+        }).join("");
+        const sma20Path = siChartPath(plotted20, xAt, y);
+        const sma50Path = siChartPath(plotted50, xAt, y);
+        const dateTickIndices = siChartDateTickIndices(candles.length, compact, width >= 1180);
+        const dateLabels = dateTickIndices.map((index, tickIndex) => {
+            const anchor = tickIndex === 0 ? "start" : tickIndex === dateTickIndices.length - 1 ? "end" : "middle";
+            return `<text class="si-chart-axis si-chart-date-axis" x="${xAt(index)}" y="${height - 8}" text-anchor="${anchor}">${candles[index].date}</text>`;
+        }).join("");
+        const notes = [];
+        if (prepared.excludedAfterCutoff) notes.push(`${prepared.excludedAfterCutoff} later/current-session row(s) excluded`);
+        if (prepared.invalidCount) notes.push(`${prepared.invalidCount} invalid row(s) excluded`);
+        if (reconciliation.sma20Matches === false || reconciliation.sma50Matches === false) {
+            notes.push("SMA overlay hidden: final value did not reconcile with Stock 360");
+        } else if ((reconciliation.final20 != null && reconciliation.sma20Matches == null) || (reconciliation.final50 != null && reconciliation.sma50Matches == null)) {
+            notes.push("SMA plotted from completed-D1 closes; Stock 360 comparison value unavailable");
+        }
+        const legend20 = reconciliation.sma20Matches === false ? "COHERENCE UNAVAILABLE" : reconciliation.final20 == null ? `Unavailable (${candles.length}/20 closes)` : siMoney(reconciliation.final20);
+        const legend50 = reconciliation.sma50Matches === false ? "COHERENCE UNAVAILABLE" : reconciliation.final50 == null ? `Unavailable (${candles.length}/50 closes)` : siMoney(reconciliation.final50);
+        const subtitle = card && card.querySelector(".si-chart-subtitle");
+        if (subtitle) {
+            subtitle.textContent = `Through ${siChartLongDate(last.date)} · ${candles.length} shown`;
+        }
+        if (controlsSlot) {
+            controlsSlot.innerHTML = `<div class="si-chart-controls">
+                <div class="si-chart-window" role="group" aria-label="Visible completed-D1 window">
+                    ${["3M", "6M", "ALL"].map(key => `<button type="button" data-si-chart-window="${key}" aria-pressed="${key === windowKey ? "true" : "false"}" class="${key === windowKey ? "active" : ""}">${key === "ALL" ? "All" : key}</button>`).join("")}
+                </div>
+                ${levels.length ? `<div class="si-chart-level-control">
+                    <button type="button" class="si-chart-level-toggle" aria-expanded="false" aria-haspopup="listbox" aria-controls="si-chart-level-menu" title="Browse approved structural levels"><span>Levels</span><b>${levels.length}</b><i aria-hidden="true">⌄</i></button>
+                    <div class="si-chart-level-menu" id="si-chart-level-menu" role="listbox" aria-label="Approved structural levels" hidden>
+                        ${levels.map(level => `<button type="button" role="option" aria-selected="false" data-si-level-choice="${level.short}" aria-label="${siEscape(`${level.label}, ${siZoneShort(level)}. Source: Portfolio Structural Review.`)}"><span>${siEscape(level.label)}</span><b>${siEscape(siChartAxisZone(level))}</b></button>`).join("")}
+                    </div>
+                </div>` : ""}
+            </div>`;
+        }
+        host.innerHTML = `<div class="si-chart-toolbar" aria-label="Chart legend">
+            <span class="si-chart-legend-item sma20"><i aria-hidden="true"></i><b>SMA20</b> ${legend20}</span>
+            <span class="si-chart-legend-item sma50"><i aria-hidden="true"></i><b>SMA50</b> ${legend50}</span>
+            <span class="si-chart-legend-item close"><i aria-hidden="true"></i><b>Completed D1</b> ${siMoney(last.close)}</span>
+        </div>
+        <div class="si-chart-stage">
+            <div class="si-chart-inspection" id="si-chart-inspection" aria-live="polite">${siChartInspectionHtml(last, reconciliation.sma20Matches === false ? null : reconciliation.final20, reconciliation.sma50Matches === false ? null : reconciliation.final50)}</div>
+            <div class="si-chart-level-inspection" id="si-chart-level-inspection" aria-live="polite" hidden></div>
+            <svg class="si-chart" style="--si-chart-height:${height}px" viewBox="0 0 ${width} ${height}" tabindex="0" role="group" aria-label="Completed D1 candlestick chart from ${siEscape(candles[0].date)} through ${siEscape(last.date)}. ${levels.length} approved structural levels are available. Use Left and Right arrow keys to inspect sessions." aria-describedby="si-chart-inspection">
+            ${grid}
+            ${levelBands}
             ${bodies}
-            <line x1="${margin.left}" y1="${lastY}" x2="${margin.left + plotWidth}" y2="${lastY}" stroke="#d7deea" stroke-dasharray="2 4"/>
-            ${zoneLines}
-            <text x="${margin.left}" y="${height - 8}" fill="#8aa0c4" font-size="10">LAST COMPLETED D1 · ${siEscape(String(last.ts_open || last.ts || "").slice(0, 10))}</text>
-        </svg>`;
+            ${sma20Path ? `<path class="si-chart-sma20" d="${sma20Path}"/>` : ""}
+            ${sma50Path ? `<path class="si-chart-sma50" d="${sma50Path}"/>` : ""}
+            <line class="si-chart-close-line" x1="${margin.left + plotWidth - (compact ? 34 : 52)}" y1="${lastY}" x2="${margin.left + plotWidth}" y2="${lastY}"/>
+            <g class="si-chart-close-tag" aria-label="Completed D1 close ${siMoney(last.close)}">
+                <line x1="${margin.left + plotWidth}" y1="${lastY}" x2="${margin.left + plotWidth + (compact ? 0 : 7)}" y2="${lastY}"/>
+                <rect x="${compact ? margin.left + plotWidth - 48 : margin.left + plotWidth + 7}" y="${lastY - 9}" width="${compact ? 48 : 88}" height="18" rx="3"/>
+                <text x="${compact ? margin.left + plotWidth - 24 : margin.left + plotWidth + 51}" y="${lastY + 3}" text-anchor="middle">D1 · ${compact ? Math.round(last.close).toLocaleString("en-IN") : siMoney(last.close)}</text>
+            </g>
+            <line class="si-chart-crosshair" x1="${xAt(candles.length - 1)}" y1="${margin.top}" x2="${xAt(candles.length - 1)}" y2="${volumeTop + volumeHeight}"/>
+            ${levelLabels}
+            <line class="si-chart-pane-separator" x1="${margin.left}" y1="${volumeTop - 9}" x2="${margin.left + plotWidth}" y2="${volumeTop - 9}"/>
+            <line class="si-chart-volume-baseline" x1="${margin.left}" y1="${volumeTop + volumeHeight}" x2="${margin.left + plotWidth}" y2="${volumeTop + volumeHeight}"/>
+            <text class="si-chart-volume-label" x="${margin.left}" y="${volumeTop - 3}">VOLUME</text>
+            ${dateLabels}
+            </svg>
+        </div>
+        ${notes.length ? `<p class="si-chart-note">${siEscape(notes.join(" · "))}</p>` : ""}`;
+        const svg = host.querySelector("svg.si-chart");
+        const crosshair = svg && svg.querySelector(".si-chart-crosshair");
+        const inspection = host.querySelector(".si-chart-inspection");
+        const levelInspection = host.querySelector(".si-chart-level-inspection");
+        const levelToggle = controlsSlot && controlsSlot.querySelector(".si-chart-level-toggle");
+        const levelMenu = controlsSlot && controlsSlot.querySelector(".si-chart-level-menu");
+        let selectedIndex = candles.length - 1;
+        const levelInteraction = siChartCreateLevelInteraction(
+            levels.map(level => level.short),
+            retainedPersistentLevel
+        );
+        const selectIndex = value => {
+            selectedIndex = Math.max(0, Math.min(candles.length - 1, value));
+            const selectedX = xAt(selectedIndex);
+            if (crosshair) {
+                crosshair.setAttribute("x1", selectedX);
+                crosshair.setAttribute("x2", selectedX);
+            }
+            if (inspection) {
+                inspection.innerHTML = siChartInspectionHtml(
+                    candles[selectedIndex],
+                    reconciliation.sma20Matches === false ? null : visibleSma20[selectedIndex],
+                    reconciliation.sma50Matches === false ? null : visibleSma50[selectedIndex]
+                );
+            }
+            svg?.querySelectorAll(".si-chart-candle").forEach((candle, index) => {
+                candle.classList.toggle("is-selected", index === selectedIndex);
+            });
+            if (inspection && !compact) {
+                inspection.style.left = `${selectedX + 12}px`;
+                inspection.classList.toggle("place-left", selectedX > margin.left + plotWidth * 0.64);
+            }
+        };
+        const syncActiveLevel = () => {
+            const state = levelInteraction.snapshot();
+            const level = levels.find(item => item.short === state.activeLevelId) || null;
+            host.classList.toggle("is-level-active", Boolean(level));
+            host.classList.toggle(
+                "is-level-pinned",
+                Boolean(level && state.persistentLevelId === state.activeLevelId && !state.transientLevelId)
+            );
+            svg?.querySelectorAll(".si-chart-level").forEach(element => {
+                element.classList.toggle("is-inspected", element.getAttribute("data-si-level") === state.activeLevelId);
+            });
+            host.querySelectorAll(".si-chart-level-tag").forEach(element => {
+                element.classList.toggle(
+                    "is-inspected",
+                    !compact && element.getAttribute("data-si-level-tag") === state.activeLevelId
+                );
+            });
+            levelMenu?.querySelectorAll("[data-si-level-choice]").forEach(element => {
+                const short = element.getAttribute("data-si-level-choice");
+                const active = short === state.activeLevelId;
+                const selected = short === state.persistentLevelId;
+                element.classList.toggle("active", active);
+                element.classList.toggle("is-selected", selected);
+                element.setAttribute("aria-selected", selected ? "true" : "false");
+            });
+            host._siChartPersistentLevelId = state.persistentLevelId;
+            if (!levelInspection) return;
+            const compactMenuPreview = compact
+                && Boolean(state.transientSource && state.transientSource.startsWith("menu"));
+            levelInspection.hidden = !level || compactMenuPreview;
+            levelInspection.classList.toggle(
+                "place-low",
+                Boolean(level && (y(level.lower) + y(level.upper)) / 2 < margin.top + priceHeight / 2)
+            );
+            levelInspection.innerHTML = level
+                ? `<b>${siEscape(level.label)}</b><span>${siZoneShort(level)}</span><small>Portfolio Structural Review</small><small>Completed D1</small>`
+                : "";
+        };
+        const previewLevel = (short, source) => {
+            levelInteraction.preview(short, source);
+            syncActiveLevel();
+        };
+        const clearLevelPreview = source => {
+            levelInteraction.clearPreview(source);
+            syncActiveLevel();
+        };
+        const selectLevel = (short, source) => {
+            levelInteraction.select(short, source);
+            syncActiveLevel();
+        };
+        const clearAllLevels = () => {
+            levelInteraction.clearAll();
+            syncActiveLevel();
+        };
+        const closeLevelMenu = () => {
+            if (!levelToggle || !levelMenu) return;
+            levelToggle.setAttribute("aria-expanded", "false");
+            levelMenu.hidden = true;
+            host.classList.remove("is-level-menu-open");
+            const state = levelInteraction.snapshot();
+            if (state.transientSource && state.transientSource.startsWith("menu")) {
+                levelInteraction.clearPreview(state.transientSource);
+                syncActiveLevel();
+            }
+        };
+        if (svg) {
+            let pinnedCandle = false;
+            const setCandleInspectionActive = active => {
+                host.classList.toggle("is-candle-active", active);
+            };
+            const inspectPointer = event => {
+                const bounds = svg.getBoundingClientRect();
+                if (!bounds.width) return;
+                const viewX = (event.clientX - bounds.left) * width / bounds.width;
+                selectIndex(Math.round((viewX - margin.left - slot / 2) / slot));
+                setCandleInspectionActive(true);
+            };
+            const pointerLevel = event => {
+                const bounds = svg.getBoundingClientRect();
+                if (!bounds.height) return null;
+                const viewY = (event.clientY - bounds.top) * height / bounds.height;
+                return siChartResolveLevelAtY(levels, viewY, y, compact ? 9 : 7);
+            };
+            svg.addEventListener("pointerdown", event => {
+                const level = pointerLevel(event);
+                svg.classList.toggle("is-level-hover", Boolean(level));
+                if (level) {
+                    event.preventDefault();
+                    pinnedCandle = false;
+                    setCandleInspectionActive(false);
+                    selectLevel(level.short, event.pointerType === "mouse" ? "chart-click" : "touch");
+                    closeLevelMenu();
+                    return;
+                }
+                clearAllLevels();
+                closeLevelMenu();
+                pinnedCandle = true;
+                inspectPointer(event);
+            });
+            svg.addEventListener("pointermove", event => {
+                if (event.pointerType !== "mouse") return;
+                const level = pointerLevel(event);
+                if (level) {
+                    setCandleInspectionActive(false);
+                    previewLevel(level.short, "chart-hover");
+                } else {
+                    clearLevelPreview("chart-hover");
+                    inspectPointer(event);
+                }
+            });
+            svg.addEventListener("pointerleave", () => {
+                svg.classList.remove("is-level-hover");
+                clearLevelPreview("chart-hover");
+                if (!pinnedCandle && document.activeElement !== svg) setCandleInspectionActive(false);
+            });
+            svg.addEventListener("focus", () => {
+                selectIndex(selectedIndex);
+                setCandleInspectionActive(true);
+            });
+            svg.addEventListener("blur", () => {
+                if (!pinnedCandle) setCandleInspectionActive(false);
+            });
+            svg.addEventListener("keydown", event => {
+                if (event.key === "Escape") {
+                    pinnedCandle = false;
+                    setCandleInspectionActive(false);
+                    clearAllLevels();
+                    closeLevelMenu();
+                    return;
+                }
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                setCandleInspectionActive(true);
+                if (event.key === "Home") selectIndex(0);
+                else if (event.key === "End") selectIndex(candles.length - 1);
+                else selectIndex(selectedIndex + (event.key === "ArrowLeft" ? -1 : 1));
+            });
+            svg.querySelectorAll(".si-chart-level").forEach(element => {
+                const short = element.getAttribute("data-si-level");
+                element.addEventListener("focus", () => previewLevel(short, "level-focus"));
+                element.addEventListener("blur", () => clearLevelPreview("level-focus"));
+                element.addEventListener("keydown", event => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        selectLevel(short, "keyboard");
+                    } else if (event.key === "Escape") {
+                        event.preventDefault();
+                        clearAllLevels();
+                    }
+                });
+            });
+        }
+        controlsSlot?.querySelectorAll("[data-si-chart-window]").forEach(button => {
+            button.addEventListener("click", () => {
+                const nextWindow = button.getAttribute("data-si-chart-window") || "6M";
+                renderSiD1Chart(host, series, d1, nextWindow);
+            });
+        });
+        if (levelToggle && levelMenu) {
+            levelToggle.addEventListener("click", () => {
+                const expanded = levelToggle.getAttribute("aria-expanded") !== "true";
+                levelToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+                levelMenu.hidden = !expanded;
+                host.classList.toggle("is-level-menu-open", expanded);
+                if (!expanded) closeLevelMenu();
+                if (expanded) {
+                    const selected = levelInteraction.snapshot().persistentLevelId;
+                    const target = selected
+                        ? levelMenu.querySelector(`[data-si-level-choice="${selected}"]`)
+                        : levelMenu.querySelector("[data-si-level-choice]");
+                    target?.focus();
+                }
+            });
+            levelMenu.querySelectorAll("[data-si-level-choice]").forEach(button => {
+                const short = button.getAttribute("data-si-level-choice");
+                button.addEventListener("pointerenter", () => previewLevel(short, "menu-hover"));
+                button.addEventListener("pointerleave", () => clearLevelPreview("menu-hover"));
+                button.addEventListener("focus", () => previewLevel(short, "menu-focus"));
+                button.addEventListener("blur", () => clearLevelPreview("menu-focus"));
+                button.addEventListener("click", () => {
+                    selectLevel(short, "menu-selection");
+                    if (compact) closeLevelMenu();
+                });
+            });
+            levelMenu.addEventListener("keydown", event => {
+                if (event.key !== "Escape") return;
+                event.preventDefault();
+                clearAllLevels();
+                closeLevelMenu();
+                levelToggle.focus();
+            });
+            levelMenu.addEventListener("focusout", event => {
+                if (!levelMenu.contains(event.relatedTarget) && event.relatedTarget !== levelToggle) closeLevelMenu();
+            });
+        }
+        syncActiveLevel();
+        siChartOutsidePointerHandler = event => {
+            if (card && card.contains(event.target)) return;
+            closeLevelMenu();
+        };
+        document.addEventListener("pointerdown", siChartOutsidePointerHandler);
+        host._siChartWindowKey = windowKey;
+        host._siChartRenderWidth = measuredWidth;
+        if (!host._siChartResizeObserver && typeof ResizeObserver !== "undefined") {
+            host._siChartResizeObserver = new ResizeObserver(entries => {
+                const nextWidth = Math.round(entries[0] && entries[0].contentRect.width || 0);
+                if (!nextWidth || Math.abs(nextWidth - host._siChartRenderWidth) < 2) return;
+                requestAnimationFrame(() => renderSiD1Chart(
+                    host,
+                    series,
+                    d1,
+                    host._siChartWindowKey || "6M"
+                ));
+            });
+            host._siChartResizeObserver.observe(host);
+        }
     }
 
     async function loadSiD1Chart(instrumentId, d1, generation) {

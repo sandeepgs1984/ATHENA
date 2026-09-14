@@ -130,9 +130,9 @@ def test_si_p2b_p2a_request_lifecycle_untouched() -> None:
 def test_si_p2b_asset_cache_pin() -> None:
     html = HTML.read_text(encoding="utf-8")
     css = (STATIC / "dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.244.0" in html
-    assert "dashboard.js?v=9.244.0" in html
-    assert "css/15-symbol-intelligence.css?v=9.244.0" in css
+    assert "dashboard.css?v=9.250.0" in html
+    assert "dashboard.js?v=9.250.0" in html
+    assert "css/15-symbol-intelligence.css?v=9.250.0" in css
 
 
 def _finite(value: object) -> float | None:
@@ -370,4 +370,3 @@ process.stdout.write(JSON.stringify(cases));
     assert observed["trade"] == "No Trade"
     assert observed["plan"] == "No Plan"
     assert observed["explain"] == "Pass — Score 35.0 / 100 is below the watch level (50.0)."
-

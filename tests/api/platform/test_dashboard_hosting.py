@@ -357,8 +357,8 @@ def test_dashboard_modals_are_inert_outside_tab_flow(client: TestClient) -> None
     assert ".chart-modal-container .modal-body" in css
     assert "overflow: hidden" in css
     assert ".chart-modal-canvas .decision-chart-shell" in css
-    assert "dashboard.css?v=9.244.0" in html
-    assert "dashboard.js?v=9.244.0" in html
+    assert "dashboard.css?v=9.250.0" in html
+    assert "dashboard.js?v=9.250.0" in html
     assert "function decisionConfidenceBand" in js
     assert "analysis?.confidence_level" in js
     assert "confidence reflects evidence reliability, not expected profit" in js
@@ -3242,7 +3242,6 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     # overlay are gone entirely, replaced by a pure-CSS rail.
     assert 'id="dag-svg-lines"' not in html
     assert "class=\"dag-svg-overlay\"" not in html
-    assert "new ResizeObserver" not in js
     assert "function drawDAGLines" not in js
     assert "dagSvgLines" not in js
     assert ".dag-node-rail" in css
@@ -3251,6 +3250,7 @@ def test_my_portfolio_dashboard_tab_contract(client: TestClient) -> None:
     render_trace_dag_start = js.find("function renderTraceDAG(trace)")
     render_trace_dag_end = js.find("\n    function ", render_trace_dag_start + 1)
     render_trace_dag_body = js[render_trace_dag_start:render_trace_dag_end]
+    assert "new ResizeObserver" not in render_trace_dag_body
     assert "dag-node-rail" in render_trace_dag_body
     assert "dag-node-icon-wrap" in render_trace_dag_body
     assert "dag-node-body" in render_trace_dag_body

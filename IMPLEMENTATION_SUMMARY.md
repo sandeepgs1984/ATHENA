@@ -6,6 +6,130 @@ status updated on approval.
 
 ---
 
+## SI-P2C — Completed-D1 chart intelligence
+
+**Authorization/objective.** Owner/Chief Architect authorized SI-P2C on
+2026-09-13 after SI-P2B COMPLETE AND FROZEN. Turn the existing Stock 360
+completed-D1 candlestick into a useful visualization of already-owned D1
+evidence without introducing methodology, recommendations, providers, or new
+requests. SI-P1/P2A/P2B remain frozen. SI-P2D not started.
+
+**Scope completed.** Added pure frontend SMA20/SMA50 trailing series over the
+existing 180-row persisted D1 payload, with `d1.latest_session` as the
+authoritative cutoff and final display-precision reconciliation against frozen
+Stock 360 values. Added exact coherent/provenanced S1/MS/RT/T1/T2/T3 zone bands,
+completed-D1 close marker, faithful price grid, denser volume pane, actual
+rendered range, deterministic label collision avoidance with leaders, compact
+legend, 3M/6M/All visible windows calculated only after full-history SMA,
+detail-on-demand level disclosure, pointer/tap inspection, keyboard
+Left/Right/Home/End/Escape inspection, and actual-host-width responsive
+geometry. No midpoint, live quote,
+current-session candle, historical SuperTrend, signal, or new level.
+
+**Files created.** `docs/research/SI-P2C-CHART-INTELLIGENCE-DISCOVERY.md`;
+`docs/research/SI-P2C-CHART-INTELLIGENCE-IMPLEMENTATION.md`;
+`docs/research/si-p2c-world-class-chart-closure/` evidence;
+`docs/research/si-p2c-final-interaction-closure/` evidence;
+`tests/symbol_intelligence/test_si_p2c_chart_intelligence.py`.
+**Files modified.** SI JS/CSS; dashboard asset pin `9.250.0`; P2A/P2B,
+dashboard-hosting, and chart release-gate pins; `docs/MILESTONES.md`;
+`ATHENA_BRIEFING.md` §6; this log. No Python production, API, DTO, schema,
+composer, hydration, Decision, Portfolio, or DarvaX files changed.
+
+**Tests/coverage.** Behavioral Node coverage for 19/20 and 49/50 SMA
+thresholds, rolling arithmetic, future/current/invalid row exclusion,
+close/SMA reconciliation and fail-closed mismatch, structural lineage, exact
+zone boundaries, collision layout without coordinate mutation, full-history
+SMA preservation across 3M/6M/All views, idle-hidden detail, level disclosure,
+one-request lifecycle, invalid no-host, responsive geometry, and asset pins.
+Focused P2C refinement: **19 passed**; final integrated SI/API/hosting/chart:
+**55 passed**; full suite: **4078 passed, 0 failed, 2 skipped**. Ruff, scoped
+mypy, Node syntax, real-browser assertions, and diff-check passed.
+
+**Compliance/risks/debt.** Presentation-only implementation under ATHENA-002;
+no ADR required. The chart and Stock 360 read the same canonical D1 ledger;
+the bundle's completed-session cutoff prevents a later generic candle read
+from admitting a future/current row. WIPRO reconciled ₹176.77/₹178.71 and TI
+₹556.74/₹504.25 exactly. Real TI desktop and ~390px checks confirmed readable
+S1/MS and RT/T1 collisions without moved price coordinates; WIPRO/TI narrow
+checks showed stable inspection without overflow; keyboard inspection advanced
+between real sessions correctly. At 20–49 rows, SMA20 may plot while
+the frozen trend adapter has no comparison value until 50; the chart discloses
+that state. Historical SuperTrend and zoom/pan remain unavailable/deferred.
+
+**Final interaction refinement.** Removed `9.246.0`'s all-tags mode. The
+counted Levels control now opens a complete read-only exact-zone list; chart
+hover/focus/tap/list selection activates exactly one level and one contextual
+axis marker. A pure geometric resolver handles close/overlapping zones without
+semantic ranking, while keyboard focus retains each zone as a distinct item.
+Header/control rhythm, legend weight, plot margins, grid, D1 axis attachment,
+dynamic candle/level inspectors, and 390px list/detail behavior were polished
+on asset `9.247.0`. Live WIPRO and TI evidence is retained under
+`docs/research/si-p2c-level-interaction-polish/`.
+
+**Screenshot-driven world-class closure.** Asset `9.248.0` removes the
+wide-screen proportional SVG enlargement that caused an oversized chart,
+labels, markers, and empty vertical space. Desktop now renders at actual host
+width with a capped 460px plot and resize recomposition; a deterministic nice
+price scale produces clean ticks without clipping true data; wide charts use
+five adaptive date anchors; volume and time-axis spacing is compact. The D1
+marker is a restrained dark gutter tag. Inactive structural edges recede;
+level-menu browsing highlights geometry without a duplicate tag, while direct
+chart inspection shows one compact gutter annotation and no detached desktop
+detail card. Candle inspection stays close to the selected session with a
+subtle crosshair and local candle emphasis. Real-browser WIPRO gates at 1579px
+and a constrained 390px workspace passed with zero page errors/overflow; final
+evidence is retained under
+`docs/research/si-p2c-world-class-chart-closure/`.
+
+**Final owner-requested chart correction.** Asset `9.249.0` enlarges the sole
+contextual level tag to 150×24 with 11px type, adds a presentation-only active
+halo while preserving exact zone geometry, distinguishes transient inspection
+from persistent touch/keyboard/menu selection, and separates range hover,
+focus, and selected states. Live browser checks prove exactly one selected
+3M/6M/All control with 63/126/180 sessions, zero overflow/page errors, and one
+active level annotation. Historical SuperTrend remains unimplemented because
+the frozen bundle exposes no coherent historical series; no frontend proxy was
+fabricated.
+
+**Final interaction/collision/mobile closure.** Asset `9.250.0` separates
+persistent selection from transient preview through one production-used pure
+state owner; mouse/touch/keyboard/menu selection pins exactly one level, while
+hover/focus preview restores that selection on exit. Production now invokes a
+tested D1-aware tag placer that fixes D1 and displaces only a colliding
+structural tag with a true-anchor leader. Desktop gains a full
+name/value/provenance inspector and synchronized selected-vs-preview list
+states. Narrow disclosure is in-flow and card-width, collapses into a stable
+selected-level inspector, and recovers plot width from 138/208 to 176/220 SVG
+units (27.5%, with no global-rail change). Desktop reserve tightens 166→112;
+the scale uses bounded exact padding plus candidate nice ticks; halo and candle
+inspection hierarchy are refined. Twelve live real-WIPRO states are retained
+under `docs/research/si-p2c-final-interaction-closure/`. No methodology,
+request, API, DTO, Portfolio, Decision, DarvaX, or persisted-data change.
+
+**Owner closure.** Owner / Chief Architect source, interaction, collision, and
+mobile review passed on 2026-09-14. The final desktop candle-inspection evidence
+was recaptured from a clean structural-selection state and visibly contains
+date, OHLC, volume, SMA20, and SMA50 with no structural inspector remaining.
+SI-P2C is **COMPLETE AND FROZEN** on asset `9.250.0`.
+
+**Remaining work.** None within SI-P2C. Do not start SI-P2D, SI-P2E, SI-F0, or
+SI-N0 without separate authorization.
+
+**Consolidated commit message.**
+
+```text
+feat(review): complete SI-P2C chart intelligence
+
+- Plot PIT-safe completed-D1 candles, volume, and reconciled SMA20/SMA50 series.
+- Add exact structural zones, accessible level selection, and responsive inspection.
+- Resolve D1 tag collisions and persistent/transient interaction state.
+- Preserve one request and all frozen SI, Portfolio, and Decision contracts.
+- Record approved desktop/mobile evidence and freeze asset 9.250.0.
+```
+
+---
+
 ## SI-P2B — Stock 360 research workspace
 
 **Authorization/objective.** Owner/Chief Architect authorized SI-P2B
