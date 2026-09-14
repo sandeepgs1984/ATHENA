@@ -43,7 +43,8 @@ def test_si_p2b_duplicate_company_name_suppressed() -> None:
 def test_si_p2b_independent_structure_no_blend() -> None:
     js = _js()
     assert "Daily SMA structure" in js
-    assert "SuperTrend (10,3)" in js
+    assert "function siSuperTrendLabel(value)" in js
+    assert "`SuperTrend ${st}`" in js
     assert "function siSummaryStructure(d1, reportedMissing)" in js
     assert "the two measurements disagree" in js
     assert "Overall Trend" not in js
@@ -54,7 +55,7 @@ def test_si_p2b_independent_structure_no_blend() -> None:
 
 def test_si_p2b_rsi_volume_levels_and_omit_empty_targets() -> None:
     js = _js()
-    assert 'siSignalChip("rsi", "RSI (14)", siRsi(d1.rsi14), "")' in js
+    assert 'siSignalChip("rsi", "Momentum · RSI (14)", siRsi(d1.rsi14), "")' in js
     assert "const volumeLabel = siVolumeVsMa20(d1);" in js
     assert 'Number(d1.volume) >= Number(d1.volume_ma20) ? "Above MA20" : "Below MA20"' in js
     assert 'addZone("support", "Support 1"' in js
@@ -100,14 +101,145 @@ def test_si_p2b_invalid_symbol_omits_chart_loading_host() -> None:
     assert "if (!identity || !identity.resolved)" in chart_fn
     assert 'return "";' in chart_fn
     render = js[js.index("function renderSymbolIntelligence") : js.index("function siErrorText")]
-    assert "siChartBlock(identity, d1)" in render
+    assert "siChartBlock(identity, d1, bundle)" in render
     assert "identity.resolved && identity.instrument_id && d1.present" in render
     assert "Loading D1 chart…" in chart_fn
     css = CSS.read_text(encoding="utf-8")
     assert ".si-chart-host.si-chart-pending" in css
-    assert ".si-scan-strip" in css
+    assert ".si-chart-glance" in css
     assert "flex-shrink: 0" in css
     assert "@media (max-width: 720px)" in css
+
+
+def test_si_p2b1_empty_search_and_invalid_states_are_distinct() -> None:
+    html = HTML.read_text(encoding="utf-8")
+    js = _js()
+    css = CSS.read_text(encoding="utf-8")
+    render = js[js.index("function renderSymbolIntelligence") : js.index("function siErrorText")]
+
+    assert 'class="si-workspace-state is-empty"' in html
+    assert "Research any NSE/BSE symbol" in html
+    assert 'data-si-example="NSE:INFY"' in html
+    assert "function siWorkspaceState(kind, title, detail)" in js
+    assert '"Enter a symbol to continue"' in js
+    assert '"Symbol not found"' in render
+    assert "if (!identity.resolved)" in render
+    assert render.index("if (!identity.resolved)") < render.index("identityEl.innerHTML = siHeader(bundle)")
+    assert "No matching instruments" in js
+    assert "Check the ticker, or try the canonical format NSE:INFY." in js
+    assert ".si-workspace-state.is-invalid" in css
+    assert ".si-search-no-results" in css
+
+
+def test_si_p2b1_header_date_nav_and_price_map_polish() -> None:
+    html = HTML.read_text(encoding="utf-8")
+    js = _js()
+    css = CSS.read_text(encoding="utf-8")
+
+    assert "Load reads persisted evidence. Analyze refreshes stale D1" in html
+    assert "function siQuoteCaption(live, d1)" in js
+    assert '["LAST CLOSE", session === "—" ? "" : session, siEscape(market)]' in js
+    assert 'const months = ["Jan", "Feb", "Mar"' in js
+    assert 'tabindex="0" aria-label=' in js
+    assert ".si-section-nav.is-stuck" in css
+    assert ".si-price-map .si-ladder-point:hover .si-ladder-card" in css
+    assert ".si-price-map .si-ladder-value" in css
+
+
+def test_si_p2b1_reference_closure_composition_and_copy() -> None:
+    html = HTML.read_text(encoding="utf-8")
+    js = _js()
+    css = CSS.read_text(encoding="utf-8")
+    render = js[js.index("function renderSymbolIntelligence") : js.index("function siErrorText")]
+
+    toolbar = html.index('class="si-toolbar"')
+    toolbar_home = html.index('id="si-toolbar-home"')
+    identity = html.index('id="si-identity"')
+    nav = html.index('class="si-section-nav"')
+    bundle = html.index('id="si-bundle"')
+    assert toolbar < toolbar_home < identity < nav < bundle
+
+    chart = render.index("siChartBlock(identity, d1, bundle)")
+    primary = render.index('class="si-360-row si-360-row-primary"')
+    secondary = render.index('class="si-360-row si-360-row-secondary"')
+    footer = render.index("siStock360Footer()")
+    assert chart < primary < secondary < footer
+    assert render.index("siCompleteReview(bundle)", primary) < render.index(
+        "siPortfolioCard(bundle.portfolio)", primary
+    ) < render.index("siAvailabilityChips(bundle)", primary)
+    assert render.index("siLevelsCard(d1)", secondary) < render.index(
+        "siAthenaView(bundle.decision)", secondary
+    ) < render.index("siDarvaxOverview(bundle.darvax)", secondary)
+
+    assert "function siChartGlancePanel(bundle)" in js
+    assert '"Trend"' in js
+    assert '"SuperTrend (10,3)"' in js
+    assert "d1.supertrend_value" in js
+    assert "superTrendDisplay" in js
+    assert '"Momentum · RSI (14)"' in js
+    assert '"Volume vs MA20"' in js
+    assert "function siScanStrip" not in js
+    assert "Momentum Healthy" not in js
+    assert '<div class="si-review">' in js
+    assert '<div class="si-card si-review">' not in js
+
+    shell = (STATIC / "js/03-app-shell.js").read_text(encoding="utf-8")
+    assert 'window.matchMedia("(min-width: 1181px)")' in shell
+    assert "function syncSymbolIntelligenceToolbar" in shell
+    assert "consoleHeader.insertBefore(toolbar, headerRight)" in shell
+    assert "toolbarHome.after(toolbar)" in shell
+
+    assert 'id="page-subtitle"' in html
+    assert "Deep Insights. Smarter Decisions." in (STATIC / "js/03-app-shell.js").read_text(
+        encoding="utf-8"
+    )
+    assert "Better information. Better decisions. A better you." in js
+    assert "Symbol Intelligence · Asset 9.274.0" in js
+    assert '.si-id-meta-tag + .si-id-meta-tag::before' in css
+    assert 'content: "|"' in css
+    assert "border-radius: 999px" not in css[css.index(".si-id-meta-tag {") : css.index(".si-id-decorative {")]
+    assert ".si-portfolio-card > .si-pending" in css
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in css
+    assert ".si-identity:not(:empty) + #si-nav-sentinel + .si-section-nav" in css
+    assert """.si-identity:not(:empty) {
+    border: 0;
+    border-radius: 0;
+}""" in css
+    assert """.si-section-nav::before {
+    display: none;
+}""" in css
+    assert """.si-section-nav.is-stuck {
+    border: 0;
+    border-radius: 0;""" in css
+    assert """.si-chart-glance {
+    gap: 2px;
+    border: 0;
+    border-left: 1px solid rgba(115, 146, 184, 0.16);
+    border-radius: 0;""" in css
+    assert "border-color: rgba(112, 143, 180, 0.2);" in css
+    assert ".si-coverage-facts > div::before" in css
+    assert ".si-jump > i" in css
+    assert "new ResizeObserver(requestSync).observe(identity)" in js
+    assert 'id="si-sticky-context"' in html
+    assert "function siSyncStickyContext(bundle)" in js
+    assert ".si-section-nav.is-stuck .si-sticky-context" in css
+    assert "color: #a8b7cc;" in css
+    assert "background: rgba(11, 23, 39, 0.97);" in css
+    assert ".si-section-nav.is-stuck::after" in css
+    assert "height: 12px;" in css
+    assert "background: linear-gradient(180deg, rgba(1, 6, 14, 0.48), transparent);" in css
+    assert "background: linear-gradient(180deg, #0d1421 0%, #0b111c 100%);" in css
+    assert """.si-chart-composition {
+    grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.24fr);
+    gap: 0;
+    overflow: hidden;
+    border-radius: 0;
+    background: transparent;
+}""" in css
+    assert """.si-chart-stage {
+    background: transparent;
+}""" in css
+    assert "padding: 2px 2px 0;" in css
 
 
 def test_si_p2b_p2a_request_lifecycle_untouched() -> None:
@@ -126,9 +258,9 @@ def test_si_p2b_p2a_request_lifecycle_untouched() -> None:
 def test_si_p2b_asset_cache_pin() -> None:
     html = HTML.read_text(encoding="utf-8")
     css = (STATIC / "dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.264.0" in html
-    assert "dashboard.js?v=9.264.0" in html
-    assert "css/15-symbol-intelligence.css?v=9.264.0" in css
+    assert "dashboard.css?v=9.274.0" in html
+    assert "dashboard.js?v=9.274.0" in html
+    assert "css/15-symbol-intelligence.css?v=9.274.0" in css
 
 
 def _finite(value: object) -> float | None:

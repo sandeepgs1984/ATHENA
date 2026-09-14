@@ -32,6 +32,7 @@
     const navItems = document.querySelectorAll(".nav-item");
     const tabPanes = document.querySelectorAll(".tab-pane");
     const pageTitle = document.getElementById("page-title");
+    const pageSubtitle = document.getElementById("page-subtitle");
     const refreshTrigger = document.getElementById("refresh-trigger");
     const healthIndicator = document.getElementById("system-health-indicator");
     const restartServerTrigger = document.getElementById("restart-server-trigger");

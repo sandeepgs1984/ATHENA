@@ -206,7 +206,8 @@ def test_si_p2a_volume_vs_ma20_uses_overview_comparison() -> None:
     assert "const volumeLabel = siVolumeVsMa20(d1);" in js
     assert 'siMetric("Volume vs MA20", siNum(d1.volume_ma20' not in js
     assert "Daily SMA structure" in js
-    assert "SuperTrend (10,3)" in js
+    assert "function siSuperTrendLabel(value)" in js
+    assert "`SuperTrend ${st}`" in js
 
 
 def test_si_p2a_evidence_and_darvax_isolation() -> None:
@@ -233,11 +234,11 @@ def test_si_p2a_dashboard_assets_and_hosted_nav() -> None:
     pane = _si_pane(html)
     assembled = assemble_dashboard_js(str(STATIC))
     css = (STATIC / "dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.264.0" in html
-    assert "dashboard.js?v=9.264.0" in html
+    assert "dashboard.css?v=9.274.0" in html
+    assert "dashboard.js?v=9.274.0" in html
     assert 'data-si-section="stock-360"' in pane
     assert "08c-symbol-intelligence.js" in DASHBOARD_JS_PARTS
     assert "function loadSymbolIntelligence(" in assembled
     assert "siLoadGeneration" in assembled
     assert "siInFlightMode" in assembled
-    assert "css/15-symbol-intelligence.css?v=9.264.0" in css
+    assert "css/15-symbol-intelligence.css?v=9.274.0" in css

@@ -41,12 +41,28 @@ Added a narrow-viewport (<720px) fallback where the ladder becomes a plain
 wrapping card list, since no fixed tier count fits every level count on phone
 width.
 
+The approved follow-up then closed the five remaining reference gaps: promoted
+the chart to the first major Stock 360 content; folded the former scan-strip
+presentation into a compact, truthful
+Trend / RSI Momentum / Volume chart-side panel; grouped Research Brief /
+Portfolio / Capability and Price Map / ATHENA View / DarvaX into the two
+reference-ordered three-card rows; added the Symbol Intelligence header and
+footer taglines with an explicit asset line; and changed identity metadata to
+plain pipe-separated text while retaining a visibly provisional cap-tier
+placeholder. A 1024px collision check exposed an intermediate-width Price Map
+regression, so intermediate screens keep Research Brief and Price Map full
+width with their two peer cards beneath, then use a single-column flow at
+960px and below; wide screens retain the reference's three-column composition.
+
 **Files created.** `docs/research/SI-P2B1-STOCK-360-REFERENCE-REVAMP.md`.
 **Files modified.** `src/athena/api/static/js/08c-symbol-intelligence.js`;
 `src/athena/api/static/css/15-symbol-intelligence.css`;
-`src/athena/api/static/index.html` and `dashboard.css` (asset cache pin
-`9.264.0`); `tests/symbol_intelligence/test_si_p2a_experience.py`,
+`src/athena/api/static/index.html`, `js/00-state-and-dom.js`,
+`js/03-app-shell.js`, and `dashboard.css` (header subtitle wiring and asset
+cache pin `9.274.0`); `tests/symbol_intelligence/test_si_p2a_experience.py`,
 `tests/symbol_intelligence/test_si_p2b_stock_360.py`,
+`tests/symbol_intelligence/test_si_p2c_chart_intelligence.py`,
+`tests/symbol_intelligence/test_si_p2d_written_summary.py`,
 `tests/api/platform/test_dashboard_hosting.py`,
 `tests/api/platform/test_decision_chart_release_gate.py`; `docs/MILESTONES.md`;
 this log. No backend, API, DTO, schema, persistence, Decision, Portfolio, or
@@ -54,7 +70,7 @@ DarvaX file changed; the D1 chart card and app-shell sidebar are untouched.
 
 **Tests/coverage.** `tests/symbol_intelligence/` +
 `tests/api/platform/test_dashboard_hosting.py` +
-`tests/api/platform/test_decision_chart_release_gate.py`: **95 passed**, 1
+`tests/api/platform/test_decision_chart_release_gate.py`: **98 passed**, 1
 pre-existing failure unrelated to this work
 (`test_si_p2e_no_decision_and_invalid_symbol_are_distinct`, owned by the
 concurrent SI-P2E track). Visual verification used an isolated throwaway
@@ -62,10 +78,17 @@ server (scratch config/DB, single-user bypass, never the owner's real
 `db/athena.db`) with synthetic bundles covering sector present/absent,
 portfolio held/not-held, decision present/absent, empty Price Map levels,
 tied Price Map values matching the owner's own reported data, a 7-distinct-
-level case, and 375px mobile width — each state pixel-level collision-checked
-via JavaScript (not just screenshots), confirming zero overlapping label
-cards and every ladder dot sitting exactly on the track. `node --check` and a
-CSS brace-balance check passed after every edit.
+level case, and mobile width. The closure reran pixel-level JavaScript checks
+at 1579px, 1024px, and 390px, confirming zero horizontal overflow, no
+peer-card or Price Map label collisions, correct desktop/tablet marker
+anchoring, chart-before-card-row order, and correct side/below chart panel
+placement. A post-closure round (same day, asset `9.266.0`) then replaced the
+fixed 3-tier stagger — found insufficient against a real owner-reported
+7-level case with 5 levels packed into a narrow band — with
+`siPositionLadderCards`, a runtime greedy width-measurement sweep, re-verified
+against that exact case plus a desktop→mobile→desktop resize round-trip with
+zero collisions in every case. `node --check` and a CSS brace-balance check
+passed after every edit.
 
 **Compliance/risks/debt.** Presentation-only under ATHENA-002's report/render
 boundary; no persisted field added, no methodology invented (the Price Map
@@ -73,33 +96,88 @@ and score-gauge color scales are explicitly documented as positional/
 magnitude-only, never a buy/sell or safety signal, preserving ATHENA's
 no-trading-advice rule). No ADR required. The new Symbol-Intelligence-only
 palette is a deliberate, documented, scoped exception to the shared
-`00-tokens.css` — it does not affect any other dashboard tab.
+`00-tokens.css` — it does not affect any other dashboard tab. The Price Map's
+tier assignment is now runtime-computed rather than baked into a fixed CSS
+class set, matching the reasoning already applied to every other data field
+in this milestone: don't guess a layout from an assumption about the data
+shape, derive it from the data (here, the actual rendered geometry) itself.
+
+The final reference-fidelity pass then moved the search/Analyze controls into
+the desktop header, reordered identity before section navigation, compacted
+the hero and its typography, removed the Research Brief's nested-card frame,
+changed held Portfolio metrics to a 3-by-2 grid, placed Capability badges
+inline, and tightened the two card rows to the reference's proportions. It
+preserved truthful RSI wording, ATHENA-only request/coverage affordances, and
+the frozen SI-P2C chart renderer. The mock's abbreviated chart height is not
+replicated because doing so would change the frozen chart's plotting and
+interaction geometry; this boundary is recorded explicitly rather than hidden
+as a styling omission.
+
+The screenshot-correction pass on `9.268.0` removed desktop helper truncation,
+corrected the sticky navigation's stale inset mask and border/corner blending,
+and replaced raw initial/empty/invalid/no-match/error strings with distinct
+premium states. Unresolved identities no longer render through the valid hero.
+Valid identity dates and the completed-session caption now match the reference
+format. Price Map cards retain their exact values and measured collision
+placement while gaining explicit high-contrast values, category borders, and
+hover/keyboard-focus emphasis.
+
+The integrated-shell pass on `9.269.0` visually joins the valid identity hero
+and section navigation in normal flow while giving sticky mode a complete,
+unbroken independent outline. The chart-side evidence panel now includes the
+already-persisted coherent SuperTrend direction and optional exact value;
+existing chart-legend evidence is not duplicated. Action buttons now use
+consistent icon/text geometry, and the former boxed coverage banner is a quiet
+status rail with colored dots and one divider. No evidence or methodology was
+added or changed.
+
+The owner-directed borderless-shell correction on `9.270.0` removes the hero
+and navigation perimeter/radii entirely. Normal flow is one flat header band
+with a restrained internal divider; sticky navigation remains opaque and
+square-edged with only a soft lower shadow, eliminating the doubled outline
+and competing rounded chart corners visible in the owner's scrolled capture.
+Automated normal/sticky geometry passes at 1579/1024/390px.
+
+The final atmospheric-shell pass on `9.271.0` makes the hero transparent to
+the workspace and removes its redundant top inset, removes every sticky-nav
+divider/perimeter, replaces the chart-glance box with one faint separator,
+and lowers major-card border/background intensity. The page now relies on
+spacing, typography, and restrained tonal surfaces instead of nested outlines.
+The same gate found sticky state initialized before the hero populated and
+remained stale at scroll zero; identity/viewport resize now resynchronizes it.
+
+The sticky-continuity pass on `9.272.0` removes the decorative quote's
+remaining panel treatment and gives docked navigation compact duplicate
+symbol/price/date context at desktop width (symbol-only at intermediate width,
+omitted on phones), so scrolling preserves research orientation without adding
+or deriving new evidence.
+
+The surface-unification pass on `9.273.0` gives the chart plot and glance rail
+one shared canvas, removes the nav/status-rail separators that doubled against
+adjacent content, increases inactive destination contrast, and distinguishes
+the docked state through elevation rather than another outline.
+
+The chart-frame closure on `9.274.0` moves that shared tonal canvas to the
+outer chart card, leaving the composition, plot stage, and glance rail
+transparent so no differently colored padding moat remains. A short
+borderless fade below the docked navigation separates it from moving chart
+content without reintroducing a perimeter or doubled separator.
 
 **Remaining work.** Owner/Chief Architect visual and source review. SI-P2B.1
-is **IMPLEMENTED / REVIEW-READY**, not frozen, on asset `9.264.0`. The
-owner's own post-ship comparison against the reference mock found the page
-still reads noticeably sparser than the mock beyond the defects fixed above.
-Five concrete structural gaps — chart position (reference puts it right
-after the identity hero; here it sits after Price Map/ATHENA View), a
-missing chart-side Trend/Momentum/Volume panel, card grouping not matching
-the reference's two 3-column rows (DarvaX belongs with Price Map/ATHENA
-View, not Portfolio/Capability; Research Brief stays full-width here instead
-of joining that row), a missing header/footer tagline, and pipe-text vs.
-bordered-pill tag styling — are itemized with exact file/function pointers
-in `docs/research/SI-P2B1-STOCK-360-REFERENCE-REVAMP.md`'s "Known gaps vs.
-the reference mock" section for whoever picks up a possible SI-P2B.2. That
-same section also lists 4 intentional deviations (coverage banner, Refresh/
-Clear controls, the app-shell sidebar, shared header pills) that must not be
-removed just to chase an exact visual match.
+is **IMPLEMENTED / REVIEW-READY**, not frozen, on asset `9.274.0`. All five
+documented reference gaps are closed. The four intentional ATHENA deviations
+(coverage banner, Refresh/Clear and GET/Analyze affordances, the app-shell
+sidebar, and shared health/session chrome) remain preserved. SI-P2E remains
+paused and was not advanced by this change set.
 
 **Suggested consolidated commit message.**
 
 ```text
-feat(dashboard): revamp Symbol Intelligence Stock 360 to match reference UX
+feat(review): close Stock 360 reference UX gaps
 
-- Redesign identity hero, scan strip, portfolio/capability/darvax cards,
-  and price map with richer icons, tiles, and a horizontal ladder layout,
-  per the owner-approved reference-matched plan (chart card untouched)
+- Promote the completed-D1 chart and add a truthful Trend/RSI/Volume glance panel.
+- Group Stock 360 evidence into two reference-ordered three-card desktop rows.
+- Add Symbol Intelligence header/footer taglines and pipe-separated identity metadata.
 - Add a scoped Symbol-Intelligence-only palette and document real-data vs.
   decorative-placeholder elements per the owner's explicit decision
 - Remove the duplicate Technical Detail card and its now-orphaned CSS
@@ -108,14 +186,19 @@ feat(dashboard): revamp Symbol Intelligence Stock 360 to match reference UX
 - Move Price Map and ATHENA View to a side-by-side row on wide screens
   instead of full-width stacked, closing most of the density gap vs. the
   reference
-- Add a 3-tier stagger (up from 2) so same-priced or near-priced levels
-  never render overlapping text, verified against real coincident values
+- Replace the fixed sort-order-based tier stagger (2-tier, then 3-tier) with
+  a runtime greedy width-measurement sweep (siPositionLadderCards) after it
+  was found to still collide against a real owner-reported case where
+  values cluster unevenly; re-runs on section switch and window resize
 - Add a narrow-viewport fallback where the ladder becomes a plain wrapping
-  card list, since no tier count fits on phone width
+  card list, since no positioned layout fits on phone width
 - Fix a data-correctness bug where a null available_history_high rendered
   as a fabricated "₹0.00" point (siFiniteNumber(null) coerces to 0)
 - Update Symbol Intelligence tests for the renamed/removed functions and
-  new markup; bump the dashboard asset cache version
+  new markup; bump the dashboard asset cache version to 9.274.0
+```
+
+---
 ```
 
 ---

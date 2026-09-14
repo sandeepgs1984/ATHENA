@@ -111,8 +111,13 @@
 
     function siDate(value) {
         if (!value) return "—";
-        const text = String(value);
-        return siEscape(text.slice(0, 10));
+        const key = String(value).slice(0, 10);
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+        if (!match) return siEscape(key);
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const month = Number(match[2]);
+        if (month < 1 || month > 12) return siEscape(key);
+        return `${Number(match[3])} ${months[month - 1]} ${match[1]}`;
     }
 
     function siDecisionDate(value) {
@@ -211,6 +216,13 @@
         document.querySelectorAll(".si-section-nav-item").forEach(item => {
             item.classList.toggle("active", item.getAttribute("data-si-section") === sectionId);
         });
+        // The ladder can only be measured once its panel is actually visible
+        // (a hidden panel measures every card at zero width) -- re-running
+        // this every time Stock 360 becomes the shown section, not only on
+        // first render, covers switching back from another section too.
+        if (sectionId === "stock-360") {
+            siPositionLadderCards(document.getElementById("tab-symbol-intelligence"));
+        }
     }
 
     function siZoneLooksEmpty(zone) {
@@ -233,16 +245,15 @@
         return siText(bundle.overall_freshness && bundle.overall_freshness.explanation, "");
     }
 
-    function siQuoteCaption(live) {
-        if (live && live.present) {
-            if (live.label) return siText(live.label);
-            if (live.quote_kind === "LIVE" || live.market_state === "MARKET OPEN") {
-                return "LIVE · MARKET OPEN";
-            }
-            return "LATEST QUOTE · MARKET CLOSED";
+    function siQuoteCaption(live, d1) {
+        if (live && (live.quote_kind === "LIVE" || live.market_state === "MARKET OPEN")) {
+            return "LIVE · MARKET OPEN";
         }
-        const market = (live && (live.market_state || live.label)) || "";
-        return market ? `LAST COMPLETED D1 · ${siEscape(market)}` : "LAST COMPLETED D1";
+        const session = d1 && d1.latest_session ? siDate(d1.latest_session) : "";
+        const market = (live && live.market_state) || "MARKET CLOSED";
+        return ["LAST CLOSE", session === "—" ? "" : session, siEscape(market)]
+            .filter(Boolean)
+            .join(" · ");
     }
 
     function siSmaStructureLabel(value) {
@@ -381,7 +392,7 @@
                     </div>
                     ${company ? `<div class="si-id-name">${siText(company, "")}</div>` : ""}
                     <div class="si-id-tags">
-                        <span class="si-id-meta-tag">${siText(identity.exchange, "")}${identity.instrument_id ? ` · ${siText(identity.instrument_id)}` : ""}</span>
+                        <span class="si-id-meta-tag">${siText(identity.instrument_id, identity.exchange)}</span>
                         ${sector ? `<span class="si-id-meta-tag">${sector}</span>` : ""}
                         <span class="si-id-meta-tag si-id-tag-placeholder" data-si-placeholder="true" title="Market-cap classification is not yet available from ATHENA's persisted data -- shown as a placeholder for a future field, never a guessed value.">Cap tier — pending</span>
                     </div>
@@ -392,7 +403,7 @@
                     <span class="si-id-price">${siMoney(price)}</span>
                     ${siPriceChangeBadge(live)}
                 </div>
-                <span class="si-id-quote-tag">${siQuoteCaption(live)}</span>
+                <span class="si-id-quote-tag">${siQuoteCaption(live, d1)}</span>
             </div>
             <div>
                 <div class="si-id-session"><span>Completed D1 as-of</span><strong>${siDate(d1.latest_session)}</strong></div>
@@ -401,8 +412,24 @@
             </div>
             <div class="si-id-decorative" data-si-placeholder="true" aria-hidden="true">
                 <div class="si-id-decorative-art"></div>
-                <p class="si-id-decorative-line">Evidence-led.<br>Always explainable.</p>
+                <p class="si-id-decorative-line">Discipline today<br>builds better tomorrows.</p>
             </div>`;
+    }
+
+    function siSyncStickyContext(bundle) {
+        const host = document.getElementById("si-sticky-context");
+        if (!host) return;
+        const identity = bundle && bundle.identity ? bundle.identity : {};
+        if (!identity.resolved) {
+            host.innerHTML = "";
+            return;
+        }
+        const d1 = bundle.d1 || {};
+        const live = bundle.live || {};
+        const price = live.present ? live.last_price : d1.close;
+        host.innerHTML = `<strong>${siText(identity.symbol || identity.instrument_id)}</strong>
+            <span>${siMoney(price)}</span>
+            <time>${siDate(d1.latest_session)}</time>`;
     }
 
     function siCoverageBanner(bundle) {
@@ -461,7 +488,7 @@
         const pnlAmount = siFiniteNumber(portfolio.pnl);
         const pnlTone = pnlAmount == null ? "" : pnlAmount >= 0 ? "is-good" : "is-bad";
         const pnlText = `${siMoney(portfolio.pnl)}${siPct(portfolio.pnl_pct) ? ` (${siEscape(siPct(portfolio.pnl_pct))})` : ""}`;
-        return `<div class="si-card">
+        return `<div class="si-card si-portfolio-card">
             <h3>Portfolio Context <span class="si-portfolio-status-pill">${pillText}</span></h3>
             <p class="si-pending">These facts are Portfolio-owned. Symbol Intelligence does not issue BUY/HOLD/SELL.</p>
             <div class="si-portfolio-tiles">
@@ -704,7 +731,6 @@
             <p class="si-actions">
                 ${siJumpButton("decision", "Open ATHENA Decision", "fa-brain")}
                 <a class="btn" href="${siEscape(openHref)}"><i class="fas fa-file-lines" aria-hidden="true"></i> Open Decision Brief</a>
-                ${siJumpButton("audit", "View evidence", "fa-clipboard-check")}
             </p></div>`;
     }
 
@@ -776,19 +802,18 @@
         const denom = (hi - lo) || 1;
         const pct = value => Math.max(0, Math.min(100, ((value - lo) / denom) * 100));
         const sorted = [...points].sort((a, b) => a.value - b.value);
-        // Adjacent points can land close enough together (in % terms) that
-        // their label cards would overlap horizontally. A 2-tier zig-zag
-        // only guarantees clearance between immediate neighbors -- with up
-        // to 7 real points (the frozen d1 schema's max: support_1,
-        // major_support, review_trigger, target_1/2/3, available_history_high)
-        // in a narrower column, same-tier points 2 apart in sort order can
-        // still collide. 3 tiers keeps any two same-tier points at least 3
-        // sort-positions apart, without measuring actual rendered widths.
-        const markers = sorted.map((p, index) => {
+        // A fixed tier count assigned purely from sort order (a 2-tier, then
+        // 3-tier zig-zag) assumes sort-order distance roughly tracks pixel
+        // distance -- it doesn't when real values cluster unevenly (e.g. 5
+        // of 7 levels packed into a narrow band with 2 outliers far away).
+        // That produced real overlapping cards against real data. Every
+        // card is rendered tier-less here; siPositionLadderCards measures
+        // actual rendered widths after insertion and assigns tiers via a
+        // greedy left-to-right sweep, which is correct for any distribution
+        // of any number of levels, not just the frozen schema's max of 7.
+        const markers = sorted.map(p => {
             const dist = siLadderDistText(p.value, close);
-            const tier = index % 3;
-            const tierClass = tier === 1 ? " si-ladder-point--tier1" : tier === 2 ? " si-ladder-point--tier2" : "";
-            return `<div class="si-ladder-point${tierClass}" data-si-level="${siEscape(p.category)}" style="left:${pct(p.value)}%">
+            return `<div class="si-ladder-point" data-si-level="${siEscape(p.category)}" style="left:${pct(p.value)}%" tabindex="0" aria-label="${siEscape(`${p.label}: ${p.display}${dist ? `, ${dist}` : ""}`)}">
                 <div class="si-ladder-card">
                     <span class="si-ladder-label">${siEscape(p.label)}</span>
                     <span class="si-ladder-value">${siEscape(p.display)}</span>
@@ -813,6 +838,60 @@
             <p class="si-pending">Distances use completed-D1 close against completed-D1 levels. Live/latest quote is not mixed in.</p>
             ${siPriceLadder(d1 || {})}
         </div>`;
+    }
+
+    // Assigns each ladder card a vertical tier by measuring actual rendered
+    // widths after insertion (a fixed sort-order-based tier count assumes
+    // sort-order distance tracks pixel distance, which breaks whenever real
+    // values cluster unevenly). A classic greedy left-to-right interval
+    // sweep: walk cards by measured x-position, and place each in the first
+    // tier whose last-placed card's right edge clears this card's left edge
+    // by a fixed gap -- correct for any distribution or count of levels, not
+    // just the frozen d1 schema's max of 7. Call after the ladder is in the
+    // DOM and its containing panel is visible (zero-width cards mean it
+    // isn't yet, and this is a deliberate no-op rather than a guess).
+    function siPositionLadderCards(root) {
+        const scope = root || document;
+        const ladders = scope.querySelectorAll(".si-price-ladder");
+        ladders.forEach(ladder => {
+            const cards = Array.from(ladder.querySelectorAll(".si-ladder-card"));
+            if (!cards.length) return;
+            const point = ladder.querySelector(".si-ladder-point");
+            // Below the narrow-viewport breakpoint, CSS forces every point
+            // to `position: static` and lays cards out as a plain wrapping
+            // list (see the max-width media query) -- tiering is meaningless
+            // there, and setting an inline padding-top would otherwise fight
+            // that breakpoint's own `padding-top: 0` once this ran at a
+            // wider width and the viewport later shrank.
+            if (point && getComputedStyle(point).position === "static") {
+                ladder.style.paddingTop = "";
+                cards.forEach(card => { card.style.bottom = ""; });
+                return;
+            }
+            const BASE_OFFSET = 10;
+            const GAP = 8;
+            // Reset to the base tier before measuring, so a previous run's
+            // offsets (e.g. from before a resize) never skew this pass.
+            cards.forEach(card => { card.style.bottom = `calc(100% + ${BASE_OFFSET}px)`; });
+            const items = cards.map(card => {
+                const rect = card.getBoundingClientRect();
+                return { card, left: rect.left, right: rect.right, height: rect.height };
+            });
+            if (items.some(item => item.right === item.left)) return;
+            const maxHeight = Math.max(...items.map(item => item.height));
+            const tierStep = maxHeight + 16;
+            items.sort((a, b) => a.left - b.left);
+            const tierRightEdge = [];
+            let maxTier = 0;
+            items.forEach(item => {
+                let tier = 0;
+                while (tier < tierRightEdge.length && item.left < tierRightEdge[tier] + GAP) tier++;
+                tierRightEdge[tier] = item.right;
+                maxTier = Math.max(maxTier, tier);
+                item.card.style.bottom = `calc(100% + ${BASE_OFFSET + tier * tierStep}px)`;
+            });
+            ladder.style.paddingTop = `${BASE_OFFSET + maxTier * tierStep + maxHeight + 20}px`;
+        });
     }
 
     function siSignalTone(kind, value) {
@@ -858,18 +937,25 @@
         </div>`;
     }
 
-    function siScanStrip(bundle) {
+    function siChartGlancePanel(bundle) {
         const d1 = bundle.d1 || {};
-        const decision = bundle.decision || {};
-        const decisionLabel = decision.present ? siEnumLabel(decision.decision_type) : "Not available";
         const volumeLabel = siVolumeVsMa20(d1);
-        return `<div class="si-scan-strip" aria-label="Compact technical snapshot">
-            ${siSignalChip("structure", "Daily SMA structure", siSmaStructureLabel(d1.symbol_trend), siSignalTone("structure", d1.symbol_trend), d1.symbol_trend || "")}
-            ${siSignalChip("supertrend", "SuperTrend (10,3)", siSuperTrendLabel(d1.supertrend_direction), siSignalTone("supertrend", d1.supertrend_direction), d1.supertrend_direction || "")}
-            ${siSignalChip("rsi", "RSI (14)", siRsi(d1.rsi14), "")}
+        const trendLabel = d1.symbol_trend === "UPTREND"
+            ? "Up"
+            : d1.symbol_trend === "DOWNTREND" ? "Down" : "Unavailable";
+        const superTrendDirection = d1.supertrend_is_coherent === true
+            ? siSuperTrendLabel(d1.supertrend_direction)
+            : "Unavailable";
+        const superTrendValue = siFiniteNumber(d1.supertrend_value);
+        const superTrendDisplay = superTrendValue == null
+            ? superTrendDirection
+            : `${superTrendDirection} · ${siMoney(superTrendValue)}`;
+        return `<aside class="si-chart-glance" aria-label="Chart glance statistics">
+            ${siSignalChip("structure", "Trend", trendLabel, siSignalTone("structure", d1.symbol_trend), d1.symbol_trend || "")}
+            ${siSignalChip("supertrend", "SuperTrend (10,3)", superTrendDisplay, siSignalTone("supertrend", d1.supertrend_direction), d1.supertrend_version || "")}
+            ${siSignalChip("rsi", "Momentum · RSI (14)", siRsi(d1.rsi14), "")}
             ${siSignalChip("volume", "Volume vs MA20", volumeLabel, siSignalTone("volume", volumeLabel))}
-            ${siSignalChip("decision", "ATHENA Decision", siEscape(decisionLabel), siSignalTone("decision", decision.decision_type))}
-        </div>`;
+        </aside>`;
     }
 
     function siAvailabilityChips(bundle) {
@@ -915,22 +1001,34 @@
             </div></div>`;
     }
 
-    function siChartBlock(identity, d1) {
+    function siChartBlock(identity, d1, bundle) {
         if (!identity || !identity.resolved) {
             return "";
         }
         if (!d1 || !d1.present) {
-            return `<div class="si-card si-chart-card"><h3>Completed D1 chart</h3>
+            return `<div class="si-card si-chart-card"><h3>Recent Price Action</h3>
                 <p class="si-empty">Completed D1 chart unavailable.</p></div>`;
         }
         return `<div class="si-card si-chart-card">
-            <div class="si-chart-header">
-                <div><h3>Completed D1 chart</h3>
-                    <p class="si-pending si-chart-subtitle">LAST COMPLETED D1 · unfinished session candles are excluded</p></div>
-                <div class="si-chart-controls-slot"></div>
+            <div class="si-chart-composition">
+                <div class="si-chart-main">
+                    <div class="si-chart-header">
+                        <div><h3>Recent Price Action</h3>
+                            <p class="si-pending si-chart-subtitle">LAST COMPLETED D1 · unfinished session candles are excluded</p></div>
+                        <div class="si-chart-controls-slot"></div>
+                    </div>
+                    <div class="si-chart-host si-chart-pending" id="si-d1-chart-host"><p class="text-muted">Loading D1 chart…</p></div>
+                </div>
+                ${siChartGlancePanel(bundle)}
             </div>
-            <div class="si-chart-host si-chart-pending" id="si-d1-chart-host"><p class="text-muted">Loading D1 chart…</p></div>
         </div>`;
+    }
+
+    function siStock360Footer() {
+        return `<footer class="si-stock-360-footer">
+            <em>Better information. Better decisions. A better you.</em>
+            <span>Symbol Intelligence · Asset 9.274.0 <b aria-hidden="true">|</b> Live Data · Evidence Driven</span>
+        </footer>`;
     }
 
     function siSentence(parts) {
@@ -1329,7 +1427,7 @@
             statement.kind !== "PORTFOLIO" || bundle.portfolio?.status === "HELD"
         ));
         const rows = visible.map(siSummaryRow).filter(Boolean).join("");
-        return `<div class="si-card si-review">
+        return `<div class="si-review">
             <h3>Research brief</h3>
             <dl class="si-research-brief">${rows}</dl>
             ${siSummaryFooter(summary.availability[0])}
@@ -2173,27 +2271,39 @@
         const identityEl = document.getElementById("si-identity");
         const bundleEl = document.getElementById("si-bundle");
         if (!identityEl || !bundleEl) return;
-        identityEl.innerHTML = siHeader(bundle);
         const d1 = bundle.d1 || {};
         const identity = bundle.identity || {};
+        siSyncStickyContext(bundle);
+        if (!identity.resolved) {
+            siSetSectionAvailability(false);
+            identityEl.innerHTML = "";
+            bundleEl.innerHTML = siWorkspaceState(
+                "invalid",
+                "Symbol not found",
+                siText(identity.unresolved_reason, `No instrument matched "${identity.query || "this query"}".`)
+            );
+            return;
+        }
+        siSetSectionAvailability(true);
+        identityEl.innerHTML = siHeader(bundle);
         bundleEl.innerHTML = `
             <section class="si-section" data-si-panel="stock-360">
-                ${siCoverageBanner(bundle)}
-                ${identity.resolved ? siScanStrip(bundle) : ""}
-                ${identity.resolved ? `<div class="si-360-stack">
-                    ${siLevelsCard(d1)}
-                    ${siAthenaView(bundle.decision)}
-                </div>` : ""}
-                ${siChartBlock(identity, d1)}
-                ${identity.resolved ? `<details class="si-written-summary" open>
-                    <summary>Research Brief</summary>
-                    ${siCompleteReview(bundle)}
-                </details>
-                <div class="si-360-secondary">
+                ${siChartBlock(identity, d1, bundle)}
+                ${identity.resolved ? `<div class="si-360-row si-360-row-primary">
+                    <details class="si-written-summary" open>
+                        <summary>Research Brief</summary>
+                        ${siCompleteReview(bundle)}
+                    </details>
                     ${siPortfolioCard(bundle.portfolio)}
                     ${siAvailabilityChips(bundle)}
+                </div>
+                <div class="si-360-row si-360-row-secondary">
+                    ${siLevelsCard(d1)}
+                    ${siAthenaView(bundle.decision)}
                     ${siDarvaxOverview(bundle.darvax)}
-                </div>` : ""}
+                </div>
+                ${siCoverageBanner(bundle)}
+                ${siStock360Footer()}` : ""}
             </section>
             <section class="si-section" data-si-panel="decision" hidden>${siDecisionCard(bundle)}</section>
             <section class="si-section" data-si-panel="experimental" hidden>${siDarvaxCard(bundle.darvax)}</section>
@@ -2226,14 +2336,57 @@
         return message === "AbortError" || /aborted|AbortError/i.test(message);
     }
 
+    function siSetSectionAvailability(hasBundle) {
+        document.querySelectorAll(".si-section-nav-item").forEach(item => {
+            if (hasBundle) {
+                item.disabled = false;
+                return;
+            }
+            const isStock360 = item.getAttribute("data-si-section") === "stock-360";
+            item.disabled = !isStock360;
+            item.classList.toggle("active", isStock360);
+        });
+    }
+
+    function siWorkspaceState(kind, title, detail) {
+        const state = String(kind || "empty").toLowerCase();
+        const icon = state === "invalid" || state === "error"
+            ? "fa-circle-exclamation"
+            : "fa-magnifying-glass-chart";
+        const examples = state === "empty" ? `<div class="si-workspace-examples" aria-label="Example symbols">
+            <span>Try</span>
+            <button type="button" data-si-example="NSE:INFY">NSE:INFY</button>
+            <button type="button" data-si-example="NSE:RELIANCE">NSE:RELIANCE</button>
+            <button type="button" data-si-example="NSE:TCS">NSE:TCS</button>
+        </div>` : "";
+        const hint = state === "invalid"
+            ? "Use a listed NSE/BSE instrument such as NSE:INFY, or select a catalog match."
+            : "Search by canonical exchange and ticker, or enter an unambiguous ticker.";
+        return `<div class="si-workspace-state is-${siEscape(state)}" role="status">
+            <div class="si-workspace-state-icon" aria-hidden="true"><i class="fas ${icon}"></i></div>
+            <div class="si-workspace-state-copy">
+                <span class="si-workspace-state-eyebrow">Symbol Intelligence</span>
+                <h2>${siEscape(title)}</h2>
+                <p>${siEscape(detail)}</p>
+                <small>${siEscape(hint)}</small>
+                ${examples}
+            </div>
+        </div>`;
+    }
+
     function siShowWorkspaceError(code, detail) {
         siBundle = null;
+        siSetSectionAvailability(false);
         const identityEl = document.getElementById("si-identity");
         const bundleEl = document.getElementById("si-bundle");
         if (identityEl) identityEl.innerHTML = "";
         if (bundleEl) {
-            bundleEl.innerHTML = `<div class="si-card"><h3>${siEscape(code)}</h3>
-                <p class="si-unavailable">${siEscape(detail)}</p></div>`;
+            const empty = code === "EMPTY_SYMBOL";
+            bundleEl.innerHTML = siWorkspaceState(
+                empty ? "empty" : "error",
+                empty ? "Enter a symbol to continue" : "Symbol Intelligence is unavailable",
+                detail
+            );
         }
     }
 
@@ -2285,7 +2438,7 @@
                 }
             }
             if (generation !== siLoadGeneration) return;
-            const bundle = payload && payload.data;
+        const bundle = payload && payload.data;
             if (!bundle) {
                 siShowWorkspaceError("COMPOSITION_UNAVAILABLE", "Symbol Intelligence returned an empty payload.");
                 return;
@@ -2350,6 +2503,7 @@
         }
         siBundle = null;
         siQuery = "";
+        siSetSectionAvailability(false);
         const input = document.getElementById("si-symbol-input");
         if (input) input.value = "";
         const hitsEl = document.querySelector("#si-search-hits");
@@ -2358,7 +2512,11 @@
         if (identityEl) identityEl.innerHTML = "";
         const bundleEl = document.getElementById("si-bundle");
         if (bundleEl) {
-            bundleEl.innerHTML = `<p class="text-muted si-empty-state">Enter a canonical instrument to load persisted Symbol Intelligence. Analyze hydrates stale D1 when you need a refresh.</p>`;
+            bundleEl.innerHTML = siWorkspaceState(
+                "empty",
+                "Research any NSE/BSE symbol",
+                "Load persisted evidence instantly, or use Analyze when completed-D1 history needs refreshing."
+            );
         }
         const url = new URL(window.location.href);
         if (url.searchParams.has("symbol")) {
@@ -2383,7 +2541,11 @@
             const hits = (payload.data && payload.data.hits) || [];
             if (!hits.length) {
                 hitsEl.hidden = false;
-                hitsEl.innerHTML = "<span class=\"text-muted\">No catalog matches.</span>";
+                hitsEl.innerHTML = `<div class="si-search-no-results">
+                    <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                    <span><strong>No matching instruments</strong>
+                    <small>Check the ticker, or try the canonical format NSE:INFY.</small></span>
+                </div>`;
                 return;
             }
             hitsEl.hidden = false;
@@ -2395,7 +2557,11 @@
             )).join("");
         } catch (err) {
             hitsEl.hidden = false;
-            hitsEl.innerHTML = `<span class="si-unavailable">${siEscape(err && err.message || "Search failed")}</span>`;
+            hitsEl.innerHTML = `<div class="si-search-no-results is-error">
+                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                <span><strong>Search is temporarily unavailable</strong>
+                <small>${siEscape(err && err.message || "Try again shortly.")}</small></span>
+            </div>`;
         }
     }
 
@@ -2441,10 +2607,35 @@
         showSiSection(item.getAttribute("data-si-section"));
     });
     document.getElementById("si-bundle")?.addEventListener("click", event => {
+        const example = event.target.closest("[data-si-example]");
+        if (example) {
+            const value = example.getAttribute("data-si-example") || "";
+            const input = document.getElementById("si-symbol-input");
+            if (input) input.value = value;
+            loadSymbolIntelligence(value);
+            return;
+        }
         const jump = event.target.closest("[data-si-jump]");
         if (!jump) return;
         showSiSection(jump.getAttribute("data-si-jump"));
     });
+
+    // A tier assignment computed at one viewport width can go stale at
+    // another (the same cards occupy different pixel positions), so the
+    // ladder is re-measured on resize too, not only on render/section-switch.
+    (function initSiLadderResizeTracking() {
+        let scheduled = false;
+        window.addEventListener("resize", () => {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(() => {
+                scheduled = false;
+                const pane = document.getElementById("tab-symbol-intelligence");
+                if (!pane || pane.hidden) return;
+                siPositionLadderCards(pane);
+            });
+        }, { passive: true });
+    })();
 
     // The sticky section-nav needs to know when it is actually stuck (vs.
     // sitting in normal flow just below the toolbar) so its CSS can seal the
@@ -2480,5 +2671,10 @@
             requestAnimationFrame(syncStuck);
         }
         viewport.addEventListener("scroll", requestSync, { passive: true });
+        window.addEventListener("resize", requestSync, { passive: true });
+        const identity = document.getElementById("si-identity");
+        if (identity && typeof ResizeObserver !== "undefined") {
+            new ResizeObserver(requestSync).observe(identity);
+        }
         requestSync();
     })();

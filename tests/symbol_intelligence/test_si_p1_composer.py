@@ -648,5 +648,6 @@ def test_ui_keeps_audit_strings_out_of_primary_metrics() -> None:
     assert "LIVE / CURRENT SESSION" not in js
     assert "function siMarketDataStatus" in js
     assert "function siCoverageStatus" in js
-    assert "LATEST QUOTE · MARKET CLOSED" in js
+    assert 'function siQuoteCaption(live, d1)' in js
+    assert '["LAST CLOSE", session === "—" ? "" : session, siEscape(market)]' in js
     assert "LIVE · MARKET OPEN" in js

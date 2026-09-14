@@ -12,9 +12,32 @@
     let advisoryFreshnessFailureMode = "";
     let lastAthenaCycleStatus = null;
     let athenaCycleStatusLoading = false;
+    const siHeaderLayout = window.matchMedia("(min-width: 1181px)");
+
+    function syncSymbolIntelligenceToolbar(tabId = state.activeTab) {
+        const toolbar = document.querySelector(".si-toolbar");
+        const toolbarHome = document.getElementById("si-toolbar-home");
+        const consoleHeader = document.querySelector(".console-header");
+        const headerRight = consoleHeader && consoleHeader.querySelector(".header-right");
+        if (!toolbar || !toolbarHome || !consoleHeader || !headerRight) return;
+        if (tabId === "symbol-intelligence" && siHeaderLayout.matches) {
+            if (toolbar.parentElement !== consoleHeader) consoleHeader.insertBefore(toolbar, headerRight);
+        } else if (toolbar.parentElement !== toolbarHome.parentElement) {
+            toolbarHome.after(toolbar);
+        }
+    }
+
+    siHeaderLayout.addEventListener("change", () => syncSymbolIntelligenceToolbar());
 
     function switchTab(tabId, options = {}) {
         state.activeTab = tabId;
+        syncSymbolIntelligenceToolbar(tabId);
+
+        if (pageSubtitle) {
+            const isSymbolIntelligence = tabId === "symbol-intelligence";
+            pageSubtitle.textContent = isSymbolIntelligence ? "Deep Insights. Smarter Decisions." : "";
+            pageSubtitle.hidden = !isSymbolIntelligence;
+        }
 
         // 1. Toggle Active Nav Link
         navItems.forEach(item => {

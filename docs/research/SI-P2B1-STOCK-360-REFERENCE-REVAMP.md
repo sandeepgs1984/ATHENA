@@ -1,7 +1,8 @@
 # SI-P2B.1 — Stock 360 Reference-Matched Visual Revamp
 
-**Status:** Implemented, presentation-only, on asset `9.264.0`. Owner review
-pending. SI-P2B's own frozen contract (`docs/research/SI-P2B-STOCK-360-IMPLEMENTATION.md`)
+**Status:** Reference-gap closure implemented, presentation-only, on asset
+`9.274.0`. Owner review pending. SI-P2B's own frozen contract
+(`docs/research/SI-P2B-STOCK-360-IMPLEMENTATION.md`)
 is unchanged — this is a visual/UX revamp of that same Stock 360 surface,
 not a new methodology or DTO change.
 
@@ -87,8 +88,23 @@ than trusting the first render:
 2. **Overlapping labels for coincident/near-coincident levels.** Two levels
    sharing an exact price (a real, observed case: Review Trigger and
    Target 1 landing on the same value) rendered as stacked, unreadable text.
-   Fixed with a 3-tier vertical stagger (cycled by sorted position), keeping
-   any two same-tier points at least 3 sort-positions apart.
+   First fixed with a 2-tier, then a 3-tier vertical stagger assigned purely
+   from sorted position — but a fixed tier count keyed off sort order
+   assumes sort-order distance tracks pixel distance, which breaks whenever
+   real values cluster unevenly (a real case: 5 of 7 levels packed into a
+   narrow band with 2 outliers far away still collided even at 3 tiers,
+   found and reported by the owner against real data). **Superseded** by
+   `siPositionLadderCards`: a runtime pass that measures each card's actual
+   rendered width/height after insertion via `getBoundingClientRect()` and
+   greedily sweeps left-to-right, placing each card in the first tier whose
+   last-placed card clears it by a fixed gap (classic interval-scheduling,
+   not a magic-number heuristic) — correct for any distribution or count of
+   levels, not just the frozen d1 schema's max of 7. Re-runs on section
+   switch (`showSiSection`) and on window resize (a tiering computed at one
+   width can collide at another), and is a deliberate no-op when the
+   narrow-viewport CSS fallback (`position: static`, item 3 below) is
+   active, clearing any stale inline offsets so the two mechanisms never
+   fight each other.
 3. **No layout fits every viewport.** Below ~720px there isn't enough
    horizontal room for any tier count to avoid collisions with up to 7 real
    levels. The ladder now falls back to a plain wrapping card list on narrow
@@ -102,9 +118,13 @@ than trusting the first render:
    `siZoneLooksEmpty`).
 
 All four were verified fixed with pixel-level collision detection (not just
-screenshots) across three real data shapes: a tied-value case matching the
-owner's own reported ACMESOLAR data, a 7-distinct-level case, and mobile
-width — zero collisions in all three, dots confirmed exactly on the track.
+screenshots) across real data shapes: a tied-value case matching the owner's
+own reported ACMESOLAR data, a 7-distinct-level case, mobile width, and — for
+item 2's runtime-measurement replacement — the exact 7-level, tightly-
+clustered case the owner reported against the 3-tier approach, plus a
+desktop→mobile→desktop resize round-trip (confirming the CSS-fallback and
+runtime-tiering mechanisms hand off cleanly in both directions) — zero
+collisions in every case, dots confirmed exactly on the track.
 
 ## Explicit non-goals (unchanged)
 
@@ -141,6 +161,159 @@ width — zero collisions in all three, dots confirmed exactly on the track.
 - `node --check` and a brace-balance check after every CSS/JS edit.
 
 ## Known gaps vs. the reference mock — handoff for further work
+
+**Closure note (2026-09-14, asset `9.265.0`):** All five gaps in section A
+below are now closed. The list is retained as the historical pre-closure
+comparison that governed this follow-up; it is no longer remaining work.
+The chart is now the first major Stock 360 content, with a truthful three-row
+Trend / RSI Momentum / Volume
+glance panel. Research Brief / Portfolio / Capability and Price Map / ATHENA
+View / DarvaX now form the two reference-ordered three-card rows on wide
+screens. The Symbol Intelligence header/footer taglines and asset line are
+present, and identity metadata uses plain pipe-separated text while keeping
+the unavailable cap tier visibly provisional. The existing chart renderer,
+coverage semantics, request controls, sidebar, API, DTO, and methodology were
+not changed.
+
+Closure verification used the isolated port-8100 server with a scratch config
+and scratch database, plus routed synthetic persisted evidence. JavaScript
+geometry assertions passed at 1579px, 1024px, and 390px: no horizontal
+overflow, no peer-card or Price Map label collisions, chart before both card
+rows, exact ladder-dot anchoring where the track is active, correct responsive
+chart-panel placement, borderless identity metadata, and the requested header
+and footer copy. The 1024px run initially exposed a real narrow Price Map
+collision; the intermediate layout was corrected and the same check passed on
+rerun. The required focused/integrated suite finished with **96 passed and the
+one pre-existing SI-P2E failure**
+(`test_si_p2e_no_decision_and_invalid_symbol_are_distinct`). JavaScript syntax,
+CSS brace balance, scoped Ruff, and `git diff --check` passed.
+
+**Post-closure addendum (same day, asset `9.266.0`):** the fixed 3-tier
+stagger this closure shipped was still not sufficient — the owner reported
+a real Price Map screenshot (7 levels, 5 packed into a narrow band with 2
+outliers) showing two cards overlapping. Root cause: a tier assigned purely
+from sort order assumes sort-order distance tracks pixel distance, which is
+false whenever real values cluster unevenly. Replaced with
+`siPositionLadderCards` — a runtime greedy left-to-right sweep over each
+card's actual measured width/height (see Defects item 2 above for the full
+mechanism) — verified against the owner's exact reported data shape (zero
+collisions) plus the previously-verified tied-value, 7-distinct-level,
+and mobile cases, plus a desktop→mobile→desktop resize round-trip. Full
+suite re-confirmed at 96 passed / the same one pre-existing failure.
+
+**Reference-fidelity addendum (same day, asset `9.267.0`):** direct
+side-by-side review of the owner's current desktop captures against the
+reference exposed a second class of gaps: section grouping was correct, but
+the shell, hero, card density, and internal card geometry still did not read
+like the reference. The Symbol Intelligence search controls now join the
+desktop header row (and return to the in-flow toolbar below 1181px), identity
+now precedes the section navigation, and the hero is materially shorter with
+reference-weight identity/price typography and a subdued ATHENA phrase instead
+of the bright generic gradient panel. The Research Brief no longer renders a
+second nested card; held Portfolio metrics form the reference's 3-by-2 grid;
+Capability badges share a row; card titles use title case; the two desktop
+card rows use reference-proportioned columns; and ATHENA View/DarvaX/coverage/
+footer density was tightened without inventing evidence or removing ATHENA's
+required controls. The redundant third ATHENA View evidence button was removed
+only when the two primary Decision destinations are already present; the
+no-Decision evidence path remains available.
+
+The frozen SI-P2C chart renderer, its 460px plotting surface, window controls,
+legend, tooltips, and interaction geometry remain unchanged. Consequently the
+full page cannot have the reference mock's exact vertical coordinates: that
+mock depicts a roughly 146px sparkline-style chart. This is an intentional
+contract boundary, not an unclosed CSS defect. Exact full-page-height parity
+would require explicit authorization to reopen SI-P2C; every surrounding
+Stock 360 section was aligned without doing so. The mandatory coverage banner,
+Refresh/Clear controls, GET/Analyze helper, and ATHENA app shell also remain
+intentional deviations documented in section B.
+
+**Owner screenshot-correction addendum (same day, asset `9.268.0`):** six
+owner captures exposed state and chrome defects that geometry-only checks did
+not: the desktop helper was ellipsized, the sticky navigation's 32px-era mask
+no longer matched the workspace's compact 12px inset and overpainted its own
+border, unresolved bundles were passed through the valid identity hero, and
+empty/no-match states were raw strings. The helper copy is now shorter without
+losing GET/Analyze semantics and is never clipped; the sticky mask follows the
+actual inset, remains opaque, and preserves its border/corners; initial,
+empty-input, invalid-symbol, no-catalog-match, and search-error presentations
+are distinct and intentional; invalid identities no longer show fabricated
+hero placeholders. Valid identity dates now use `11 Sep 2026` formatting and
+the price caption follows `LAST CLOSE · date · MARKET CLOSED`, matching the
+reference. Price Map values now have explicit high-contrast typography,
+category-tinted borders, a brighter track, and hover/keyboard-focus emphasis;
+the measured collision algorithm and every underlying value remain unchanged.
+The latest focused/integrated release set passes **98 tests**, with only the
+same pre-existing concurrent SI-P2E wording assertion failing. JavaScript
+syntax, CSS brace balance, scoped Ruff, and `git diff HEAD --check` pass.
+
+**Integrated-shell addendum (same day, asset `9.269.0`):** the valid-symbol
+identity hero and section navigation now read as one continuous framed surface
+in normal flow: the hero owns the upper radii, the navigation owns the lower
+radii, and a single subtle divider joins them. When the navigation becomes
+sticky it restores its own complete rounded border and uses only an opaque
+outer shadow to cover the scroll inset; the pseudo-element that could overpaint
+the top border is disabled. The chart glance now admits the persisted coherent
+SuperTrend direction and optional exact `supertrend_value` alongside Trend,
+RSI, and Volume; SMA20/SMA50/completed D1 remain in the adjacent chart legend
+and are not duplicated. ATHENA/DarvaX actions now share explicit icon width,
+gap, height, line-height, and alignment. The coverage banner is now a quiet
+borderless status rail with colored status dots and one top divider rather than
+another nested box/pill cluster. Responsive geometry, sticky-border,
+SuperTrend-value, and collision checks pass at 1579/1024/390px.
+
+**Borderless-shell correction (same day, asset `9.270.0`):** owner review of
+normal and scrolled captures showed that joining the hero and navigation with
+a larger rounded outline still read as two nested boxes, while sticky mode's
+independent rounded border doubled against the chart edge below. The hero and
+navigation now form a flat, continuous header band with no outer perimeter or
+corner radius. A subtle internal lower divider preserves hierarchy; sticky
+mode uses the same opaque square-edged band plus a soft lower shadow, with no
+pseudo-element or border that can collide with chart corners. Automated
+geometry at 1579/1024/390px confirms a zero-pixel hero/navigation seam, zero
+nav border/radius in normal and sticky states, exact sticky offset, no overflow,
+and no card or Price Map collisions.
+
+**Atmospheric-shell correction (same day, asset `9.271.0`):** the next owner
+captures showed that removing the outline alone left an opaque square hero
+fill and an overly separated sticky strip. The hero is now transparent to the
+workspace, the redundant top workspace inset is removed,
+and sticky navigation has no divider or perimeter—only a restrained lower
+shadow. The chart glance panel is likewise borderless, separated from the plot
+by one low-opacity rule, and major Stock 360 card borders/background washes are
+reduced so evidence hierarchy comes from spacing and typography rather than a
+wall of boxes. A zero-scroll geometry check also exposed stale sticky state:
+it initialized against the empty hero and did not recompute after identity
+content changed the layout. Identity and viewport resize now resynchronize
+that presentation state. No chart internals or evidence changed.
+
+**Sticky-continuity correction (same day, asset `9.272.0`):** normal-flow
+navigation remains visually quiet, but the docked state now carries compact,
+duplicate symbol context (symbol, completed price, and completed-D1 date) at
+desktop width instead of becoming an orphaned tab strip. Intermediate width
+keeps only the symbol; phone width omits the duplicate context. The decorative
+hero quote loses its residual panel fill, pattern, and divider, so the identity
+row blends fully into the workspace. This is presentation-only duplication of
+already-rendered evidence; no new value or contract was introduced.
+
+**Surface-unification correction (same day, asset `9.273.0`):** the chart
+composition now owns one continuous tonal canvas while the plot stage and
+glance rail are transparent children, eliminating the dark plot rectangle
+against a different side-panel surface. Normal navigation loses its remaining
+bottom rule; docked navigation is distinguished by an elevated translucent
+surface and shadow rather than a competing line. Inactive destinations and
+their icons receive readable contrast, the active destination remains dominant,
+and the bottom coverage/status rail loses its unnecessary top separator.
+
+**Chart-frame closure (same day, asset `9.274.0`):** the continuous tonal
+canvas now belongs to the outer chart card itself, while the composition,
+plot stage, and glance rail remain transparent. This removes the differently
+colored padding moat that still framed the chart in the owner's normal and
+scrolled captures. The docked navigation also gains a short borderless lower
+fade so it separates from moving chart content without restoring an outline
+or creating a second rule against the chart card. This is presentation-only;
+the frozen SI-P2C renderer, dimensions, evidence, and interaction behavior are
+unchanged.
 
 The owner compared a live screenshot of this implementation directly against
 the reference mock after this milestone shipped and found the page still
@@ -230,9 +403,6 @@ structural/layout, not a data-correctness bug (those are covered above).
 
 ## Remaining work
 
-Owner/Chief Architect visual and source review, **plus a decision on which
-of the "Real gaps worth closing" above (if any) should become a follow-up
-SI-P2B.2 milestone** — none of them were in the original approved plan's
-section-by-section scope, so none were treated as blocking this milestone's
-completion, but they are the reason the live page still reads sparser than
-the reference. Not yet marked frozen.
+Owner/Chief Architect visual and source review of the `9.274.0` chart-frame closure.
+SI-P2B.1 remains **IMPLEMENTED / REVIEW-READY**, not frozen. SI-P2E remains
+paused; this follow-up did not implement or start additional SI-P2E work.
