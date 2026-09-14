@@ -14,7 +14,9 @@ too large for a single-sitting review is split BEFORE implementation.
 `docs/research/SI-P2A-EXPERIENCE-IA-IMPLEMENTATION.md`,
 `docs/research/SI-P2B-STOCK-360-IMPLEMENTATION.md`,
 `docs/research/SI-P2C-CHART-INTELLIGENCE-DISCOVERY.md`,
-`docs/research/SI-P2C-CHART-INTELLIGENCE-IMPLEMENTATION.md`
+`docs/research/SI-P2C-CHART-INTELLIGENCE-IMPLEMENTATION.md`,
+`docs/research/SI-P2D-WRITTEN-SUMMARY-DISCOVERY.md`,
+`docs/research/SI-P2D-WRITTEN-SUMMARY-IMPLEMENTATION.md`
 
 Read-only GET composition over existing ATHENA Decision, D1 evidence,
 My Portfolio holdings, and DarvaX satellite presentation, plus POST Analyze
@@ -28,6 +30,7 @@ symbol-scoped D1 hydration. Not a new decision engine.
 | SI-P2A | Experience IA + state/request hardening — four primary surfaces, GET-first load, explicit Analyze POST, in-flight race protection, Stock 360 reorganization of existing SI-P1 fields, coverage banner, volume-vs-MA20 comparison | ✅ COMPLETE AND FROZEN 2026-09-13 — Owner/Chief Architect source review + live release gate passed on `9.241.0` |
 | SI-P2B | Stock 360 research workspace — scanable cockpit over frozen SI-P1 evidence; presentation-only distances and disagreement copy; no blended trend; no new methodology | ✅ COMPLETE AND FROZEN 2026-09-13 — Owner/Chief Architect source review + final visual re-check passed on `9.244.0` |
 | SI-P2C | Completed-D1 chart intelligence — PIT-safe SMA20/SMA50 overlays reconciled to Stock 360, exact structural zones, 3M/6M/All views, one-at-a-time level interaction, completed close, volume, and faithful responsive scale | ✅ **COMPLETE AND FROZEN 2026-09-14** on `9.250.0` — Owner/Chief Architect source, interaction, collision, mobile, and final evidence review passed; persistent-vs-transient selection, production D1/tag separation, desktop inspector, in-flow mobile list/detail, 27.5% mobile plot-width recovery, tighter deterministic scale, and corrected 12-state live evidence accepted; SI-P2D and historical SuperTrend work not started |
+| SI-P2D | Deterministic Written Research Summary — concise traceable narrative over frozen D1, structural, Decision, Portfolio, freshness, and capability evidence; no LLM, prediction, recommendation, or methodology | ✅ **COMPLETE AND FROZEN 2026-09-14** on `9.254.0` — Owner/Chief Architect final source and rendering review approved the fixed six-family composer/provenance contract, scannable Research Brief, responsive ATHENA/Data grouping, presentation-only NOT_HELD Portfolio-row omission with evidence retained, HELD context, and mode-aware GET/Analyze loading overlay; 16 focused/88 impacted integration tests, with the preceding full suite at 4094 passed; SI-P2E not started |
 
 ## Portfolio Sync Track (PS-P0 started 2026-09-01)
 

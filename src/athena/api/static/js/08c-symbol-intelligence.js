@@ -281,12 +281,35 @@
 
     function siSyncAnalyzeControl() {
         const btn = document.getElementById("si-load-btn");
-        if (!btn) return;
         const input = document.getElementById("si-symbol-input");
         const typed = input ? siNormalizedQuery(input.value) : "";
         const duplicateAnalyze = siInFlightMode === "ANALYZE" && siSameQuery(typed, siInFlightQuery);
-        btn.disabled = duplicateAnalyze;
-        btn.setAttribute("aria-busy", duplicateAnalyze ? "true" : "false");
+        const analyzeInFlight = siInFlightMode === "ANALYZE";
+        const loadInFlight = Boolean(siInFlightMode);
+        if (btn) {
+            btn.disabled = duplicateAnalyze;
+            btn.textContent = analyzeInFlight ? "Analyzing…" : "Analyze";
+            btn.setAttribute("aria-busy", analyzeInFlight ? "true" : "false");
+        }
+        const overlay = document.getElementById("si-analyze-overlay");
+        overlay?.classList.toggle("active", loadInFlight);
+        overlay?.setAttribute("aria-hidden", loadInFlight ? "false" : "true");
+        document.body.classList.toggle("si-analyze-blocked", loadInFlight);
+        const overlayText = document.getElementById("si-analyze-overlay-text");
+        if (overlayText && loadInFlight) {
+            overlayText.textContent = analyzeInFlight
+                ? "Analyzing Symbol Intelligence"
+                : "Loading Symbol Intelligence";
+        }
+        const detail = document.getElementById("si-analyze-overlay-detail");
+        if (detail && loadInFlight) {
+            const action = analyzeInFlight
+                ? "Refreshing completed-D1 evidence"
+                : "Loading persisted evidence";
+            detail.textContent = siInFlightQuery
+                ? `${action} for ${siInFlightQuery}…`
+                : `${action}…`;
+        }
     }
 
     function siSetInFlight(mode, query) {
@@ -463,7 +486,7 @@
                 ${siMetric("RSI (14)", siRsi(d1.rsi14))}
                 ${siMetric("Volume vs MA20", siVolumeVsMa20(d1))}
             </dl>
-            <p class="si-pending">Volume vs 20D average uses completed-D1 volume against MA20. Momentum Quality is not defined.</p></div>`;
+            <p class="si-pending">Volume vs 20D average uses completed-D1 volume against MA20. Momentum Quality is not yet methodologically defined.</p></div>`;
     }
 
     function siLevelRow(label, zone, close, { perspective, bound } = {}) {
@@ -592,41 +615,402 @@
         return parts.filter(Boolean).join(" ");
     }
 
-    function siCompleteReview(bundle) {
-        const d1 = bundle.d1 || {};
-        const live = bundle.live || {};
-        const decision = bundle.decision || {};
-        const portfolio = bundle.portfolio || {};
-        const darvax = bundle.darvax || {};
-        const trend = d1.symbol_trend ? `Daily SMA structure is ${d1.symbol_trend}.` : "D1 SMA structure is unavailable.";
-        const st = d1.supertrend_direction ? `SuperTrend (10,3) is ${String(d1.supertrend_direction).toLowerCase()}.` : "";
-        const differ = siStructureDiffers(d1)
-            ? "Those two measurements currently differ; they are not blended."
+    function siSummaryStatement(
+        kind,
+        text,
+        sourceRefs,
+        asOf = null,
+        displayParts = [],
+        displayMeta = ""
+    ) {
+        if (!text) return null;
+        return Object.freeze({
+            kind,
+            text,
+            source_refs: Object.freeze([...sourceRefs]),
+            as_of: asOf || null,
+            display_parts: Object.freeze([...displayParts]),
+            display_meta: displayMeta,
+        });
+    }
+
+    function siSummarySource(bundle, sourceName) {
+        return ((bundle && bundle.sources) || []).find(source => source.source === sourceName) || null;
+    }
+
+    function siSummaryStructure(d1, reportedMissing) {
+        if (!d1 || !d1.present) return null;
+        const smaRaw = d1.symbol_trend_is_coherent === true
+            && ["UPTREND", "DOWNTREND", "SIDEWAYS", "MIXED"].includes(String(d1.symbol_trend || ""))
+            ? d1.symbol_trend
+            : null;
+        const stRaw = d1.supertrend_is_coherent === true
+            && ["BULLISH", "BEARISH"].includes(String(d1.supertrend_direction || ""))
+            ? d1.supertrend_direction
+            : null;
+        const sma = smaRaw ? siSmaStructureLabel(smaRaw) : "";
+        const st = stRaw ? siSuperTrendLabel(stRaw) : "";
+        let text = "";
+        let displayParts = [];
+        if (sma && st && sma === st && (sma === "Up" || sma === "Down")) {
+            text = `Daily SMA structure and SuperTrend both indicate ${sma.toLowerCase()}ward technical structure.`;
+            displayParts = [`SMA ${sma}`, `SuperTrend ${st}`];
+        } else if (sma && st) {
+            text = `Daily SMA structure is ${sma}, while SuperTrend is ${st}; the two measurements disagree.`;
+            displayParts = [`SMA ${sma}`, `SuperTrend ${st}`, "Indicators disagree"];
+        } else if (sma) {
+            reportedMissing.add("SuperTrend");
+            text = `Daily SMA structure is ${sma}; SuperTrend is unavailable.`;
+            displayParts = [`SMA ${sma}`, "SuperTrend unavailable"];
+        } else if (st) {
+            reportedMissing.add("Daily SMA structure");
+            text = `SuperTrend is ${st}; Daily SMA structure is unavailable.`;
+            displayParts = ["SMA unavailable", `SuperTrend ${st}`];
+        }
+        return siSummaryStatement(
+            "STRUCTURE",
+            text,
+            ["d1.symbol_trend", "d1.symbol_trend_is_coherent", "d1.supertrend_direction", "d1.supertrend_is_coherent"],
+            d1.latest_session,
+            displayParts
+        );
+    }
+
+    function siSummaryMomentum(d1) {
+        if (!d1 || !d1.present) return null;
+        const rsi = d1.rsi_is_coherent === true ? siFiniteNumber(d1.rsi14) : null;
+        const volume = d1.volume_is_coherent === true ? siFiniteNumber(d1.volume) : null;
+        const volumeMa20 = d1.volume_is_coherent === true ? siFiniteNumber(d1.volume_ma20) : null;
+        const participation = volume != null && volumeMa20 != null
+            ? (volume >= volumeMa20 ? "above" : "below")
             : "";
-        const rsi = d1.rsi14 != null ? `RSI (14) is ${siRsi(d1.rsi14)}.` : "RSI is unavailable.";
-        const volume = `Volume vs MA20 is ${siVolumeVsMa20(d1)}.`;
+        let text = "";
+        const displayParts = [];
+        if (rsi != null && participation) {
+            text = `RSI (14) is ${siRsi(rsi)}, and completed-D1 volume is ${participation} its 20-session average.`;
+        } else if (rsi != null) {
+            text = `RSI (14) is ${siRsi(rsi)}.`;
+        } else if (participation) {
+            text = `Completed-D1 volume is ${participation} its 20-session average.`;
+        }
+        if (rsi != null) displayParts.push(`RSI ${siRsi(rsi)}`);
+        if (participation) displayParts.push(`Volume ${participation} 20-session average`);
+        return siSummaryStatement(
+            "MOMENTUM",
+            text,
+            ["d1.rsi14", "d1.rsi_is_coherent", "d1.volume", "d1.volume_ma20", "d1.volume_is_coherent"],
+            d1.latest_session,
+            displayParts
+        );
+    }
+
+    function siSummaryCloseVsBoundaryPart(label, close, boundary) {
+        const relation = siCloseVsBoundary(close, boundary);
+        if (!relation) return "";
+        if (relation.direction === "at") return `D1 at ${label} upper boundary`;
+        return `D1 ${relation.magnitude}% ${relation.direction} ${label}`;
+    }
+
+    function siSummaryLevelVsClosePart(label, level, close) {
+        const relation = siLevelVsClose(level, close);
+        if (!relation) return "";
+        if (relation.direction === "at") return `${label} at D1 close`;
+        return `${label} ${relation.magnitude}% ${relation.direction} D1 close`;
+    }
+
+    function siSummaryLevels(d1) {
+        if (!d1 || !d1.present || d1.structural_is_coherent !== true) return null;
+        const close = siFiniteNumber(d1.close);
+        if (close == null || close === 0) return null;
+        const observations = [];
+        const displayParts = [];
+        const sourceRefs = ["d1.close", "d1.structural_is_coherent"];
+        const supportCandidates = [
+            ["Support 1", d1.support_1, "d1.support_1"],
+            ["Major Support", d1.major_support, "d1.major_support"],
+        ];
+        const upper = supportCandidates.find(([, zone]) => (
+            zone && siFiniteNumber(zone.upper) != null && siFiniteNumber(zone.upper) !== 0
+        ));
+        if (upper) {
+            observations.push(siCloseVsBoundarySentence(upper[0], close, upper[1].upper));
+            displayParts.push(siSummaryCloseVsBoundaryPart(upper[0], close, upper[1].upper));
+            sourceRefs.push(upper[2]);
+        }
+        const forwardCandidates = [
+            ["Review Trigger", d1.review_trigger, "d1.review_trigger"],
+            ["Target 1", d1.target_1, "d1.target_1"],
+        ];
+        const lower = forwardCandidates.find(([, zone]) => (
+            zone && siFiniteNumber(zone.lower) != null && siFiniteNumber(zone.lower) !== 0
+        ));
+        if (lower) {
+            observations.push(siLevelVsCloseSentence(lower[0], lower[1].lower, close));
+            displayParts.push(siSummaryLevelVsClosePart(lower[0], lower[1].lower, close));
+            sourceRefs.push(lower[2]);
+        }
+        return siSummaryStatement(
+            "LEVEL_POSITION",
+            observations.filter(Boolean).slice(0, 2).join(" "),
+            sourceRefs,
+            d1.latest_session,
+            displayParts.filter(Boolean).slice(0, 2)
+        );
+    }
+
+    function siSummaryDecision(decision) {
+        if (!decision || !decision.present) {
+            return siSummaryStatement(
+                "ATHENA_DECISION",
+                "ATHENA has no persisted Decision for this symbol; Stock 360 technical research remains available.",
+                ["decision.present", "decision.null_reason"],
+                null,
+                ["No persisted Decision", "Stock 360 research remains available"]
+            );
+        }
+        const type = siEnumLabel(decision.decision_type, "Decision");
+        const date = decision.ts ? siChartLongDate(decision.ts) : "";
+        const confidence = decision.confidence_level
+            ? siEnumLabel(decision.confidence_level, "")
+            : "";
+        let text = `ATHENA has a persisted ${type} Decision`;
+        if (date && date !== "—") text += ` as of ${date}`;
+        if (confidence) text += ` with ${confidence} confidence`;
+        text += ".";
+        const score = siPersistedScore(decision);
+        const gates = siGatePassSummary(decision);
+        const displayParts = [type];
+        if (confidence) displayParts.push(`${confidence} confidence`);
+        if (score != null) displayParts.push(`Score ${siScore(score)}/100`);
+        if (gates) {
+            const compactGates = gates.replace(" of ", "/");
+            displayParts.push(`${compactGates}`);
+        }
+        if (score != null && gates) {
+            text += ` Persisted score is ${siScore(score)} / 100, and ${gates}.`;
+        } else if (score != null) {
+            text += ` Persisted score is ${siScore(score)} / 100.`;
+        } else if (gates) {
+            text += ` ${gates.charAt(0).toUpperCase()}${gates.slice(1)}.`;
+        }
+        return siSummaryStatement(
+            "ATHENA_DECISION",
+            text,
+            ["decision.present", "decision.decision_type", "decision.ts", "decision.confidence_level", "decision.depth.score.value", "decision.gates"],
+            decision.ts,
+            displayParts,
+            date && date !== "—" ? `Decision as of ${date}` : ""
+        );
+    }
+
+    function siSummaryPortfolio(portfolio) {
+        if (!portfolio) return null;
+        if (portfolio.status !== "HELD") {
+            return siSummaryStatement(
+                "PORTFOLIO",
+                "This symbol is not held in My Portfolio.",
+                ["portfolio.status"],
+                null,
+                ["Not held"]
+            );
+        }
+        const quantity = siFiniteNumber(portfolio.quantity);
+        const average = siFiniteNumber(portfolio.avg_price);
+        const pnlPct = siFiniteNumber(portfolio.pnl_pct);
+        const displayParts = [];
+        let text = "This symbol is held in My Portfolio";
+        if (quantity != null && average != null) {
+            text += `: ${siInteger(quantity)} shares at an average price of ${siMoney(average)}`;
+        }
+        text += ".";
+        if (pnlPct != null) text += ` Current Portfolio P&L is ${siPct(pnlPct)}.`;
+        if (quantity != null) displayParts.push(`${siInteger(quantity)} shares`);
+        if (average != null) displayParts.push(`Avg ${siMoney(average)}`);
+        if (pnlPct != null) displayParts.push(`P&L ${siPct(pnlPct)}`);
+        if (!displayParts.length) displayParts.push("Held");
+        return siSummaryStatement(
+            "PORTFOLIO",
+            text,
+            ["portfolio.status", "portfolio.quantity", "portfolio.avg_price", "portfolio.pnl_pct"],
+            null,
+            displayParts
+        );
+    }
+
+    function siSummaryAvailability(bundle, reportedMissing) {
+        const d1 = bundle.d1 || {};
+        const d1Source = siSummarySource(bundle, "D1_CANDLES");
+        const parts = [];
+        const displayParts = [];
+        const refs = ["sources.D1_CANDLES.status", "d1.latest_session"];
+        const date = d1.latest_session ? siChartLongDate(d1.latest_session) : "";
+        if (!d1.present) {
+            parts.push("Completed-D1 evidence is unavailable.");
+            displayParts.push("Completed-D1 evidence unavailable");
+        } else if (d1Source && d1Source.status === "STALE") {
+            parts.push(date && date !== "—"
+                ? `Completed-D1 evidence is stale through ${date}.`
+                : "Completed-D1 evidence is stale.");
+            displayParts.push(date && date !== "—"
+                ? `Completed-D1 evidence stale through ${date}`
+                : "Completed-D1 evidence stale");
+        } else if (date && date !== "—") {
+            parts.push(`Data through ${date}.`);
+            displayParts.push(`Data through ${date}`);
+        }
+        if (d1.present) {
+            const missing = [];
+            if (!(d1.symbol_trend_is_coherent === true && d1.symbol_trend)) missing.push("Daily SMA structure");
+            if (!(d1.supertrend_is_coherent === true && d1.supertrend_direction)) missing.push("SuperTrend");
+            if (!(d1.rsi_is_coherent === true && siFiniteNumber(d1.rsi14) != null)) missing.push("RSI");
+            if (!(d1.volume_is_coherent === true
+                && siFiniteNumber(d1.volume) != null
+                && siFiniteNumber(d1.volume_ma20) != null)) missing.push("volume comparison");
+            const unreported = missing.filter(name => !reportedMissing.has(name));
+            if (unreported.length > 0 && unreported.length <= 3) {
+                const names = unreported.length === 1
+                    ? unreported[0]
+                    : `${unreported.slice(0, -1).join(", ")} and ${unreported.at(-1)}`;
+                parts.push(`${names} ${unreported.length === 1 ? "is" : "are"} unavailable.`);
+                displayParts.push(`${names} ${unreported.length === 1 ? "is" : "are"} unavailable`);
+            } else if (unreported.length > 3) {
+                parts.push("Some optional D1 measurements are unavailable.");
+                displayParts.push("Some optional D1 measurements unavailable");
+            }
+        }
+        if (bundle.fundamentals && bundle.fundamentals.status === "NOT_INGESTED"
+            && bundle.news && bundle.news.status === "NOT_INGESTED") {
+            parts.push("Fundamentals and news/catalysts are not yet ingested.");
+            displayParts.push("Fundamentals and news/catalysts not yet ingested");
+            refs.push("fundamentals.status", "news.status");
+        } else if (bundle.fundamentals && bundle.fundamentals.status === "NOT_INGESTED") {
+            parts.push("Fundamentals are not yet ingested.");
+            displayParts.push("Fundamentals not yet ingested");
+            refs.push("fundamentals.status");
+        } else if (bundle.news && bundle.news.status === "NOT_INGESTED") {
+            parts.push("News/catalysts are not yet ingested.");
+            displayParts.push("News/catalysts not yet ingested");
+            refs.push("news.status");
+        }
+        return siSummaryStatement(
+            "DATA_AVAILABILITY",
+            siSentence(parts),
+            refs,
+            d1.latest_session,
+            displayParts
+        );
+    }
+
+    function siComposeResearchSummary(bundle) {
+        if (!bundle || !bundle.identity || bundle.identity.resolved !== true) {
+            return Object.freeze({primary: Object.freeze([]), supporting: Object.freeze([]), availability: Object.freeze([]), statements: Object.freeze([])});
+        }
+        const d1 = bundle.d1 || {};
+        const reportedMissing = new Set();
+        const primary = [
+            siSummaryStructure(d1, reportedMissing),
+            siSummaryMomentum(d1),
+            siSummaryLevels(d1),
+            siSummaryDecision(bundle.decision),
+        ].filter(Boolean).slice(0, 4);
+        const supporting = [siSummaryPortfolio(bundle.portfolio)].filter(Boolean).slice(0, 1);
+        const availability = [siSummaryAvailability(bundle, reportedMissing)].filter(Boolean).slice(0, 1);
+        return Object.freeze({
+            primary: Object.freeze(primary),
+            supporting: Object.freeze(supporting),
+            availability: Object.freeze(availability),
+            statements: Object.freeze([...primary, ...supporting, ...availability]),
+        });
+    }
+
+    function siSummaryFamilyLabel(kind) {
+        return ({
+            STRUCTURE: "Structure",
+            MOMENTUM: "Momentum",
+            LEVEL_POSITION: "Key Levels",
+            ATHENA_DECISION: "ATHENA",
+            PORTFOLIO: "Portfolio",
+        })[kind] || "";
+    }
+
+    function siSummaryDisplayText(statement) {
+        const parts = Array.isArray(statement && statement.display_parts)
+            ? statement.display_parts.filter(Boolean)
+            : [];
+        return parts.length ? parts.join(" · ") : String(statement && statement.text || "");
+    }
+
+    function siSummaryDisplayGroups(statement) {
+        const parts = Array.isArray(statement && statement.display_parts)
+            ? statement.display_parts.filter(Boolean)
+            : [];
+        if (statement && statement.kind === "ATHENA_DECISION"
+            && statement.source_refs.includes("decision.decision_type")) {
+            const secondary = parts.filter(part => (
+                /^Score\s/.test(part) || /\bgates passed$/.test(part)
+            ));
+            const primary = parts.filter(part => !secondary.includes(part));
+            return {primary, secondary};
+        }
+        return {primary: parts, secondary: []};
+    }
+
+    function siSummaryAtomicHtml(parts) {
+        return parts.map(part => siEscape(part).replaceAll(" ", "&nbsp;")).join(" · ");
+    }
+
+    function siSummaryRow(statement) {
+        const label = siSummaryFamilyLabel(statement.kind);
+        if (!label) return "";
+        const sources = statement.source_refs.join(" ");
+        const groups = siSummaryDisplayGroups(statement);
+        const isPersistedDecision = statement.kind === "ATHENA_DECISION"
+            && statement.source_refs.includes("decision.decision_type");
+        const primaryText = groups.primary.length
+            ? groups.primary.join(" · ")
+            : siSummaryDisplayText(statement);
+        const primaryHtml = isPersistedDecision
+            ? siSummaryAtomicHtml(groups.primary)
+            : siEscape(primaryText);
+        const secondary = groups.secondary.length
+            ? `<span class="si-brief-secondary">${siSummaryAtomicHtml(groups.secondary)}</span>`
+            : "";
+        const meta = statement.display_meta
+            ? `<span class="si-brief-meta">${siEscape(statement.display_meta)}</span>`
+            : "";
+        return `<div class="si-brief-row" data-si-summary-kind="${siEscape(statement.kind)}" data-si-summary-sources="${siEscape(sources)}">
+            <dt>${siEscape(label)}</dt>
+            <dd><span class="si-brief-evidence">${primaryHtml}</span>${secondary}${meta}</dd>
+        </div>`;
+    }
+
+    function siSummaryFooter(statement) {
+        if (!statement) return "";
+        const sources = statement.source_refs.join(" ");
+        const parts = statement.display_parts.filter(Boolean);
+        const firstIsFreshness = /^(Data through|Completed-D1 evidence)/.test(parts[0] || "");
+        const freshness = firstIsFreshness ? parts[0] : "";
+        const capability = parts.slice(firstIsFreshness ? 1 : 0).join(" · ");
+        const stale = /\bstale\b/i.test(freshness);
+        const freshnessHtml = freshness
+            ? `<span class="si-review-freshness">${siEscape(freshness)}</span>`
+            : "";
+        const capabilityHtml = capability
+            ? `<span class="si-review-capability">${siEscape(capability)}</span>`
+            : "";
+        return `<p class="si-review-meta${stale ? " is-stale" : ""}" data-si-summary-kind="DATA_AVAILABILITY" data-si-summary-sources="${siEscape(sources)}">${freshnessHtml}${capabilityHtml}</p>`;
+    }
+
+    function siCompleteReview(bundle) {
+        const summary = siComposeResearchSummary(bundle);
+        const visible = [...summary.primary, ...summary.supporting].filter(statement => (
+            statement.kind !== "PORTFOLIO" || bundle.portfolio?.status === "HELD"
+        ));
+        const rows = visible.map(siSummaryRow).filter(Boolean).join("");
         return `<div class="si-card si-review">
-            <h3>Written summary</h3>
-            <h4>Market Snapshot</h4>
-            <p>${siSentence([
-                live.present
-                    ? `${live.quote_kind === "LIVE" ? "Live" : "Latest quote"} ${siMoney(live.last_price)} (${siText(live.label)}).`
-                    : "No current/latest quote was captured; last completed D1 is shown.",
-                d1.present ? `Last completed D1 close ${siMoney(d1.close)} on ${siDate(d1.latest_session)}.` : "No completed D1 bar is present.",
-            ])}</p>
-            <h4>Trend</h4><p>${siSentence([trend, st, differ])}</p>
-            <h4>Momentum Evidence</h4><p>${rsi} ${volume} Momentum Quality is not yet methodologically defined.</p>
-            <h4>Structure</h4><p>${d1.present ? `Available-history high ${siMoney(d1.available_history_high)}.` : "Structure unavailable."}</p>
-            <h4>Key Levels</h4><p>Support 1 ${siZoneShort(d1.support_1)}. Review trigger ${siZoneShort(d1.review_trigger)}.</p>
-            <h4>Entry Evidence</h4><p>Entry Quality is not yet methodologically defined. Named support/review levels are shown without a buy/wait verdict.</p>
-            <h4>ATHENA Decision</h4>
-            <p>${decision.present ? siText(siDisplayExplanation(decision.explanation)) : "ATHENA has not produced a Decision for this symbol."}</p>
-            <h4>DarvaX</h4>
-            <p>${darvax.status === "ENABLED_IFRAME" ? "DarvaX Symbol 360 is available as an experimental satellite." : "DarvaX is unavailable."}</p>
-            <h4>Portfolio Context</h4>
-            <p>${portfolio.status === "HELD" ? "This symbol is held in My Portfolio." : "This symbol is not held."}</p>
-            <h4>Data Availability</h4>
-            <p>Fundamentals and news are not ingested. Market data: ${siMarketDataStatus(bundle)}. SI coverage: ${siCoverageStatus(bundle)}. ${siCoverageReason(bundle)}</p>
+            <h3>Research brief</h3>
+            <dl class="si-research-brief">${rows}</dl>
+            ${siSummaryFooter(summary.availability[0])}
         </div>`;
     }
 

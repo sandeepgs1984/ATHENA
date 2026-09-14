@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.250.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.254.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -2088,6 +2088,13 @@
         <div class="my-portfolio-sync-overlay-subtext">Holdings are locked until this run finishes.</div>
     </div>
 
+    <div id="si-analyze-overlay" class="si-analyze-overlay" role="status" aria-live="polite" aria-hidden="true">
+        <div class="si-analyze-overlay-spinner" aria-hidden="true"></div>
+        <div id="si-analyze-overlay-text" class="si-analyze-overlay-text">Loading Symbol Intelligence</div>
+        <div id="si-analyze-overlay-detail" class="si-analyze-overlay-detail">Refreshing completed-D1 evidence…</div>
+        <div class="si-analyze-overlay-subtext">Existing evidence remains unchanged until analysis completes.</div>
+    </div>
+
     <!-- MY-PORTFOLIO-V1-FINAL-UX-CLOSURE: holding-detail drawer, opened on
          row click. Full Position/Technical State/ATHENA Review/Plan Levels
          detail lives here so the main table can stay compact — presentation
@@ -2529,7 +2536,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.250.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.254.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

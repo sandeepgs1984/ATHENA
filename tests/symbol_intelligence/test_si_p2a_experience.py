@@ -69,6 +69,22 @@ def test_si_p2a_stale_response_and_repeated_analyze_protection() -> None:
     assert 'siSetInFlight("")' in js
     assert "siSyncAnalyzeControl" in js
     assert "btn.disabled = duplicateAnalyze;" in js
+    assert 'btn.textContent = analyzeInFlight ? "Analyzing…" : "Analyze";' in js
+    assert "const loadInFlight = Boolean(siInFlightMode);" in js
+    assert 'overlay?.classList.toggle("active", loadInFlight);' in js
+    assert 'document.body.classList.toggle("si-analyze-blocked", loadInFlight);' in js
+    assert '"Loading persisted evidence"' in js
+    assert '"Loading Symbol Intelligence"' in js
+    assert '"Refreshing completed-D1 evidence"' in js
+    assert "${action} for ${siInFlightQuery}…" in js
+    html = HTML.read_text(encoding="utf-8")
+    assert 'id="si-analyze-overlay"' in html
+    assert 'id="si-analyze-overlay-text"' in html
+    assert 'role="status" aria-live="polite" aria-hidden="true"' in html
+    css = CSS.read_text(encoding="utf-8")
+    assert ".si-analyze-overlay.active" in css
+    assert ".si-analyze-overlay-spinner" in css
+    assert "@media (prefers-reduced-motion: reduce)" in css
     assert "siInFlightController.abort()" in js
     assert "siIsAbortError" in js
     assert "siBundle = null;" in js[js.index("function siShowWorkspaceError") :]
@@ -218,11 +234,11 @@ def test_si_p2a_dashboard_assets_and_hosted_nav() -> None:
     pane = _si_pane(html)
     assembled = assemble_dashboard_js(str(STATIC))
     css = (STATIC / "dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.250.0" in html
-    assert "dashboard.js?v=9.250.0" in html
+    assert "dashboard.css?v=9.254.0" in html
+    assert "dashboard.js?v=9.254.0" in html
     assert 'data-si-section="stock-360"' in pane
     assert "08c-symbol-intelligence.js" in DASHBOARD_JS_PARTS
     assert "function loadSymbolIntelligence(" in assembled
     assert "siLoadGeneration" in assembled
     assert "siInFlightMode" in assembled
-    assert "css/15-symbol-intelligence.css?v=9.250.0" in css
+    assert "css/15-symbol-intelligence.css?v=9.254.0" in css

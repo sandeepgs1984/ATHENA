@@ -6,6 +6,97 @@ status updated on approval.
 
 ---
 
+## SI-P2D — Deterministic Written Research Summary
+
+**Authorization/objective.** Owner/Chief Architect authorized SI-P2D on
+2026-09-14 after SI-P2C completed and froze on asset `9.250.0`. Replace the
+mechanically assembled Written Summary with a concise deterministic research brief
+over evidence ATHENA already owns. SI-P1/P2A/P2B/P2C remain frozen; SI-P2E was
+not started.
+
+**Scope completed.** Added pure frontend `siComposeResearchSummary()` with
+immutable semantic `{kind, text, source_refs, as_of}` statements plus compact,
+deterministic `display_parts`/`display_meta`. Six fixed families—
+STRUCTURE, MOMENTUM, LEVEL_POSITION, ATHENA_DECISION, PORTFOLIO, and
+DATA_AVAILABILITY—compose in deterministic order. Output is bounded to five
+semantic Research Brief rows and one subordinate Data footer. Desktop uses an
+aligned label/evidence grid; mobile stacks each row without shrinking type.
+Coherence flags gate technical evidence; existing completed-D1 Price Map
+arithmetic supplies at most two level relationships. Persisted Decision and
+Portfolio facts remain attributed and uninterpreted. Invalid identity emits no
+summary. No LLM, prediction, recommendation, causal claim, MQ/EQ, or new
+methodology was added.
+
+**Files created.** `docs/research/SI-P2D-WRITTEN-SUMMARY-DISCOVERY.md`;
+`docs/research/SI-P2D-WRITTEN-SUMMARY-IMPLEMENTATION.md`;
+`docs/research/si-p2d-written-summary/` evidence; and
+`tests/symbol_intelligence/test_si_p2d_written_summary.py`.
+**Files modified.** SI presentation JavaScript/CSS; dashboard asset pin
+`9.254.0`; existing P2A/P2B/P2C/hosting/release pin assertions;
+`docs/MILESTONES.md`; `ATHENA_BRIEFING.md` §6; this log. No backend, API, DTO,
+schema, persistence, provider, Decision, Portfolio, DarvaX, or chart logic
+changed.
+
+**Tests/coverage.** Actual JavaScript composer golden cases cover Up/Down
+agreement, disagreement, missing SuperTrend/RSI/volume, support and forward
+level fallbacks, Decision/no Decision, held/not held, READY/PARTIAL/stale,
+capability absence, sparse inputs, invalid identity, provenance, human enums,
+fixed order/length, forbidden language, semantic row rendering, missing-family
+omission, responsive CSS, and pins. Focused: **16 passed**; integrated
+SI/API/hosting: **88 passed**; full suite: **4094 passed, 0 failed, 2 skipped**.
+Ruff, scoped mypy, Node syntax,
+real-browser assertions, and diff-check passed.
+
+**Compliance/risks/debt.** Frontend ownership avoids reopening the frozen SI
+DTO for a presentation-only consumer and remains aligned with ATHENA-002's
+report/render boundary. All inputs are explicit frozen bundle fields or P2B
+display arithmetic; every statement carries testable source references. No ADR
+is required and no technical debt is known. The summary deliberately cannot
+cover evidence ATHENA has not ingested or methodologically defined.
+
+**Live evidence.** WIPRO READY/Decision/not-held, TI PARTIAL/disagreement/no
+Decision, ACMESOLAR held Portfolio context, 390px WIPRO, 390px TI disagreement,
+and invalid identity passed against unmodified persisted data on asset `9.253.0`,
+with zero overflow, deterministic row order, aligned desktop labels, and stacked
+mobile rows. The final Owner-authorized polish groups persisted ATHENA
+type/confidence, score/gates, and as-of evidence into a responsive three-tier
+hierarchy, separates Data freshness from capability metadata, and preserves
+stale prominence. Only affected WIPRO desktop, WIPRO mobile, and TI mobile
+evidence was recaptured.
+Asset `9.254.0` adds the final presentation-only Portfolio admission rule:
+NOT_HELD statements and provenance remain in the composed model but their
+Research Brief row is omitted; HELD quantity, average, and P&L remain rendered
+unchanged. Final screenshots are Owner-captured by explicit direction.
+The same `9.254.0` presentation bundle adds a Portfolio-Sync-consistent Analyze
+overlay driven by the existing ANALYZE in-flight state, with active-symbol
+context, accessible live status, reduced-motion behavior, and no request or
+hydration change.
+The final `9.254.0` overlay also covers symbol-result GET loads with truthful
+persisted-evidence copy, while Analyze keeps its distinct refresh copy; the
+request lifecycle remains unchanged.
+Seven natural candidates had complete optional evidence, so no sparse visual is
+claimed; the sparse path is deterministically fixture-tested. Evidence:
+`docs/research/si-p2d-written-summary/`.
+
+**Remaining work.** None within SI-P2D. Owner / Chief Architect final source and
+rendering review approved SI-P2D **COMPLETE AND FROZEN** on asset `9.254.0`.
+Do not start SI-P2E or later work without separate authorization.
+
+**Suggested consolidated commit message.**
+
+```text
+feat(report): complete SI-P2D research brief
+
+- Replace dense summary prose with a scannable evidence-backed Research Brief.
+- Present structure, momentum, key levels, ATHENA, and held-portfolio context.
+- Omit non-held Portfolio presentation while preserving traceable evidence.
+- Add accessible Symbol Intelligence loading feedback without changing evidence.
+- Preserve frozen SI methodology, API, Decision, Portfolio, and chart contracts.
+- Freeze validated SI-P2D presentation on asset 9.254.0.
+```
+
+---
+
 ## SI-P2C — Completed-D1 chart intelligence
 
 **Authorization/objective.** Owner/Chief Architect authorized SI-P2C on

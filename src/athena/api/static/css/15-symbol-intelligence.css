@@ -864,6 +864,150 @@
     opacity: 0.85;
 }
 
+.si-review {
+    margin-top: 10px;
+}
+
+.si-review h3 {
+    margin-bottom: 4px;
+}
+
+.si-research-brief {
+    margin: 0;
+    max-width: 90rem;
+}
+
+.si-brief-row {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: 14px;
+    padding: 8px 0;
+    border-top: 1px solid color-mix(in srgb, var(--border, #2a3344) 72%, transparent);
+    line-height: 1.4;
+}
+
+.si-brief-row:first-child {
+    border-top: 0;
+}
+
+.si-brief-row dt {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+}
+
+.si-brief-row dd {
+    min-width: 0;
+    margin: 0;
+    font-size: 0.88rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.si-brief-secondary::before {
+    content: " · ";
+}
+
+.si-brief-meta {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.72rem;
+}
+
+.si-review-meta {
+    max-width: 90rem;
+    margin: 4px 0 0;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in srgb, var(--border, #2a3344) 72%, transparent);
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+
+.si-review-capability::before {
+    content: " · ";
+}
+
+.si-review-meta.is-stale .si-review-freshness {
+    color: var(--warning, #f5c451);
+    font-weight: 650;
+}
+
+.si-analyze-blocked,
+.si-analyze-blocked .workspace-viewport {
+    overflow: hidden;
+}
+
+.si-analyze-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+    background:
+        radial-gradient(circle at 50% 42%, rgba(0, 229, 255, 0.14), transparent 26rem),
+        rgba(5, 9, 17, 0.88);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: scale(1.01);
+    transition: opacity 0.28s ease, transform 0.28s ease, visibility 0s linear 0.28s;
+}
+
+.si-analyze-overlay.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: all;
+    transform: scale(1);
+    transition: opacity 0.22s ease, transform 0.22s ease, visibility 0s linear 0s;
+}
+
+.si-analyze-overlay-spinner {
+    width: 68px;
+    height: 68px;
+    border: 4px solid rgba(241, 245, 249, 0.12);
+    border-top-color: var(--accent, #00e5ff);
+    border-right-color: rgba(31, 191, 117, 0.85);
+    border-radius: 50%;
+    box-shadow: 0 0 42px rgba(0, 229, 255, 0.2);
+    animation: si-analyze-overlay-spin 0.85s linear infinite;
+}
+
+@keyframes si-analyze-overlay-spin {
+    to { transform: rotate(360deg); }
+}
+
+.si-analyze-overlay-text {
+    color: var(--text-primary, #f1f5f9);
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.si-analyze-overlay-detail {
+    min-height: 1.2em;
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.95rem;
+}
+
+.si-analyze-overlay-subtext {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.82rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .si-analyze-overlay-spinner { animation-duration: 1.6s; }
+    .si-analyze-overlay { transition-duration: 0.05s; }
+}
+
 #si-load-btn[disabled] {
     opacity: 0.6;
     cursor: wait;
@@ -1084,6 +1228,45 @@
     .si-chart-header {
         display: grid;
         gap: 8px;
+    }
+
+    .si-written-summary {
+        padding-inline: 10px;
+    }
+
+    .si-research-brief,
+    .si-review-meta {
+        max-width: 100%;
+        overflow-wrap: break-word;
+    }
+
+    .si-brief-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 3px;
+        padding: 9px 0;
+    }
+
+    .si-brief-row dt {
+        font-size: 0.7rem;
+    }
+
+    .si-brief-row dd {
+        font-size: 0.88rem;
+    }
+
+    .si-brief-secondary,
+    .si-review-capability {
+        display: block;
+        margin-top: 2px;
+    }
+
+    .si-brief-secondary {
+        color: var(--text-muted, #94a3b8);
+    }
+
+    .si-brief-secondary::before,
+    .si-review-capability::before {
+        content: none;
     }
 
     .si-chart-controls-slot {

@@ -419,6 +419,6 @@ def test_si_p2c_invalid_and_responsive_contracts_remain_safe() -> None:
 def test_si_p2c_asset_cache_pin() -> None:
     html = HTML.read_text(encoding="utf-8")
     css = (STATIC / "dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.250.0" in html
-    assert "dashboard.js?v=9.250.0" in html
-    assert "css/15-symbol-intelligence.css?v=9.250.0" in css
+    assert "dashboard.css?v=9.254.0" in html
+    assert "dashboard.js?v=9.254.0" in html
+    assert "css/15-symbol-intelligence.css?v=9.254.0" in css
