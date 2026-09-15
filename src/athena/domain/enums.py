@@ -163,3 +163,56 @@ class FilingAuditStatus(str, Enum):
     UNAUDITED = "UNAUDITED"
     LIMITED_REVIEW = "LIMITED_REVIEW"
     UNKNOWN = "UNKNOWN"
+
+
+@unique
+class RawPeriodType(str, Enum):
+    """Structural period classification of an XBRL fact."""
+
+    DURATION = "DURATION"
+    INSTANT = "INSTANT"
+    UNKNOWN = "UNKNOWN"
+
+
+@unique
+class FinancialUnitClass(str, Enum):
+    """Semantic unit category of an XBRL fact."""
+
+    CURRENCY = "CURRENCY"
+    SHARES = "SHARES"
+    CURRENCY_PER_SHARE = "CURRENCY_PER_SHARE"
+    PURE = "PURE"
+    UNKNOWN = "UNKNOWN"
+
+
+@unique
+class CanonicalFinancialConcept(str, Enum):
+    """Approved canonical financial concepts (SI-F2B). Exactly these five."""
+
+    REVENUE_FROM_OPERATIONS = "REVENUE_FROM_OPERATIONS"
+    PROFIT_LOSS_BEFORE_TAX = "PROFIT_LOSS_BEFORE_TAX"
+    PROFIT_LOSS_FOR_PERIOD = "PROFIT_LOSS_FOR_PERIOD"
+    EPS_BASIC = "EPS_BASIC"
+    EPS_DILUTED = "EPS_DILUTED"
+
+
+@unique
+class DuplicateClassification(str, Enum):
+    """Deterministic classification of duplicate financial fact observations."""
+
+    UNIQUE = "UNIQUE"
+    EXACT_DUPLICATE = "EXACT_DUPLICATE"
+    COMPATIBLE_VALUE_DUPLICATE = "COMPATIBLE_VALUE_DUPLICATE"
+    CONFLICTING_DUPLICATE = "CONFLICTING_DUPLICATE"
+
+
+@unique
+class NormalizationEligibility(str, Enum):
+    """Issuer / filing eligibility status for canonical financial fact normalization."""
+
+    ELIGIBLE_NON_FINANCIAL = "ELIGIBLE_NON_FINANCIAL"
+    INELIGIBLE_BANKING = "INELIGIBLE_BANKING"
+    INELIGIBLE_NBFC = "INELIGIBLE_NBFC"
+    INELIGIBLE_INSURANCE = "INELIGIBLE_INSURANCE"
+    ISSUER_CLASSIFICATION_UNAVAILABLE = "ISSUER_CLASSIFICATION_UNAVAILABLE"
+

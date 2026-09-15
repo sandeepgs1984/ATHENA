@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "PyJWT>=2.13",
     "bcrypt>=5.0",
+    "defusedxml>=0.7.1",
 ]
 
 [project.optional-dependencies]

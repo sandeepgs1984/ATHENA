@@ -18,13 +18,19 @@ import hashlib
 import zlib
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from athena.domain.enums import (
+    CanonicalFinancialConcept,
     CumulativeNature,
+    DuplicateClassification,
     FilingAuditStatus,
+    FinancialUnitClass,
+    NormalizationEligibility,
     PeriodNature,
     PublicationPrecision,
+    RawPeriodType,
     StatementScope,
 )
 
@@ -303,3 +309,139 @@ class FilingDocument:
             stored_size_bytes=len(stored_payload),
             retrieved_at=retrieval_time,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class RawFinancialFact:
+    """Layer 1: Lossless observation of a single raw XBRL fact occurrence.
+
+    Preserves exact taxonomy qualification, document-level sequential ordinal,
+    opaque context coordinates, units, raw lexical values, dimensions, and signed Decimal
+    without synthetic alteration.
+    """
+
+    raw_fact_id: str
+    filing_id: str
+    document_id: str
+    source_occurrence_ordinal: int
+    namespace_uri: str
+    local_name: str
+    raw_qname: str
+    context_ref: str
+    period_type: RawPeriodType
+    period_end: date
+    period_start: date | None = None
+    duration_days: int | None = None
+    unit_ref: str | None = None
+    raw_unit_identity: str | None = None
+    unit_class: FinancialUnitClass = FinancialUnitClass.UNKNOWN
+    decimals: str | None = None
+    precision: str | None = None
+    is_nil: bool = False
+    raw_value: str = ""
+    numeric_value: Decimal | None = None
+    is_dimensioned: bool = False
+    dimension_signature: str = ""
+    dimensions: tuple[dict[str, str], ...] = ()
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __post_init__(self) -> None:
+        if not self.raw_fact_id or not self.raw_fact_id.strip():
+            raise ValueError("RawFinancialFact.raw_fact_id must be non-empty")
+        if not self.filing_id or not self.filing_id.strip():
+            raise ValueError("RawFinancialFact.filing_id must be non-empty")
+        if not self.document_id or not self.document_id.strip():
+            raise ValueError("RawFinancialFact.document_id must be non-empty")
+        if self.source_occurrence_ordinal < 1:
+            raise ValueError(
+                f"RawFinancialFact.source_occurrence_ordinal ({self.source_occurrence_ordinal}) must be >= 1"
+            )
+        if not self.local_name or not self.local_name.strip():
+            raise ValueError("RawFinancialFact.local_name must be non-empty")
+        if not self.context_ref or not self.context_ref.strip():
+            raise ValueError("RawFinancialFact.context_ref must be non-empty")
+        if self.is_nil and self.numeric_value is not None:
+            raise ValueError("RawFinancialFact cannot carry numeric_value when is_nil is True")
+        if self.period_type == RawPeriodType.DURATION:
+            if self.period_start is None:
+                raise ValueError("RawFinancialFact DURATION facts require period_start")
+            if self.period_start > self.period_end:
+                raise ValueError(
+                    f"period_start ({self.period_start}) cannot be after period_end ({self.period_end})"
+                )
+        elif self.period_type == RawPeriodType.INSTANT:
+            if self.period_start is not None:
+                raise ValueError("RawFinancialFact INSTANT facts must have period_start=None")
+        if self.created_at.tzinfo is None:
+            raise ValueError("RawFinancialFact.created_at must be timezone-aware")
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalFinancialFact:
+    """Layer 2: Standardized canonical financial fact observation.
+
+    Represents a mapped economic fact adhering to ATHENA canonical concepts,
+    explicit period coordinates, verified units, and mapping provenance.
+    """
+
+    canonical_fact_id: str
+    filing_id: str
+    document_id: str
+    canonical_concept: CanonicalFinancialConcept
+    statement_scope: StatementScope
+    period_type: RawPeriodType
+    period_end: date
+    canonical_unit: str
+    numeric_value: Decimal
+    mapping_version: str
+    mapping_rule_id: str
+    primary_raw_fact_id: str
+    period_start: date | None = None
+    duplicate_classification: DuplicateClassification = DuplicateClassification.UNIQUE
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __post_init__(self) -> None:
+        if not self.canonical_fact_id or not self.canonical_fact_id.strip():
+            raise ValueError("CanonicalFinancialFact.canonical_fact_id must be non-empty")
+        if not self.filing_id or not self.filing_id.strip():
+            raise ValueError("CanonicalFinancialFact.filing_id must be non-empty")
+        if not self.document_id or not self.document_id.strip():
+            raise ValueError("CanonicalFinancialFact.document_id must be non-empty")
+        if not self.primary_raw_fact_id or not self.primary_raw_fact_id.strip():
+            raise ValueError("CanonicalFinancialFact.primary_raw_fact_id must be non-empty")
+        if not self.mapping_version or not self.mapping_version.strip():
+            raise ValueError("CanonicalFinancialFact.mapping_version must be non-empty")
+        if not self.mapping_rule_id or not self.mapping_rule_id.strip():
+            raise ValueError("CanonicalFinancialFact.mapping_rule_id must be non-empty")
+        if self.period_type == RawPeriodType.DURATION:
+            if self.period_start is None:
+                raise ValueError("CanonicalFinancialFact DURATION facts require period_start")
+            if self.period_start > self.period_end:
+                raise ValueError(
+                    f"period_start ({self.period_start}) cannot be after period_end ({self.period_end})"
+                )
+        elif self.period_type == RawPeriodType.INSTANT:
+            if self.period_start is not None:
+                raise ValueError("CanonicalFinancialFact INSTANT facts must have period_start=None")
+        if self.created_at.tzinfo is None:
+            raise ValueError("CanonicalFinancialFact.created_at must be timezone-aware")
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizationResult:
+    """Deterministic result summary of a filing document normalization run."""
+
+    document_id: str
+    filing_id: str
+    raw_occurrences_seen: int
+    raw_occurrences_persisted: int
+    canonical_promoted: int
+    unmapped_count: int
+    dimension_blocked_count: int
+    unit_blocked_count: int
+    taxonomy_blocked_count: int
+    duplicate_count: int
+    conflict_count: int
+    eligibility: NormalizationEligibility
+    error_message: str | None = None
+

@@ -30,13 +30,17 @@ from athena.domain.decision import (
     TradePlan,
 )
 from athena.domain.enums import (
+    CanonicalFinancialConcept,
     CumulativeNature,
     DecisionType,
     Direction,
+    DuplicateClassification,
     FilingAuditStatus,
+    FinancialUnitClass,
     PeriodNature,
     PublicationPrecision,
     QualityGate,
+    RawPeriodType,
     RunStatus,
     RunTrigger,
     StatementScope,
@@ -44,9 +48,11 @@ from athena.domain.enums import (
     UserAction,
 )
 from athena.domain.fundamentals import (
+    CanonicalFinancialFact,
     FilingDocument,
     FundamentalFiling,
     IssuerRecord,
+    RawFinancialFact,
     SecurityIdentity,
 )
 from athena.domain.market import (
@@ -882,3 +888,102 @@ def row_to_filing_document(r: Sequence[Any]) -> FilingDocument:
         stored_size_bytes=int(r[8]),
         retrieved_at=datetime.fromisoformat(r[9]),
     )
+
+
+def raw_financial_fact_to_row(f: RawFinancialFact) -> tuple[Any, ...]:
+    return (
+        f.raw_fact_id,
+        f.filing_id,
+        f.document_id,
+        f.source_occurrence_ordinal,
+        f.namespace_uri,
+        f.local_name,
+        f.raw_qname,
+        f.context_ref,
+        f.period_type.value,
+        f.period_start.isoformat() if f.period_start else None,
+        f.period_end.isoformat(),
+        f.duration_days,
+        f.unit_ref,
+        f.raw_unit_identity,
+        f.unit_class.value,
+        f.decimals,
+        f.precision,
+        1 if f.is_nil else 0,
+        f.raw_value,
+        str(f.numeric_value) if f.numeric_value is not None else None,
+        1 if f.is_dimensioned else 0,
+        f.dimension_signature,
+        json.dumps(list(f.dimensions), sort_keys=True),
+        f.created_at.isoformat(),
+    )
+
+
+def row_to_raw_financial_fact(r: Sequence[Any]) -> RawFinancialFact:
+    return RawFinancialFact(
+        raw_fact_id=r[0],
+        filing_id=r[1],
+        document_id=r[2],
+        source_occurrence_ordinal=int(r[3]),
+        namespace_uri=r[4],
+        local_name=r[5],
+        raw_qname=r[6],
+        context_ref=r[7],
+        period_type=RawPeriodType(r[8]),
+        period_start=date.fromisoformat(r[9]) if r[9] else None,
+        period_end=date.fromisoformat(r[10]),
+        duration_days=int(r[11]) if r[11] is not None else None,
+        unit_ref=r[12],
+        raw_unit_identity=r[13],
+        unit_class=FinancialUnitClass(r[14]),
+        decimals=r[15],
+        precision=r[16],
+        is_nil=bool(r[17]),
+        raw_value=r[18],
+        numeric_value=Decimal(r[19]) if r[19] is not None else None,
+        is_dimensioned=bool(r[20]),
+        dimension_signature=r[21] or "",
+        dimensions=tuple(json.loads(r[22])) if r[22] else (),
+        created_at=datetime.fromisoformat(r[23]),
+    )
+
+
+def canonical_financial_fact_to_row(f: CanonicalFinancialFact) -> tuple[Any, ...]:
+    return (
+        f.canonical_fact_id,
+        f.filing_id,
+        f.document_id,
+        f.canonical_concept.value,
+        f.statement_scope.value,
+        f.period_type.value,
+        f.period_start.isoformat() if f.period_start else None,
+        f.period_end.isoformat(),
+        f.canonical_unit,
+        str(f.numeric_value),
+        f.mapping_version,
+        f.mapping_rule_id,
+        f.duplicate_classification.value,
+        f.primary_raw_fact_id,
+        f.created_at.isoformat(),
+    )
+
+
+def row_to_canonical_financial_fact(r: Sequence[Any]) -> CanonicalFinancialFact:
+    return CanonicalFinancialFact(
+        canonical_fact_id=r[0],
+        filing_id=r[1],
+        document_id=r[2],
+        canonical_concept=CanonicalFinancialConcept(r[3]),
+        statement_scope=StatementScope(r[4]),
+        period_type=RawPeriodType(r[5]),
+        period_start=date.fromisoformat(r[6]) if r[6] else None,
+        period_end=date.fromisoformat(r[7]),
+        canonical_unit=r[8],
+        numeric_value=Decimal(r[9]),
+        mapping_version=r[10],
+        mapping_rule_id=r[11],
+        duplicate_classification=DuplicateClassification(r[12]),
+        primary_raw_fact_id=r[13],
+        created_at=datetime.fromisoformat(r[14]),
+    )
+

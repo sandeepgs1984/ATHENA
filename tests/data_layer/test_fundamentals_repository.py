@@ -15,7 +15,9 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import zlib
+from dataclasses import replace
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -24,17 +26,23 @@ import pytest
 from athena.data.store import SqliteRepository
 from athena.data.store.schema import SCHEMA_VERSION
 from athena.domain.enums import (
+    CanonicalFinancialConcept,
     CumulativeNature,
+    DuplicateClassification,
     FilingAuditStatus,
+    FinancialUnitClass,
     PeriodNature,
     PublicationPrecision,
+    RawPeriodType,
     StatementScope,
 )
 from athena.domain.fundamentals import (
     MAX_RAW_DOCUMENT_SIZE_BYTES,
+    CanonicalFinancialFact,
     FilingDocument,
     FundamentalFiling,
     IssuerRecord,
+    RawFinancialFact,
     SecurityIdentity,
 )
 from athena.errors import RepositoryError
@@ -104,6 +112,22 @@ def _make_filing(
         supersedes_filing_id=None,
         raw_metadata={"foo": "bar"},
         ingested_at=now,
+    )
+
+
+def _make_doc(
+    document_id: str = "DOC-TEST",
+    filing_id: str = "FILING-NSE-117292",
+    raw_content: bytes = b"<xbrl>Test Payload</xbrl>",
+    media_type: str = "application/xml",
+    source_url: str = "https://example.com/test.xml",
+) -> FilingDocument:
+    return FilingDocument.create(
+        document_id=document_id,
+        filing_id=filing_id,
+        media_type=media_type,
+        source_url=source_url,
+        raw_bytes=raw_content,
     )
 
 
@@ -977,16 +1001,16 @@ class TestSchema20To21Migration:
         repo = SqliteRepository(db_path)
         repo.initialize()
 
-        # 1. Verify schema_version upgraded to 21
+        # 1. Verify schema_version upgraded to 22
         ver = repo._conn.execute("SELECT version FROM schema_version").fetchone()[0]
-        assert ver == 21
+        assert ver == 22
         assert repo.verify_integrity().schema_version_ok
 
         # 2. Verify pre-existing data preserved
         inst = repo.get_instrument("NSE:INFY")
         assert inst is not None and inst.symbol == "INFY"
 
-        # 3. Verify all 4 new fundamentals tables exist
+        # 3. Verify all 7 fundamentals tables exist
         table_names = {
             r[0] for r in repo._conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
@@ -994,6 +1018,9 @@ class TestSchema20To21Migration:
         assert "security_identities" in table_names
         assert "fundamental_filings" in table_names
         assert "filing_documents" in table_names
+        assert "raw_financial_facts" in table_names
+        assert "canonical_financial_facts" in table_names
+        assert "canonical_fact_raw_sources" in table_names
 
         # 4. Verify functionality on upgraded DB
         issuer = _make_issuer("ISS-MIGRATE", "Migrated Company Ltd")
@@ -1003,16 +1030,595 @@ class TestSchema20To21Migration:
         # 5. Idempotent re-initialization
         repo.initialize()
         ver_again = repo._conn.execute("SELECT version FROM schema_version").fetchone()[0]
-        assert ver_again == 21
+        assert ver_again == 22
         repo.close()
 
-    def test_fresh_database_initializes_at_version_21(self, tmp_path: Path):
+    def test_migration_from_schema_21_to_22(self, tmp_path: Path):
+        """Simulate an existing Schema 21 database upgrading to Schema 22."""
+        db_path = tmp_path / "schema21.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+        conn.execute("INSERT INTO schema_version(version) VALUES (21)")
+        conn.execute("""
+            CREATE TABLE issuers (
+                issuer_id TEXT PRIMARY KEY,
+                legal_name TEXT NOT NULL,
+                cin TEXT,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        conn.execute(
+            "INSERT INTO issuers(issuer_id, legal_name, status, created_at, updated_at) "
+            "VALUES ('ISS-21', 'Pre-existing 21 Ltd', 'ACTIVE', "
+            "'2026-09-15T00:00:00+00:00', '2026-09-15T00:00:00+00:00')"
+        )
+        conn.commit()
+        conn.close()
+
+        repo = SqliteRepository(db_path)
+        repo.initialize()
+
+        ver = repo._conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        assert ver == 22
+        assert repo.get_issuer("ISS-21") is not None
+
+        table_names = {
+            r[0] for r in repo._conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        assert "raw_financial_facts" in table_names
+        assert "canonical_financial_facts" in table_names
+        assert "canonical_fact_raw_sources" in table_names
+        repo.close()
+
+    def test_fresh_database_initializes_at_version_22(self, tmp_path: Path):
         db_path = tmp_path / "fresh.db"
         repo = SqliteRepository(db_path)
         repo.initialize()
 
         ver = repo._conn.execute("SELECT version FROM schema_version").fetchone()[0]
-        assert ver == 21
-        assert SCHEMA_VERSION == 21
+        assert ver == 22
+        assert SCHEMA_VERSION == 22
         assert repo.verify_integrity().schema_version_ok
         repo.close()
+
+
+class TestRawAndCanonicalFactsPersistence:
+    """SI-F2B: Production raw and canonical fact repository persistence tests."""
+
+    def test_save_and_get_raw_financial_facts_atomic_and_idempotent(self, repo: SqliteRepository):
+        issuer = _make_issuer("ISS-F2B", "F2B Test Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-F2B", issuer_id="ISS-F2B", source_record_id="REC-F2B")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-F2B", filing_id="FILING-F2B")
+        repo.save_filing_document(doc)
+
+        f1 = RawFinancialFact(
+            raw_fact_id="DOC-F2B:1",
+            filing_id="FILING-F2B",
+            document_id="DOC-F2B",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="in-bse-fin:RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            unit_class=FinancialUnitClass.CURRENCY,
+            raw_value="100000000.00",
+            numeric_value=Decimal("100000000.00"),
+        )
+        f2 = RawFinancialFact(
+            raw_fact_id="DOC-F2B:2",
+            filing_id="FILING-F2B",
+            document_id="DOC-F2B",
+            source_occurrence_ordinal=2,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="ProfitLossForPeriod",
+            raw_qname="in-bse-fin:ProfitLossForPeriod",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            unit_class=FinancialUnitClass.CURRENCY,
+            raw_value="20000000.00",
+            numeric_value=Decimal("20000000.00"),
+        )
+
+        assert repo.save_raw_financial_facts([f1, f2]) == 2
+        # Idempotent re-run
+        assert repo.save_raw_financial_facts([f1, f2]) == 0
+
+        stored = repo.get_raw_financial_facts("DOC-F2B")
+        assert len(stored) == 2
+        assert stored[0].raw_fact_id == "DOC-F2B:1"
+        assert stored[0].numeric_value == Decimal("100000000.00")
+        assert stored[1].raw_fact_id == "DOC-F2B:2"
+        assert stored[1].numeric_value == Decimal("20000000.00")
+
+    def test_save_raw_facts_rejects_conflicting_ordinal(self, repo: SqliteRepository):
+        issuer = _make_issuer("ISS-F2B-CONF", "F2B Conflict Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-CONF", issuer_id="ISS-F2B-CONF", source_record_id="REC-CONF")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-CONF", filing_id="FILING-CONF")
+        repo.save_filing_document(doc)
+
+        f1 = RawFinancialFact(
+            raw_fact_id="DOC-CONF:1",
+            filing_id="FILING-CONF",
+            document_id="DOC-CONF",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="in-bse-fin:RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="100.00",
+            numeric_value=Decimal("100.00"),
+        )
+        repo.save_raw_financial_facts([f1])
+
+        # Attempt to insert different fact for same document and ordinal
+        f_conflict = RawFinancialFact(
+            raw_fact_id="DOC-CONF:1",
+            filing_id="FILING-CONF",
+            document_id="DOC-CONF",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="in-bse-fin:RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="200.00",  # Changed value!
+            numeric_value=Decimal("200.00"),
+        )
+        with pytest.raises(RepositoryError, match="Conflicting raw fact"):
+            repo.save_raw_financial_facts([f_conflict])
+
+    def test_save_raw_facts_rejects_conflicting_namespace_uri(self, repo: SqliteRepository):
+        issuer = _make_issuer("ISS-F2B-NS", "F2B NS Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-NS", issuer_id="ISS-F2B-NS", source_record_id="REC-NS")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-NS", filing_id="FILING-NS")
+        repo.save_filing_document(doc)
+
+        f1 = RawFinancialFact(
+            raw_fact_id="DOC-NS:1",
+            filing_id="FILING-NS",
+            document_id="DOC-NS",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="{http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin}RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="100.00",
+            numeric_value=Decimal("100.00"),
+        )
+        assert repo.save_raw_financial_facts([f1]) == 1
+
+        f_conf = replace(f1, namespace_uri="http://www.mca.gov.in/xbrl/ind-as/2017-03-31/ind-as-in-fin")
+        with pytest.raises(RepositoryError, match="Conflicting raw fact payload"):
+            repo.save_raw_financial_facts([f_conf])
+
+    def test_save_raw_facts_rejects_conflicting_precision(self, repo: SqliteRepository):
+        issuer = _make_issuer("ISS-F2B-PREC", "F2B Prec Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-PREC", issuer_id="ISS-F2B-PREC", source_record_id="REC-PREC")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-PREC", filing_id="FILING-PREC")
+        repo.save_filing_document(doc)
+
+        f1 = RawFinancialFact(
+            raw_fact_id="DOC-PREC:1",
+            filing_id="FILING-PREC",
+            document_id="DOC-PREC",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="{http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin}RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="100.00",
+            numeric_value=Decimal("100.00"),
+            precision="2",
+        )
+        assert repo.save_raw_financial_facts([f1]) == 1
+
+        f_conf = replace(f1, precision="4")
+        with pytest.raises(RepositoryError, match="Conflicting raw fact payload"):
+            repo.save_raw_financial_facts([f_conf])
+
+    def test_save_raw_facts_rejects_conflicting_is_nil(self, repo: SqliteRepository):
+        issuer = _make_issuer("ISS-F2B-NIL", "F2B Nil Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-NIL", issuer_id="ISS-F2B-NIL", source_record_id="REC-NIL")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-NIL", filing_id="FILING-NIL")
+        repo.save_filing_document(doc)
+
+        f1 = RawFinancialFact(
+            raw_fact_id="DOC-NIL:1",
+            filing_id="FILING-NIL",
+            document_id="DOC-NIL",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="{http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin}RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="100.00",
+            numeric_value=Decimal("100.00"),
+            is_nil=False,
+        )
+        assert repo.save_raw_financial_facts([f1]) == 1
+
+        f_conf = replace(f1, is_nil=True, numeric_value=None, raw_value="")
+        with pytest.raises(RepositoryError, match="Conflicting raw fact payload"):
+            repo.save_raw_financial_facts([f_conf])
+
+    def test_save_raw_facts_rejects_conflicting_raw_unit_identity(self, repo: SqliteRepository):
+        issuer = _make_issuer("ISS-F2B-UID", "F2B UnitId Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-UID", issuer_id="ISS-F2B-UID", source_record_id="REC-UID")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-UID", filing_id="FILING-UID")
+        repo.save_filing_document(doc)
+
+        f1 = RawFinancialFact(
+            raw_fact_id="DOC-UID:1",
+            filing_id="FILING-UID",
+            document_id="DOC-UID",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="{http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin}RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="100.00",
+            numeric_value=Decimal("100.00"),
+            raw_unit_identity="iso4217:INR",
+        )
+        assert repo.save_raw_financial_facts([f1]) == 1
+
+        f_conf = replace(f1, raw_unit_identity="iso4217:USD")
+        with pytest.raises(RepositoryError, match="Conflicting raw fact payload"):
+            repo.save_raw_financial_facts([f_conf])
+
+    def test_save_raw_facts_rejects_conflicting_dimensions_payload(self, repo: SqliteRepository):
+        issuer = _make_issuer("ISS-F2B-DIM", "F2B Dim Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-DIM", issuer_id="ISS-F2B-DIM", source_record_id="REC-DIM")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-DIM", filing_id="FILING-DIM")
+        repo.save_filing_document(doc)
+
+        f1 = RawFinancialFact(
+            raw_fact_id="DOC-DIM:1",
+            filing_id="FILING-DIM",
+            document_id="DOC-DIM",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="{http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin}RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="100.00",
+            numeric_value=Decimal("100.00"),
+            is_dimensioned=False,
+            dimensions=(),
+            dimension_signature="",
+        )
+        assert repo.save_raw_financial_facts([f1]) == 1
+
+        new_dims = ({"dimension": "custom:Axis", "kind": "explicit", "member": "custom:Mem"},)
+        f_conf = replace(
+            f1,
+            is_dimensioned=True,
+            dimensions=new_dims,
+            dimension_signature='[{"dimension": "custom:Axis", "kind": "explicit", "member": "custom:Mem"}]',
+        )
+        with pytest.raises(RepositoryError, match="Conflicting raw fact payload"):
+            repo.save_raw_financial_facts([f_conf])
+
+    def test_save_canonical_source_links_rejects_conflicting_is_primary(self, repo: SqliteRepository):
+        issuer = _make_issuer("ISS-LINK-CONF", "Link Conflict Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-LINK-CONF", issuer_id="ISS-LINK-CONF", source_record_id="REC-LINK-CONF")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-LINK-CONF", filing_id="FILING-LINK-CONF")
+        repo.save_filing_document(doc)
+
+        f_raw = RawFinancialFact(
+            raw_fact_id="DOC-LINK-CONF:1",
+            filing_id="FILING-LINK-CONF",
+            document_id="DOC-LINK-CONF",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="{http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin}RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="50000.00",
+            numeric_value=Decimal("50000.00"),
+        )
+        repo.save_raw_financial_facts([f_raw])
+
+        can_fact = CanonicalFinancialFact(
+            canonical_fact_id="CAN-LINK-1",
+            filing_id="FILING-LINK-CONF",
+            document_id="DOC-LINK-CONF",
+            canonical_concept=CanonicalFinancialConcept.REVENUE_FROM_OPERATIONS,
+            statement_scope=StatementScope.CONSOLIDATED,
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            canonical_unit="INR",
+            numeric_value=Decimal("50000.00"),
+            mapping_version="SI_FUNDAMENTALS_MAPPING_V1",
+            mapping_rule_id="MAP-V1-REV-OP",
+            duplicate_classification=DuplicateClassification.UNIQUE,
+            primary_raw_fact_id="DOC-LINK-CONF:1",
+        )
+        assert repo.save_canonical_financial_facts([can_fact], [("CAN-LINK-1", "DOC-LINK-CONF:1", True)]) == 1
+
+        # Re-saving identical link is idempotent no-op
+        assert repo.save_canonical_financial_facts([can_fact], [("CAN-LINK-1", "DOC-LINK-CONF:1", True)]) == 0
+
+        # Attempt to save contradictory is_primary meaning for same link
+        with pytest.raises(RepositoryError, match="Conflicting canonical source link"):
+            repo.save_canonical_financial_facts([can_fact], [("CAN-LINK-1", "DOC-LINK-CONF:1", False)])
+
+    def test_save_and_get_canonical_financial_facts_and_links(self, repo: SqliteRepository):
+        issuer = _make_issuer("ISS-CAN", "Canonical Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-CAN", issuer_id="ISS-CAN", source_record_id="REC-CAN")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-CAN", filing_id="FILING-CAN")
+        repo.save_filing_document(doc)
+
+        f_raw = RawFinancialFact(
+            raw_fact_id="DOC-CAN:1",
+            filing_id="FILING-CAN",
+            document_id="DOC-CAN",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="in-bse-fin:RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="50000.00",
+            numeric_value=Decimal("50000.00"),
+        )
+        repo.save_raw_financial_facts([f_raw])
+
+        can_fact = CanonicalFinancialFact(
+            canonical_fact_id="CAN-1",
+            filing_id="FILING-CAN",
+            document_id="DOC-CAN",
+            canonical_concept=CanonicalFinancialConcept.REVENUE_FROM_OPERATIONS,
+            statement_scope=StatementScope.CONSOLIDATED,
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            canonical_unit="INR",
+            numeric_value=Decimal("50000.00"),
+            mapping_version="SI_FUNDAMENTALS_MAPPING_V1",
+            mapping_rule_id="MAP-V1-REV-OP",
+            duplicate_classification=DuplicateClassification.UNIQUE,
+            primary_raw_fact_id="DOC-CAN:1",
+        )
+        links = [("CAN-1", "DOC-CAN:1", True)]
+
+        assert repo.save_canonical_financial_facts([can_fact], links) == 1
+        # Idempotent re-run
+        assert repo.save_canonical_financial_facts([can_fact], links) == 0
+
+        retrieved = repo.get_canonical_financial_facts("FILING-CAN")
+        assert len(retrieved) == 1
+        assert retrieved[0].canonical_concept == CanonicalFinancialConcept.REVENUE_FROM_OPERATIONS
+        assert retrieved[0].numeric_value == Decimal("50000.00")
+
+        raw_ids = repo.get_raw_source_ids_for_canonical_fact("CAN-1")
+        assert raw_ids == ["DOC-CAN:1"]
+
+    def test_multi_document_per_filing_raw_and_canonical_isolation(self, repo: SqliteRepository):
+        """Two documents under the same filing can each have ordinal=1 without raw or canonical collision."""
+        issuer = _make_issuer("ISS-MULTI", "Multi Doc Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-MULTI", issuer_id="ISS-MULTI", source_record_id="REC-MULTI")
+        repo.save_fundamental_filing(filing)
+
+        doc_a = _make_doc("DOC-MULTI-A", filing_id="FILING-MULTI", source_url="https://example.com/test_a.xml")
+        doc_b = _make_doc(
+            "DOC-MULTI-B",
+            filing_id="FILING-MULTI",
+            source_url="https://example.com/test_b.xml",
+            raw_content=b"<xbrl>Test Payload B</xbrl>",
+        )
+        repo.save_filing_document(doc_a)
+        repo.save_filing_document(doc_b)
+
+        # Both documents have source_occurrence_ordinal = 1
+        raw_a = RawFinancialFact(
+            raw_fact_id="DOC-MULTI-A:1",
+            filing_id="FILING-MULTI",
+            document_id="DOC-MULTI-A",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="in-bse-fin:RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="1000.00",
+            numeric_value=Decimal("1000.00"),
+        )
+        raw_b = RawFinancialFact(
+            raw_fact_id="DOC-MULTI-B:1",
+            filing_id="FILING-MULTI",
+            document_id="DOC-MULTI-B",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="in-bse-fin:RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="2000.00",
+            numeric_value=Decimal("2000.00"),
+        )
+
+        assert repo.save_raw_financial_facts([raw_a]) == 1
+        assert repo.save_raw_financial_facts([raw_b]) == 1
+
+        # Both documents have canonical facts for the same economic coordinates
+        can_a = CanonicalFinancialFact(
+            canonical_fact_id="CAN-MULTI-A",
+            filing_id="FILING-MULTI",
+            document_id="DOC-MULTI-A",
+            canonical_concept=CanonicalFinancialConcept.REVENUE_FROM_OPERATIONS,
+            statement_scope=StatementScope.CONSOLIDATED,
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            canonical_unit="INR",
+            numeric_value=Decimal("1000.00"),
+            mapping_version="SI_FUNDAMENTALS_MAPPING_V1",
+            mapping_rule_id="MAP-V1-REV-OP",
+            duplicate_classification=DuplicateClassification.UNIQUE,
+            primary_raw_fact_id="DOC-MULTI-A:1",
+        )
+        can_b = CanonicalFinancialFact(
+            canonical_fact_id="CAN-MULTI-B",
+            filing_id="FILING-MULTI",
+            document_id="DOC-MULTI-B",
+            canonical_concept=CanonicalFinancialConcept.REVENUE_FROM_OPERATIONS,
+            statement_scope=StatementScope.CONSOLIDATED,
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            canonical_unit="INR",
+            numeric_value=Decimal("2000.00"),
+            mapping_version="SI_FUNDAMENTALS_MAPPING_V1",
+            mapping_rule_id="MAP-V1-REV-OP",
+            duplicate_classification=DuplicateClassification.UNIQUE,
+            primary_raw_fact_id="DOC-MULTI-B:1",
+        )
+
+        assert repo.save_canonical_financial_facts([can_a], [("CAN-MULTI-A", "DOC-MULTI-A:1", True)]) == 1
+        assert repo.save_canonical_financial_facts([can_b], [("CAN-MULTI-B", "DOC-MULTI-B:1", True)]) == 1
+
+        filing_facts = repo.get_canonical_financial_facts("FILING-MULTI")
+        assert len(filing_facts) == 2
+
+    def test_canonical_fact_idempotency_conflict_detection(self, repo: SqliteRepository):
+        """Re-saving canonical fact with changed numeric value or unit must raise RepositoryError."""
+        issuer = _make_issuer("ISS-CAN-CONF", "Canonical Conflict Ltd")
+        repo.upsert_issuer(issuer)
+        filing = _make_filing("FILING-CAN-CONF", issuer_id="ISS-CAN-CONF", source_record_id="REC-CAN-CONF")
+        repo.save_fundamental_filing(filing)
+        doc = _make_doc("DOC-CAN-CONF", filing_id="FILING-CAN-CONF")
+        repo.save_filing_document(doc)
+
+        f_raw = RawFinancialFact(
+            raw_fact_id="DOC-CAN-CONF:1",
+            filing_id="FILING-CAN-CONF",
+            document_id="DOC-CAN-CONF",
+            source_occurrence_ordinal=1,
+            namespace_uri="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+            local_name="RevenueFromOperations",
+            raw_qname="in-bse-fin:RevenueFromOperations",
+            context_ref="OneD",
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            duration_days=92,
+            raw_value="50000.00",
+            numeric_value=Decimal("50000.00"),
+        )
+        repo.save_raw_financial_facts([f_raw])
+
+        can_fact = CanonicalFinancialFact(
+            canonical_fact_id="CAN-CONF-1",
+            filing_id="FILING-CAN-CONF",
+            document_id="DOC-CAN-CONF",
+            canonical_concept=CanonicalFinancialConcept.REVENUE_FROM_OPERATIONS,
+            statement_scope=StatementScope.CONSOLIDATED,
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            canonical_unit="INR",
+            numeric_value=Decimal("50000.00"),
+            mapping_version="SI_FUNDAMENTALS_MAPPING_V1",
+            mapping_rule_id="MAP-V1-REV-OP",
+            duplicate_classification=DuplicateClassification.UNIQUE,
+            primary_raw_fact_id="DOC-CAN-CONF:1",
+        )
+        assert repo.save_canonical_financial_facts([can_fact], [("CAN-CONF-1", "DOC-CAN-CONF:1", True)]) == 1
+
+        # Attempt to re-save same identity with changed numeric value
+        can_conflicting = CanonicalFinancialFact(
+            canonical_fact_id="CAN-CONF-1",
+            filing_id="FILING-CAN-CONF",
+            document_id="DOC-CAN-CONF",
+            canonical_concept=CanonicalFinancialConcept.REVENUE_FROM_OPERATIONS,
+            statement_scope=StatementScope.CONSOLIDATED,
+            period_type=RawPeriodType.DURATION,
+            period_start=date(2024, 10, 1),
+            period_end=date(2024, 12, 31),
+            canonical_unit="INR",
+            numeric_value=Decimal("99999.00"),  # Changed!
+            mapping_version="SI_FUNDAMENTALS_MAPPING_V1",
+            mapping_rule_id="MAP-V1-REV-OP",
+            duplicate_classification=DuplicateClassification.UNIQUE,
+            primary_raw_fact_id="DOC-CAN-CONF:1",
+        )
+        with pytest.raises(RepositoryError, match="Conflicting canonical fact payload"):
+            repo.save_canonical_financial_facts([can_conflicting], [])
+
+    def test_record_counts_includes_fundamentals_tables(self, repo: SqliteRepository):
+        counts = repo.record_counts()
+        assert "raw_financial_facts" in counts
+        assert "canonical_financial_facts" in counts
+        assert "canonical_fact_raw_sources" in counts
+        assert "issuers" in counts
+        assert "fundamental_filings" in counts

@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -690,6 +690,84 @@ _DDL = (
     "CREATE INDEX IF NOT EXISTS idx_filing_docs_filing_id ON filing_documents(filing_id)",
     "CREATE INDEX IF NOT EXISTS idx_filing_docs_sha256 ON filing_documents(source_sha256)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_filing_docs_filing_url ON filing_documents(filing_id, source_url)",
+
+    # ---------------------------------------------------------------- SI-F2B
+    # Layer 1: Lossless Raw Source Fact Observations.
+    # Preserves physical XBRL facts in document order (1-based ordinal)
+    # with authentic raw coordinates and signed Decimals without synthetic derivation.
+    """
+    CREATE TABLE IF NOT EXISTS raw_financial_facts (
+        raw_fact_id                 TEXT PRIMARY KEY,
+        filing_id                   TEXT NOT NULL REFERENCES fundamental_filings(filing_id),
+        document_id                 TEXT NOT NULL REFERENCES filing_documents(document_id),
+        source_occurrence_ordinal   INTEGER NOT NULL,
+        namespace_uri               TEXT NOT NULL,
+        local_name                  TEXT NOT NULL,
+        raw_qname                   TEXT NOT NULL,
+        context_ref                 TEXT NOT NULL,
+        period_type                 TEXT NOT NULL,
+        period_start                TEXT,
+        period_end                  TEXT NOT NULL,
+        duration_days               INTEGER,
+        unit_ref                    TEXT,
+        raw_unit_identity           TEXT,
+        unit_class                  TEXT NOT NULL,
+        decimals                    TEXT,
+        precision                   TEXT,
+        is_nil                      INTEGER NOT NULL DEFAULT 0,
+        raw_value                   TEXT NOT NULL,
+        numeric_value               TEXT,
+        is_dimensioned              INTEGER NOT NULL DEFAULT 0,
+        dimension_signature         TEXT NOT NULL DEFAULT '',
+        dimensions_json             TEXT NOT NULL DEFAULT '[]',
+        created_at                  TEXT NOT NULL
+    )
+    """,
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_facts_doc_ordinal "
+    "ON raw_financial_facts(document_id, source_occurrence_ordinal)",
+    "CREATE INDEX IF NOT EXISTS idx_raw_facts_filing ON raw_financial_facts(filing_id)",
+    "CREATE INDEX IF NOT EXISTS idx_raw_facts_concept ON raw_financial_facts(namespace_uri, local_name)",
+
+    # Layer 2: Canonical Financial Fact Observations.
+    # Mapped standardized economic observations for approved concepts.
+    """
+    CREATE TABLE IF NOT EXISTS canonical_financial_facts (
+        canonical_fact_id           TEXT PRIMARY KEY,
+        filing_id                   TEXT NOT NULL REFERENCES fundamental_filings(filing_id),
+        document_id                 TEXT NOT NULL REFERENCES filing_documents(document_id),
+        canonical_concept           TEXT NOT NULL,
+        statement_scope             TEXT NOT NULL,
+        period_type                 TEXT NOT NULL,
+        period_start                TEXT,
+        period_end                  TEXT NOT NULL,
+        canonical_unit              TEXT NOT NULL,
+        numeric_value               TEXT NOT NULL,
+        mapping_version             TEXT NOT NULL,
+        mapping_rule_id             TEXT NOT NULL,
+        duplicate_classification    TEXT NOT NULL,
+        primary_raw_fact_id         TEXT NOT NULL REFERENCES raw_financial_facts(raw_fact_id),
+        created_at                  TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_canonical_facts_filing ON canonical_financial_facts(filing_id)",
+    "CREATE INDEX IF NOT EXISTS idx_canonical_facts_concept_period "
+    "ON canonical_financial_facts(canonical_concept, period_end)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_canonical_facts_unique_identity "
+    "ON canonical_financial_facts(document_id, canonical_concept, statement_scope, "
+    "period_type, ifnull(period_start, ''), period_end, mapping_version)",
+
+    # Traceability link table for 1..N raw occurrences supporting a canonical fact
+    """
+    CREATE TABLE IF NOT EXISTS canonical_fact_raw_sources (
+        canonical_fact_id           TEXT NOT NULL
+                                    REFERENCES canonical_financial_facts(canonical_fact_id) ON DELETE CASCADE,
+        raw_fact_id                 TEXT NOT NULL
+                                    REFERENCES raw_financial_facts(raw_fact_id) ON DELETE CASCADE,
+        is_primary                  INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (canonical_fact_id, raw_fact_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_canonical_sources_raw ON canonical_fact_raw_sources(raw_fact_id)",
 )
 
 

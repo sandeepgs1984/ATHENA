@@ -34,9 +34,11 @@ from athena.domain.enums import (
     Timeframe,
 )
 from athena.domain.fundamentals import (
+    CanonicalFinancialFact,
     FilingDocument,
     FundamentalFiling,
     IssuerRecord,
+    RawFinancialFact,
     SecurityIdentity,
 )
 from athena.domain.market import (
@@ -420,7 +422,9 @@ class SqliteRepository:
                   "corporate_actions", "quarantine_records", "runs",
                   "decisions", "decision_traces", "decision_journal",
                   "owner_positions", "owner_candidates", "saved_symbols",
-                  "entry_qualifications", "entry_actionabilities", "ops_meta")
+                  "entry_qualifications", "entry_actionabilities", "ops_meta",
+                  "issuers", "security_identities", "fundamental_filings", "filing_documents",
+                  "raw_financial_facts", "canonical_financial_facts", "canonical_fact_raw_sources")
         try:
             with self._lock:
                 return {
@@ -3895,3 +3899,244 @@ class SqliteRepository:
             return doc.get_raw_bytes()
         except ValueError as exc:
             raise RepositoryError(f"Document corruption or verification failed: {exc}") from exc
+
+    # =========================================================================
+    # SI-F2B: Raw & Canonical Financial Facts Persistence
+    # =========================================================================
+
+    def save_raw_financial_facts(self, facts: Sequence[RawFinancialFact]) -> int:
+        """Persist a sequence of raw financial fact observations atomically and idempotently."""
+        if not facts:
+            return 0
+        doc_id = facts[0].document_id
+        filing_id = facts[0].filing_id
+        try:
+            with self._lock, self._conn:
+                doc_row = self._conn.execute(
+                    "SELECT filing_id FROM filing_documents WHERE document_id = ?", (doc_id,)
+                ).fetchone()
+                if not doc_row:
+                    raise RepositoryError(f"Document not found for raw facts: document_id={doc_id!r}")
+                if doc_row[0] != filing_id:
+                    raise RepositoryError(
+                        f"Document filing_id mismatch: expected {doc_row[0]!r}, got {filing_id!r}"
+                    )
+
+                inserted = 0
+                for f in facts:
+                    existing = self._conn.execute(
+                        "SELECT raw_fact_id, filing_id, document_id, source_occurrence_ordinal, "
+                        "namespace_uri, local_name, raw_qname, context_ref, period_type, "
+                        "period_start, period_end, duration_days, unit_ref, raw_unit_identity, "
+                        "unit_class, decimals, precision, is_nil, raw_value, numeric_value, "
+                        "is_dimensioned, dimension_signature, dimensions_json "
+                        "FROM raw_financial_facts "
+                        "WHERE document_id = ? AND source_occurrence_ordinal = ?",
+                        (f.document_id, f.source_occurrence_ordinal),
+                    ).fetchone()
+                    if existing:
+                        new_semantic = ser.raw_financial_fact_to_row(f)[:-1]
+                        if tuple(existing) != new_semantic:
+                            raise RepositoryError(
+                                f"Conflicting raw fact payload for document={f.document_id!r} "
+                                f"ordinal={f.source_occurrence_ordinal}"
+                            )
+                        continue
+
+                    self._conn.execute(
+                        "INSERT INTO raw_financial_facts("
+                        "raw_fact_id, filing_id, document_id, source_occurrence_ordinal, "
+                        "namespace_uri, local_name, raw_qname, context_ref, period_type, "
+                        "period_start, period_end, duration_days, unit_ref, raw_unit_identity, "
+                        "unit_class, decimals, precision, is_nil, raw_value, numeric_value, "
+                        "is_dimensioned, dimension_signature, dimensions_json, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        ser.raw_financial_fact_to_row(f),
+                    )
+                    inserted += 1
+                return inserted
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"save_raw_financial_facts failed: {exc}") from exc
+
+    def get_raw_financial_facts(self, document_id: str) -> list[RawFinancialFact]:
+        """Fetch all raw financial fact observations for a source document in occurrence order."""
+        rows = self._query_all(
+            "SELECT raw_fact_id, filing_id, document_id, source_occurrence_ordinal, "
+            "namespace_uri, local_name, raw_qname, context_ref, period_type, "
+            "period_start, period_end, duration_days, unit_ref, raw_unit_identity, "
+            "unit_class, decimals, precision, is_nil, raw_value, numeric_value, "
+            "is_dimensioned, dimension_signature, dimensions_json, created_at "
+            "FROM raw_financial_facts WHERE document_id = ? ORDER BY source_occurrence_ordinal ASC",
+            (document_id,),
+        )
+        return [ser.row_to_raw_financial_fact(r) for r in rows]
+
+    def get_raw_financial_facts_for_filing(self, filing_id: str) -> list[RawFinancialFact]:
+        """Fetch all raw financial fact observations for a filing in occurrence order."""
+        rows = self._query_all(
+            "SELECT raw_fact_id, filing_id, document_id, source_occurrence_ordinal, "
+            "namespace_uri, local_name, raw_qname, context_ref, period_type, "
+            "period_start, period_end, duration_days, unit_ref, raw_unit_identity, "
+            "unit_class, decimals, precision, is_nil, raw_value, numeric_value, "
+            "is_dimensioned, dimension_signature, dimensions_json, created_at "
+            "FROM raw_financial_facts WHERE filing_id = ? ORDER BY source_occurrence_ordinal ASC",
+            (filing_id,),
+        )
+        return [ser.row_to_raw_financial_fact(r) for r in rows]
+
+    def save_canonical_financial_facts(
+        self,
+        facts: Sequence[CanonicalFinancialFact],
+        raw_source_links: Sequence[tuple[str, str, bool]],
+    ) -> int:
+        """Persist canonical financial fact observations and raw source links atomically and idempotently."""
+        if not facts:
+            return 0
+        try:
+            with self._lock, self._conn:
+                inserted = 0
+                for f in facts:
+                    existing = self._conn.execute(
+                        "SELECT canonical_fact_id, numeric_value, canonical_unit, "
+                        "duplicate_classification, primary_raw_fact_id, mapping_rule_id, filing_id "
+                        "FROM canonical_financial_facts "
+                        "WHERE document_id = ? AND canonical_concept = ? AND statement_scope = ? "
+                        "AND period_type = ? AND ifnull(period_start, '') = ifnull(?, '') "
+                        "AND period_end = ? AND mapping_version = ?",
+                        (
+                            f.document_id,
+                            f.canonical_concept.value,
+                            f.statement_scope.value,
+                            f.period_type.value,
+                            f.period_start.isoformat() if f.period_start else "",
+                            f.period_end.isoformat(),
+                            f.mapping_version,
+                        ),
+                    ).fetchone()
+                    if existing:
+                        if (
+                            existing[1] != str(f.numeric_value)
+                            or existing[2] != f.canonical_unit
+                            or existing[3] != f.duplicate_classification.value
+                            or existing[4] != f.primary_raw_fact_id
+                            or existing[5] != f.mapping_rule_id
+                            or existing[6] != f.filing_id
+                        ):
+                            raise RepositoryError(
+                                f"Conflicting canonical fact payload for document={f.document_id!r} "
+                                f"concept={f.canonical_concept.value}: "
+                                f"existing=({existing[1]}, {existing[2]}, {existing[3]}, "
+                                f"{existing[4]}, {existing[5]}, {existing[6]}) "
+                                f"vs new=({f.numeric_value}, {f.canonical_unit}, "
+                                f"{f.duplicate_classification.value}, {f.primary_raw_fact_id}, "
+                                f"{f.mapping_rule_id}, {f.filing_id})"
+                            )
+                        continue
+
+                    self._conn.execute(
+                        "INSERT INTO canonical_financial_facts("
+                        "canonical_fact_id, filing_id, document_id, canonical_concept, "
+                        "statement_scope, period_type, period_start, period_end, "
+                        "canonical_unit, numeric_value, mapping_version, mapping_rule_id, "
+                        "duplicate_classification, primary_raw_fact_id, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        ser.canonical_financial_fact_to_row(f),
+                    )
+                    inserted += 1
+
+                for canonical_id, raw_id, is_pri in raw_source_links:
+                    link_row = self._conn.execute(
+                        "SELECT is_primary FROM canonical_fact_raw_sources "
+                        "WHERE canonical_fact_id = ? AND raw_fact_id = ?",
+                        (canonical_id, raw_id),
+                    ).fetchone()
+                    is_pri_val = 1 if is_pri else 0
+                    if link_row is not None:
+                        if link_row[0] != is_pri_val:
+                            raise RepositoryError(
+                                f"Conflicting canonical source link for canonical_id={canonical_id!r} "
+                                f"raw_id={raw_id!r}: existing is_primary={link_row[0]} vs new={is_pri_val}"
+                            )
+                    else:
+                        self._conn.execute(
+                            "INSERT INTO canonical_fact_raw_sources("
+                            "canonical_fact_id, raw_fact_id, is_primary) VALUES (?, ?, ?)",
+                            (canonical_id, raw_id, is_pri_val),
+                        )
+
+                return inserted
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"save_canonical_financial_facts failed: {exc}") from exc
+
+    def get_canonical_financial_facts(
+        self,
+        filing_id: str,
+        mapping_version: str | None = None,
+    ) -> list[CanonicalFinancialFact]:
+        """Fetch all canonical financial fact observations for a filing."""
+        sql = (
+            "SELECT canonical_fact_id, filing_id, document_id, canonical_concept, "
+            "statement_scope, period_type, period_start, period_end, "
+            "canonical_unit, numeric_value, mapping_version, mapping_rule_id, "
+            "duplicate_classification, primary_raw_fact_id, created_at "
+            "FROM canonical_financial_facts WHERE filing_id = ?"
+        )
+        params: list[Any] = [filing_id]
+        if mapping_version is not None:
+            sql += " AND mapping_version = ?"
+            params.append(mapping_version)
+        sql += " ORDER BY period_end ASC, canonical_concept ASC"
+        rows = self._query_all(sql, tuple(params))
+        return [ser.row_to_canonical_financial_fact(r) for r in rows]
+
+    def get_canonical_facts_for_issuer(
+        self,
+        issuer_id: str,
+        as_of: datetime | None = None,
+        mapping_version: str | None = None,
+    ) -> list[CanonicalFinancialFact]:
+        """Fetch Point-In-Time eligible canonical facts for an issuer.
+
+        Invariants:
+        - If as_of is provided, it must be timezone-aware.
+        - Strictly enforces publication_precision == 'EXACT_TIMESTAMP' and source_published_at <= as_of.
+        - DATE_ONLY and UNKNOWN precision filings are strictly excluded from exact timestamp replay (D9).
+        """
+        if as_of is not None and as_of.tzinfo is None:
+            raise RepositoryError(f"as_of datetime must be timezone-aware (got {as_of.isoformat()!r})")
+        sql = (
+            "SELECT c.canonical_fact_id, c.filing_id, c.document_id, c.canonical_concept, "
+            "c.statement_scope, c.period_type, c.period_start, c.period_end, "
+            "c.canonical_unit, c.numeric_value, c.mapping_version, c.mapping_rule_id, "
+            "c.duplicate_classification, c.primary_raw_fact_id, c.created_at "
+            "FROM canonical_financial_facts c "
+            "JOIN fundamental_filings f ON c.filing_id = f.filing_id "
+            "WHERE f.issuer_id = ? "
+        )
+        params: list[Any] = [issuer_id]
+
+        if as_of is not None:
+            sql += (
+                "AND f.publication_precision = 'EXACT_TIMESTAMP' "
+                "AND f.source_published_at IS NOT NULL "
+                "AND f.source_published_at <= ? "
+            )
+            params.append(as_of.isoformat())
+
+        if mapping_version is not None:
+            sql += "AND c.mapping_version = ? "
+            params.append(mapping_version)
+
+        sql += "ORDER BY c.period_end ASC, c.canonical_concept ASC"
+        rows = self._query_all(sql, tuple(params))
+        return [ser.row_to_canonical_financial_fact(r) for r in rows]
+
+    def get_raw_source_ids_for_canonical_fact(self, canonical_fact_id: str) -> list[str]:
+        """Fetch all raw_fact_ids supporting a canonical fact observation in order."""
+        rows = self._query_all(
+            "SELECT raw_fact_id FROM canonical_fact_raw_sources "
+            "WHERE canonical_fact_id = ? ORDER BY is_primary DESC, raw_fact_id ASC",
+            (canonical_fact_id,),
+        )
+        return [r[0] for r in rows]
+
