@@ -17,7 +17,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from athena.data.store import serialization as ser
 from athena.data.store.schema import SCHEMA_VERSION, ddl_statements
@@ -29,7 +29,16 @@ from athena.domain.decision import (
     Position,
     TradeOutcome,
 )
-from athena.domain.enums import Timeframe
+from athena.domain.enums import (
+    StatementScope,
+    Timeframe,
+)
+from athena.domain.fundamentals import (
+    FilingDocument,
+    FundamentalFiling,
+    IssuerRecord,
+    SecurityIdentity,
+)
 from athena.domain.market import (
     Candle,
     CorporateAction,
@@ -3344,3 +3353,545 @@ class SqliteRepository:
             return self._read_connection().execute(sql, params).fetchall()
         except sqlite3.Error as exc:
             raise RepositoryError(f"query failed: {exc}") from exc
+
+    # ------------------------------------------------------------- fundamentals (SI-F1)
+
+    def upsert_issuer(self, issuer: IssuerRecord) -> bool:
+        """Controlled upsert of an enduring legal corporate issuer (Correction 3).
+
+        - Identical retry -> idempotent no-op (returns False).
+        - New issuer -> inserted (returns True).
+        - If new issuer has a non-null CIN already registered to a different issuer_id -> raises RepositoryError.
+        - Existing issuer with conflicting CIN -> raises RepositoryError.
+        - Missing optional CIN enriched, or updated legal_name/status -> updated (returns True).
+        """
+        try:
+            with self._lock, self._conn:
+                if issuer.cin:
+                    cin_row = self._conn.execute(
+                        "SELECT issuer_id FROM issuers WHERE cin = ? AND issuer_id != ?",
+                        (issuer.cin, issuer.issuer_id),
+                    ).fetchone()
+                    if cin_row is not None:
+                        raise RepositoryError(
+                            f"CIN {issuer.cin!r} is already registered to another issuer={cin_row[0]!r}"
+                        )
+
+                existing = self._conn.execute(
+                    "SELECT issuer_id, legal_name, cin, status, created_at, updated_at "
+                    "FROM issuers WHERE issuer_id = ?",
+                    (issuer.issuer_id,),
+                ).fetchone()
+
+                if existing is None:
+                    self._conn.execute(
+                        "INSERT INTO issuers(issuer_id, legal_name, cin, status, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        ser.issuer_to_row(issuer),
+                    )
+                    return True
+
+                existing_obj = ser.row_to_issuer(existing)
+                # Check for conflicting strong identity
+                if existing_obj.cin and issuer.cin and existing_obj.cin != issuer.cin:
+                    raise RepositoryError(
+                        f"Conflicting CIN for issuer={issuer.issuer_id!r}: "
+                        f"existing {existing_obj.cin!r} vs new {issuer.cin!r}"
+                    )
+
+                # Check if identical (idempotent no-op)
+                cin_to_use = issuer.cin or existing_obj.cin
+                if (
+                    existing_obj.legal_name == issuer.legal_name
+                    and existing_obj.cin == cin_to_use
+                    and existing_obj.status == issuer.status
+                ):
+                    return False
+
+                # Controlled update
+                self._conn.execute(
+                    "UPDATE issuers SET legal_name = ?, cin = ?, status = ?, updated_at = ? "
+                    "WHERE issuer_id = ?",
+                    (
+                        issuer.legal_name,
+                        cin_to_use,
+                        issuer.status,
+                        issuer.updated_at.isoformat(),
+                        issuer.issuer_id,
+                    ),
+                )
+                return True
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"upsert_issuer failed: {exc}") from exc
+
+    def get_issuer(self, issuer_id: str) -> IssuerRecord | None:
+        """Fetch issuer by stable internal ID."""
+        row = self._query_one(
+            "SELECT issuer_id, legal_name, cin, status, created_at, updated_at "
+            "FROM issuers WHERE issuer_id = ?",
+            (issuer_id,),
+        )
+        return ser.row_to_issuer(row) if row else None
+
+    def get_issuer_by_cin(self, cin: str) -> IssuerRecord | None:
+        """Fetch issuer by Corporate Identification Number."""
+        row = self._query_one(
+            "SELECT issuer_id, legal_name, cin, status, created_at, updated_at "
+            "FROM issuers WHERE cin = ?",
+            (cin,),
+        )
+        return ser.row_to_issuer(row) if row else None
+
+    def list_issuers(self) -> list[IssuerRecord]:
+        """List all issuers ordered by issuer_id."""
+        rows = self._query_all(
+            "SELECT issuer_id, legal_name, cin, status, created_at, updated_at "
+            "FROM issuers ORDER BY issuer_id",
+            (),
+        )
+        return [ser.row_to_issuer(r) for r in rows]
+
+    def add_security_identity(self, si: SecurityIdentity) -> bool:
+        """Append a time-versioned security identity interval (Correction 1, 4).
+
+        - Validates interval: effective_from <= effective_to (enforced by domain model).
+        - Idempotent retry: identical row returns False.
+        - Conflicting definition with same security_id raises RepositoryError.
+        - Contradictory overlapping interval for same (issuer_id, exchange, symbol, series) raises RepositoryError.
+        - Predecessor and successor intervals for the same issuer/exchange/symbol (e.g. VBL split) coexist.
+        """
+        try:
+            with self._lock, self._conn:
+                existing = self._conn.execute(
+                    "SELECT security_id, issuer_id, exchange, symbol, isin, series, "
+                    "effective_from, effective_to, source, created_at "
+                    "FROM security_identities WHERE security_id = ?",
+                    (si.security_id,),
+                ).fetchone()
+
+                if existing is not None:
+                    existing_si = ser.row_to_security_identity(existing)
+                    if (
+                        existing_si.issuer_id == si.issuer_id
+                        and existing_si.exchange == si.exchange
+                        and existing_si.symbol == si.symbol
+                        and existing_si.isin == si.isin
+                        and existing_si.series == si.series
+                        and existing_si.effective_from == si.effective_from
+                        and existing_si.effective_to == si.effective_to
+                    ):
+                        return False
+                    raise RepositoryError(
+                        f"SecurityIdentity security_id={si.security_id!r} already exists with differing definition"
+                    )
+
+                # Verify issuer exists
+                issuer_row = self._conn.execute(
+                    "SELECT issuer_id FROM issuers WHERE issuer_id = ?",
+                    (si.issuer_id,),
+                ).fetchone()
+                if issuer_row is None:
+                    raise RepositoryError(f"SecurityIdentity references non-existent issuer_id={si.issuer_id!r}")
+
+                # Check for overlapping intervals for same (issuer_id, exchange, symbol, series)
+                existing_intervals = self._conn.execute(
+                    "SELECT security_id, issuer_id, exchange, symbol, isin, series, "
+                    "effective_from, effective_to, source, created_at "
+                    "FROM security_identities WHERE issuer_id = ? AND exchange = ? AND symbol = ? AND series = ?",
+                    (si.issuer_id, si.exchange, si.symbol, si.series),
+                ).fetchall()
+
+                for row in existing_intervals:
+                    other = ser.row_to_security_identity(row)
+                    starts_before_other_ends = other.effective_to is None or (
+                        si.effective_from is None or si.effective_from <= other.effective_to
+                    )
+                    ends_after_other_starts = si.effective_to is None or (
+                        other.effective_from is None or si.effective_to >= other.effective_from
+                    )
+                    if starts_before_other_ends and ends_after_other_starts:
+                        raise RepositoryError(
+                            f"Contradictory overlapping interval for {si.symbol} ({si.exchange} {si.series}) "
+                            f"between new [{si.effective_from}, {si.effective_to}] and existing "
+                            f"{other.security_id} [{other.effective_from}, {other.effective_to}]"
+                        )
+
+                self._conn.execute(
+                    "INSERT INTO security_identities("
+                    "security_id, issuer_id, exchange, symbol, isin, series, "
+                    "effective_from, effective_to, source, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    ser.security_identity_to_row(si),
+                )
+                return True
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"add_security_identity failed: {exc}") from exc
+
+    def list_security_identities_for_issuer(self, issuer_id: str) -> list[SecurityIdentity]:
+        """List all security identities for an issuer ordered by effective_from."""
+        rows = self._query_all(
+            "SELECT security_id, issuer_id, exchange, symbol, isin, series, "
+            "effective_from, effective_to, source, created_at "
+            "FROM security_identities WHERE issuer_id = ? ORDER BY effective_from ASC, security_id ASC",
+            (issuer_id,),
+        )
+        return [ser.row_to_security_identity(r) for r in rows]
+
+    def resolve_security_identity(
+        self,
+        *,
+        exchange: str,
+        symbol: str,
+        as_of: date | None = None,
+        series: str = "EQ",
+    ) -> SecurityIdentity | None:
+        """Resolve the valid security identity for an exchange symbol as-of a specific date."""
+        rows = self._query_all(
+            "SELECT security_id, issuer_id, exchange, symbol, isin, series, "
+            "effective_from, effective_to, source, created_at "
+            "FROM security_identities WHERE exchange = ? AND symbol = ? AND series = ? "
+            "ORDER BY effective_from DESC",
+            (exchange, symbol, series),
+        )
+        identities = [ser.row_to_security_identity(r) for r in rows]
+        if as_of is not None:
+            for ident in identities:
+                if ident.is_valid_on(as_of):
+                    return ident
+            return None
+        for ident in identities:
+            if ident.effective_to is None:
+                return ident
+        return identities[0] if identities else None
+
+    def save_fundamental_filing(self, filing: FundamentalFiling) -> bool:
+        """Append-only, idempotent write of an official financial filing observation.
+
+        Deduplication key: (source, source_record_id, statement_scope) (Correction 5).
+        - Identical retry returns False (no-op).
+        - Conflicting payload for the same source record raises RepositoryError.
+        - Multiple observations (distinct source_record_id) coexist immutably.
+        - market_available_at and supersedes_filing_id are preserved as supplied, never auto-derived.
+        """
+        try:
+            with self._lock, self._conn:
+                if filing.issuer_id:
+                    issuer_row = self._conn.execute(
+                        "SELECT issuer_id FROM issuers WHERE issuer_id = ?",
+                        (filing.issuer_id,),
+                    ).fetchone()
+                    if issuer_row is None:
+                        raise RepositoryError(
+                            f"FundamentalFiling references non-existent issuer_id={filing.issuer_id!r}"
+                        )
+
+                existing = self._conn.execute(
+                    "SELECT filing_id, issuer_id, source, source_record_id, source_reported_symbol, "
+                    "source_reported_isin, source_reported_name, period_start, period_end, "
+                    "financial_year, period_nature, cumulative_nature, statement_scope, "
+                    "audit_status, publication_precision, source_published_at, source_published_date, "
+                    "market_available_at, source_url, revision_indicator, supersedes_filing_id, "
+                    "raw_metadata_json, ingested_at "
+                    "FROM fundamental_filings WHERE (source = ? AND source_record_id = ? AND statement_scope = ?) "
+                    "OR filing_id = ?",
+                    (
+                        filing.source,
+                        filing.source_record_id,
+                        filing.statement_scope.value,
+                        filing.filing_id,
+                    ),
+                ).fetchone()
+
+                if existing is not None:
+                    existing_f = ser.row_to_fundamental_filing(existing)
+                    conflicts: list[str] = []
+                    if existing_f.filing_id != filing.filing_id:
+                        conflicts.append(f"filing_id ({existing_f.filing_id} vs {filing.filing_id})")
+                    if existing_f.issuer_id != filing.issuer_id:
+                        conflicts.append(f"issuer_id ({existing_f.issuer_id} vs {filing.issuer_id})")
+                    if existing_f.source != filing.source:
+                        conflicts.append(f"source ({existing_f.source} vs {filing.source})")
+                    if existing_f.source_record_id != filing.source_record_id:
+                        conflicts.append(
+                            f"source_record_id ({existing_f.source_record_id} vs {filing.source_record_id})"
+                        )
+                    if existing_f.source_reported_symbol != filing.source_reported_symbol:
+                        conflicts.append(
+                            f"source_reported_symbol ({existing_f.source_reported_symbol} vs "
+                            f"{filing.source_reported_symbol})"
+                        )
+                    if existing_f.source_reported_isin != filing.source_reported_isin:
+                        conflicts.append(
+                            f"source_reported_isin ({existing_f.source_reported_isin} vs "
+                            f"{filing.source_reported_isin})"
+                        )
+                    if existing_f.source_reported_name != filing.source_reported_name:
+                        conflicts.append(
+                            f"source_reported_name ({existing_f.source_reported_name} vs "
+                            f"{filing.source_reported_name})"
+                        )
+                    if existing_f.period_start != filing.period_start:
+                        conflicts.append(f"period_start ({existing_f.period_start} vs {filing.period_start})")
+                    if existing_f.period_end != filing.period_end:
+                        conflicts.append(f"period_end ({existing_f.period_end} vs {filing.period_end})")
+                    if existing_f.financial_year != filing.financial_year:
+                        conflicts.append(f"financial_year ({existing_f.financial_year} vs {filing.financial_year})")
+                    if existing_f.period_nature != filing.period_nature:
+                        conflicts.append(f"period_nature ({existing_f.period_nature} vs {filing.period_nature})")
+                    if existing_f.cumulative_nature != filing.cumulative_nature:
+                        conflicts.append(
+                            f"cumulative_nature ({existing_f.cumulative_nature} vs {filing.cumulative_nature})"
+                        )
+                    if existing_f.statement_scope != filing.statement_scope:
+                        conflicts.append(f"statement_scope ({existing_f.statement_scope} vs {filing.statement_scope})")
+                    if existing_f.audit_status != filing.audit_status:
+                        conflicts.append(f"audit_status ({existing_f.audit_status} vs {filing.audit_status})")
+                    if existing_f.publication_precision != filing.publication_precision:
+                        conflicts.append(
+                            f"publication_precision ({existing_f.publication_precision} vs "
+                            f"{filing.publication_precision})"
+                        )
+                    if existing_f.source_published_at != filing.source_published_at:
+                        conflicts.append(
+                            f"source_published_at ({existing_f.source_published_at} vs {filing.source_published_at})"
+                        )
+                    if existing_f.source_published_date != filing.source_published_date:
+                        conflicts.append(
+                            f"source_published_date ({existing_f.source_published_date} vs "
+                            f"{filing.source_published_date})"
+                        )
+                    if existing_f.market_available_at != filing.market_available_at:
+                        conflicts.append(
+                            f"market_available_at ({existing_f.market_available_at} vs {filing.market_available_at})"
+                        )
+                    if existing_f.source_url != filing.source_url:
+                        conflicts.append(f"source_url ({existing_f.source_url} vs {filing.source_url})")
+                    if existing_f.revision_indicator != filing.revision_indicator:
+                        conflicts.append(
+                            f"revision_indicator ({existing_f.revision_indicator} vs {filing.revision_indicator})"
+                        )
+                    if existing_f.supersedes_filing_id != filing.supersedes_filing_id:
+                        conflicts.append(
+                            f"supersedes_filing_id ({existing_f.supersedes_filing_id} vs {filing.supersedes_filing_id})"
+                        )
+                    if existing_f.raw_metadata != filing.raw_metadata:
+                        conflicts.append("raw_metadata")
+
+                    if not conflicts:
+                        return False
+                    raise RepositoryError(
+                        f"Conflicting fundamental filing already exists for source={filing.source!r} "
+                        f"record={filing.source_record_id!r} scope={filing.statement_scope.value!r}: "
+                        f"conflicting fields: {', '.join(conflicts)}"
+                    )
+
+                self._conn.execute(
+                    "INSERT INTO fundamental_filings("
+                    "filing_id, issuer_id, source, source_record_id, source_reported_symbol, "
+                    "source_reported_isin, source_reported_name, period_start, period_end, "
+                    "financial_year, period_nature, cumulative_nature, statement_scope, "
+                    "audit_status, publication_precision, source_published_at, source_published_date, "
+                    "market_available_at, source_url, revision_indicator, supersedes_filing_id, "
+                    "raw_metadata_json, ingested_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    ser.fundamental_filing_to_row(filing),
+                )
+                return True
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"save_fundamental_filing failed: {exc}") from exc
+
+    def get_fundamental_filing(self, filing_id: str) -> FundamentalFiling | None:
+        """Fetch filing by internal filing ID."""
+        row = self._query_one(
+            "SELECT filing_id, issuer_id, source, source_record_id, source_reported_symbol, "
+            "source_reported_isin, source_reported_name, period_start, period_end, "
+            "financial_year, period_nature, cumulative_nature, statement_scope, "
+            "audit_status, publication_precision, source_published_at, source_published_date, "
+            "market_available_at, source_url, revision_indicator, supersedes_filing_id, "
+            "raw_metadata_json, ingested_at "
+            "FROM fundamental_filings WHERE filing_id = ?",
+            (filing_id,),
+        )
+        return ser.row_to_fundamental_filing(row) if row else None
+
+    def get_filing_by_source_record(
+        self,
+        source: str,
+        source_record_id: str,
+        statement_scope: StatementScope,
+    ) -> FundamentalFiling | None:
+        """Fetch filing by unique source record identity and statement scope."""
+        row = self._query_one(
+            "SELECT filing_id, issuer_id, source, source_record_id, source_reported_symbol, "
+            "source_reported_isin, source_reported_name, period_start, period_end, "
+            "financial_year, period_nature, cumulative_nature, statement_scope, "
+            "audit_status, publication_precision, source_published_at, source_published_date, "
+            "market_available_at, source_url, revision_indicator, supersedes_filing_id, "
+            "raw_metadata_json, ingested_at "
+            "FROM fundamental_filings WHERE source = ? AND source_record_id = ? AND statement_scope = ?",
+            (source, source_record_id, statement_scope.value),
+        )
+        return ser.row_to_fundamental_filing(row) if row else None
+
+    def list_filings_for_issuer(
+        self,
+        issuer_id: str,
+        *,
+        statement_scope: StatementScope | None = None,
+        period_end: date | None = None,
+    ) -> list[FundamentalFiling]:
+        """List all filings for an issuer, optionally filtered by scope and period end."""
+        sql = (
+            "SELECT filing_id, issuer_id, source, source_record_id, source_reported_symbol, "
+            "source_reported_isin, source_reported_name, period_start, period_end, "
+            "financial_year, period_nature, cumulative_nature, statement_scope, "
+            "audit_status, publication_precision, source_published_at, source_published_date, "
+            "market_available_at, source_url, revision_indicator, supersedes_filing_id, "
+            "raw_metadata_json, ingested_at "
+            "FROM fundamental_filings WHERE issuer_id = ?"
+        )
+        params: list[Any] = [issuer_id]
+        if statement_scope is not None:
+            sql += " AND statement_scope = ?"
+            params.append(statement_scope.value)
+        if period_end is not None:
+            sql += " AND period_end = ?"
+            params.append(period_end.isoformat())
+        sql += " ORDER BY period_end DESC, source_published_at DESC, filing_id ASC"
+        rows = self._query_all(sql, tuple(params))
+        return [ser.row_to_fundamental_filing(r) for r in rows]
+
+    def list_filings_as_of(
+        self,
+        *,
+        as_of: datetime,
+        issuer_id: str | None = None,
+        statement_scope: StatementScope | None = None,
+    ) -> list[FundamentalFiling]:
+        """Point-in-Time safe filing retrieval (Correction 11).
+
+        Strictly enforces:
+        - publication_precision == 'EXACT_TIMESTAMP'
+        - source_published_at <= as_of
+        DATE_ONLY and UNKNOWN precision filings are excluded from exact-timestamp queries
+        to prevent temporal lookahead leakage.
+        """
+        if as_of.tzinfo is None:
+            raise RepositoryError(f"as_of datetime must be timezone-aware (got {as_of.isoformat()!r})")
+
+        sql = (
+            "SELECT filing_id, issuer_id, source, source_record_id, source_reported_symbol, "
+            "source_reported_isin, source_reported_name, period_start, period_end, "
+            "financial_year, period_nature, cumulative_nature, statement_scope, "
+            "audit_status, publication_precision, source_published_at, source_published_date, "
+            "market_available_at, source_url, revision_indicator, supersedes_filing_id, "
+            "raw_metadata_json, ingested_at "
+            "FROM fundamental_filings WHERE publication_precision = 'EXACT_TIMESTAMP' "
+            "AND source_published_at <= ?"
+        )
+        params: list[Any] = [as_of.isoformat()]
+        if issuer_id is not None:
+            sql += " AND issuer_id = ?"
+            params.append(issuer_id)
+        if statement_scope is not None:
+            sql += " AND statement_scope = ?"
+            params.append(statement_scope.value)
+        sql += " ORDER BY source_published_at ASC, filing_id ASC"
+        rows = self._query_all(sql, tuple(params))
+        return [ser.row_to_fundamental_filing(r) for r in rows]
+
+    def save_filing_document(self, doc: FilingDocument) -> bool:
+        """Store a raw source document attached to a filing (Correction 6, 7, 8).
+
+        - Ensures filing exists.
+        - Multiple documents per filing supported (keyed by filing_id + source_url).
+        - Idempotent: identical hash returns False (no-op).
+        - Conflicting document payload for same (filing_id, source_url) raises RepositoryError.
+        """
+        # Verify document source-byte integrity and bounded extraction before persistence
+        try:
+            doc.get_raw_bytes()
+        except Exception as exc:
+            raise RepositoryError(
+                f"Cannot persist structurally invalid or corrupted FilingDocument: {exc}"
+            ) from exc
+
+        try:
+            with self._lock, self._conn:
+                filing_row = self._conn.execute(
+                    "SELECT filing_id FROM fundamental_filings WHERE filing_id = ?",
+                    (doc.filing_id,),
+                ).fetchone()
+                if filing_row is None:
+                    raise RepositoryError(
+                        f"FilingDocument references non-existent filing_id={doc.filing_id!r}"
+                    )
+
+                existing = self._conn.execute(
+                    "SELECT document_id, filing_id, source_url, media_type, compression, "
+                    "payload, source_sha256, raw_size_bytes, stored_size_bytes, retrieved_at "
+                    "FROM filing_documents WHERE filing_id = ? AND source_url = ?",
+                    (doc.filing_id, doc.source_url),
+                ).fetchone()
+
+                if existing is not None:
+                    existing_doc = ser.row_to_filing_document(existing)
+                    # Compare immutable source artifact identity:
+                    # (source_sha256, media_type, raw_size_bytes)
+                    same_sha = existing_doc.source_sha256.lower() == doc.source_sha256.lower()
+                    same_media = existing_doc.media_type == doc.media_type
+                    same_raw_size = existing_doc.raw_size_bytes == doc.raw_size_bytes
+                    if same_sha and same_media and same_raw_size:
+                        return False
+                    conflicts: list[str] = []
+                    if not same_sha:
+                        conflicts.append(f"source_sha256 ({existing_doc.source_sha256} vs {doc.source_sha256})")
+                    if not same_media:
+                        conflicts.append(f"media_type ({existing_doc.media_type} vs {doc.media_type})")
+                    if not same_raw_size:
+                        conflicts.append(f"raw_size_bytes ({existing_doc.raw_size_bytes} vs {doc.raw_size_bytes})")
+                    raise RepositoryError(
+                        f"Conflicting document artifact identity for filing={doc.filing_id!r} URL={doc.source_url!r}: "
+                        f"{', '.join(conflicts)}"
+                    )
+
+                self._conn.execute(
+                    "INSERT INTO filing_documents("
+                    "document_id, filing_id, source_url, media_type, compression, "
+                    "payload, source_sha256, raw_size_bytes, stored_size_bytes, retrieved_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    ser.filing_document_to_row(doc),
+                )
+                return True
+        except sqlite3.Error as exc:
+            raise RepositoryError(f"save_filing_document failed: {exc}") from exc
+
+    def get_filing_document(self, document_id: str) -> FilingDocument | None:
+        """Fetch document record by document ID."""
+        row = self._query_one(
+            "SELECT document_id, filing_id, source_url, media_type, compression, "
+            "payload, source_sha256, raw_size_bytes, stored_size_bytes, retrieved_at "
+            "FROM filing_documents WHERE document_id = ?",
+            (document_id,),
+        )
+        return ser.row_to_filing_document(row) if row else None
+
+    def list_documents_for_filing(self, filing_id: str) -> list[FilingDocument]:
+        """List all document artifacts attached to a filing."""
+        rows = self._query_all(
+            "SELECT document_id, filing_id, source_url, media_type, compression, "
+            "payload, source_sha256, raw_size_bytes, stored_size_bytes, retrieved_at "
+            "FROM filing_documents WHERE filing_id = ? ORDER BY retrieved_at ASC",
+            (filing_id,),
+        )
+        return [ser.row_to_filing_document(r) for r in rows]
+
+    def get_filing_document_bytes(self, document_id: str) -> bytes:
+        """Retrieve original uncompressed source bytes with verified SHA-256 integrity."""
+        doc = self.get_filing_document(document_id)
+        if doc is None:
+            raise RepositoryError(f"Document not found: {document_id!r}")
+        try:
+            return doc.get_raw_bytes()
+        except ValueError as exc:
+            raise RepositoryError(f"Document corruption or verification failed: {exc}") from exc

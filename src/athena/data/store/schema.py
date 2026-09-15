@@ -10,7 +10,7 @@ append-only by discipline (inserts only; duplicates rejected by primary key).
 from __future__ import annotations
 
 #: Bump when the schema changes; enables future explicit migrations.
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 _DDL = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
@@ -594,6 +594,102 @@ _DDL = (
         updated_ts  TEXT NOT NULL
     )
     """,
+
+    # ---------------------------------------------------------------- SI-F1
+    # Fundamentals Identity + Immutable Source-Evidence Persistence Foundation
+    # (ATHENA-002, SI-F0, SI-F0.1).
+    #
+    # Decouples enduring legal corporate enterprise (issuers) from time-
+    # versioned share-class identities (security_identities).
+    # Persists authentic official exchange financial filings (fundamental_filings)
+    # preserving exact dissemination precision and multi-version observations.
+    # Persists raw source documents (filing_documents) with SHA-256 integrity
+    # verification and lossless compression.
+    """
+    CREATE TABLE IF NOT EXISTS issuers (
+        issuer_id   TEXT PRIMARY KEY,
+        legal_name  TEXT NOT NULL,
+        cin         TEXT,
+        status      TEXT NOT NULL DEFAULT 'ACTIVE',
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_issuers_cin ON issuers(cin)",
+    "CREATE INDEX IF NOT EXISTS idx_issuers_legal_name ON issuers(legal_name)",
+
+    """
+    CREATE TABLE IF NOT EXISTS security_identities (
+        security_id     TEXT PRIMARY KEY,
+        issuer_id       TEXT NOT NULL REFERENCES issuers(issuer_id),
+        exchange        TEXT NOT NULL,
+        symbol          TEXT NOT NULL,
+        isin            TEXT NOT NULL,
+        series          TEXT NOT NULL DEFAULT 'EQ',
+        effective_from  TEXT,
+        effective_to    TEXT,
+        source          TEXT NOT NULL,
+        created_at      TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_sec_identities_issuer ON security_identities(issuer_id)",
+    "CREATE INDEX IF NOT EXISTS idx_sec_identities_isin ON security_identities(isin)",
+    "CREATE INDEX IF NOT EXISTS idx_sec_identities_sym_exch ON security_identities(exchange, symbol)",
+    "CREATE INDEX IF NOT EXISTS idx_sec_identities_lookup ON security_identities(issuer_id, exchange, symbol, series)",
+
+    """
+    CREATE TABLE IF NOT EXISTS fundamental_filings (
+        filing_id               TEXT PRIMARY KEY,
+        issuer_id               TEXT REFERENCES issuers(issuer_id),
+        source                  TEXT NOT NULL,
+        source_record_id        TEXT NOT NULL,
+        source_reported_symbol  TEXT,
+        source_reported_isin    TEXT,
+        source_reported_name    TEXT,
+        period_start            TEXT,
+        period_end              TEXT NOT NULL,
+        financial_year          TEXT,
+        period_nature           TEXT NOT NULL,
+        cumulative_nature       TEXT NOT NULL,
+        statement_scope         TEXT NOT NULL,
+        audit_status            TEXT NOT NULL,
+        publication_precision   TEXT NOT NULL,
+        source_published_at     TEXT,
+        source_published_date   TEXT,
+        market_available_at     TEXT,
+        source_url              TEXT,
+        revision_indicator      TEXT,
+        supersedes_filing_id    TEXT REFERENCES fundamental_filings(filing_id),
+        raw_metadata_json       TEXT NOT NULL DEFAULT '{}',
+        ingested_at             TEXT NOT NULL
+    )
+    """,
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_fundamental_filings_source_record "
+    "ON fundamental_filings(source, source_record_id, statement_scope)",
+    "CREATE INDEX IF NOT EXISTS idx_fundamental_filings_issuer_period "
+    "ON fundamental_filings(issuer_id, period_end, statement_scope)",
+    "CREATE INDEX IF NOT EXISTS idx_fundamental_filings_pit "
+    "ON fundamental_filings(issuer_id, source_published_at)",
+    "CREATE INDEX IF NOT EXISTS idx_fundamental_filings_published "
+    "ON fundamental_filings(source_published_at)",
+
+    """
+    CREATE TABLE IF NOT EXISTS filing_documents (
+        document_id         TEXT PRIMARY KEY,
+        filing_id           TEXT NOT NULL REFERENCES fundamental_filings(filing_id),
+        source_url          TEXT NOT NULL,
+        media_type          TEXT NOT NULL,
+        compression         TEXT NOT NULL,
+        payload             BLOB NOT NULL,
+        source_sha256       TEXT NOT NULL,
+        raw_size_bytes      INTEGER NOT NULL,
+        stored_size_bytes   INTEGER NOT NULL,
+        retrieved_at        TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_filing_docs_filing_id ON filing_documents(filing_id)",
+    "CREATE INDEX IF NOT EXISTS idx_filing_docs_sha256 ON filing_documents(source_sha256)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_filing_docs_filing_url ON filing_documents(filing_id, source_url)",
 )
 
 

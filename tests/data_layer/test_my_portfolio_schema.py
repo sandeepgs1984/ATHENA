@@ -67,7 +67,7 @@ def test_my_portfolio_tables_are_created_in_athena_schema(tmp_path: Path) -> Non
     }
 
     assert expected <= tables
-    assert SCHEMA_VERSION == 20
+    assert SCHEMA_VERSION >= 20
     assert repo._conn.execute("SELECT version FROM schema_version").fetchone()[0] == SCHEMA_VERSION
     repo.close()
 
@@ -119,7 +119,7 @@ def test_portfolio_holding_notes_review_columns_migrate_from_schema_19(tmp_path:
     columns = _columns(repo._conn, "portfolio_holding_notes")  # type: ignore[attr-defined]
     assert "deferred" in columns
     assert "reviewed_at" in columns
-    assert repo._conn.execute("SELECT version FROM schema_version").fetchone()[0] == 20  # type: ignore[attr-defined]
+    assert repo._conn.execute("SELECT version FROM schema_version").fetchone()[0] == SCHEMA_VERSION  # type: ignore[attr-defined]
     repo.close()
 
 

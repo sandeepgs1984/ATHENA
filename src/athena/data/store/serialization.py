@@ -30,13 +30,24 @@ from athena.domain.decision import (
     TradePlan,
 )
 from athena.domain.enums import (
+    CumulativeNature,
     DecisionType,
     Direction,
+    FilingAuditStatus,
+    PeriodNature,
+    PublicationPrecision,
     QualityGate,
     RunStatus,
     RunTrigger,
+    StatementScope,
     Timeframe,
     UserAction,
+)
+from athena.domain.fundamentals import (
+    FilingDocument,
+    FundamentalFiling,
+    IssuerRecord,
+    SecurityIdentity,
 )
 from athena.domain.market import (
     Candle,
@@ -729,4 +740,145 @@ def row_to_entry_actionability(r: Sequence[Any]) -> EntryActionability:
         opening_range_context=_opening_range_context_from_json(r[20]),
         evaluated_at=datetime.fromisoformat(r[21]),
         explanation=r[22],
+    )
+
+
+# ------------------------------------------------------------- fundamentals (SI-F1)
+
+
+def issuer_to_row(issuer: IssuerRecord) -> tuple[Any, ...]:
+    return (
+        issuer.issuer_id,
+        issuer.legal_name,
+        issuer.cin,
+        issuer.status,
+        issuer.created_at.isoformat(),
+        issuer.updated_at.isoformat(),
+    )
+
+
+def row_to_issuer(r: Sequence[Any]) -> IssuerRecord:
+    return IssuerRecord(
+        issuer_id=r[0],
+        legal_name=r[1],
+        cin=r[2],
+        status=r[3],
+        created_at=datetime.fromisoformat(r[4]),
+        updated_at=datetime.fromisoformat(r[5]),
+    )
+
+
+def security_identity_to_row(si: SecurityIdentity) -> tuple[Any, ...]:
+    return (
+        si.security_id,
+        si.issuer_id,
+        si.exchange,
+        si.symbol,
+        si.isin,
+        si.series,
+        si.effective_from.isoformat() if si.effective_from else None,
+        si.effective_to.isoformat() if si.effective_to else None,
+        si.source,
+        si.created_at.isoformat(),
+    )
+
+
+def row_to_security_identity(r: Sequence[Any]) -> SecurityIdentity:
+    return SecurityIdentity(
+        security_id=r[0],
+        issuer_id=r[1],
+        exchange=r[2],
+        symbol=r[3],
+        isin=r[4],
+        series=r[5],
+        effective_from=date.fromisoformat(r[6]) if r[6] else None,
+        effective_to=date.fromisoformat(r[7]) if r[7] else None,
+        source=r[8],
+        created_at=datetime.fromisoformat(r[9]),
+    )
+
+
+def fundamental_filing_to_row(f: FundamentalFiling) -> tuple[Any, ...]:
+    return (
+        f.filing_id,
+        f.issuer_id,
+        f.source,
+        f.source_record_id,
+        f.source_reported_symbol,
+        f.source_reported_isin,
+        f.source_reported_name,
+        f.period_start.isoformat() if f.period_start else None,
+        f.period_end.isoformat(),
+        f.financial_year,
+        f.period_nature.value,
+        f.cumulative_nature.value,
+        f.statement_scope.value,
+        f.audit_status.value,
+        f.publication_precision.value,
+        f.source_published_at.isoformat() if f.source_published_at else None,
+        f.source_published_date.isoformat() if f.source_published_date else None,
+        f.market_available_at.isoformat() if f.market_available_at else None,
+        f.source_url,
+        f.revision_indicator,
+        f.supersedes_filing_id,
+        json.dumps(f.raw_metadata, sort_keys=True),
+        f.ingested_at.isoformat(),
+    )
+
+
+def row_to_fundamental_filing(r: Sequence[Any]) -> FundamentalFiling:
+    return FundamentalFiling(
+        filing_id=r[0],
+        issuer_id=r[1],
+        source=r[2],
+        source_record_id=r[3],
+        source_reported_symbol=r[4],
+        source_reported_isin=r[5],
+        source_reported_name=r[6],
+        period_start=date.fromisoformat(r[7]) if r[7] else None,
+        period_end=date.fromisoformat(r[8]),
+        financial_year=r[9],
+        period_nature=PeriodNature(r[10]),
+        cumulative_nature=CumulativeNature(r[11]),
+        statement_scope=StatementScope(r[12]),
+        audit_status=FilingAuditStatus(r[13]),
+        publication_precision=PublicationPrecision(r[14]),
+        source_published_at=datetime.fromisoformat(r[15]) if r[15] else None,
+        source_published_date=date.fromisoformat(r[16]) if r[16] else None,
+        market_available_at=datetime.fromisoformat(r[17]) if r[17] else None,
+        source_url=r[18],
+        revision_indicator=r[19],
+        supersedes_filing_id=r[20],
+        raw_metadata=json.loads(r[21]) if r[21] else {},
+        ingested_at=datetime.fromisoformat(r[22]),
+    )
+
+
+def filing_document_to_row(d: FilingDocument) -> tuple[Any, ...]:
+    return (
+        d.document_id,
+        d.filing_id,
+        d.source_url,
+        d.media_type,
+        d.compression,
+        d.payload,
+        d.source_sha256,
+        d.raw_size_bytes,
+        d.stored_size_bytes,
+        d.retrieved_at.isoformat(),
+    )
+
+
+def row_to_filing_document(r: Sequence[Any]) -> FilingDocument:
+    return FilingDocument(
+        document_id=r[0],
+        filing_id=r[1],
+        source_url=r[2],
+        media_type=r[3],
+        compression=r[4],
+        payload=bytes(r[5]),
+        source_sha256=r[6],
+        raw_size_bytes=int(r[7]),
+        stored_size_bytes=int(r[8]),
+        retrieved_at=datetime.fromisoformat(r[9]),
     )

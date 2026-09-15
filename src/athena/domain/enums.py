@@ -116,3 +116,50 @@ class QualityGate(str, Enum):
     EXPLAINABILITY = "EXPLAINABILITY"
     CONFIDENCE = "CONFIDENCE"
     MARKET = "MARKET"
+
+
+@unique
+class PublicationPrecision(str, Enum):
+    """Temporal precision of an evidence publication source."""
+
+    EXACT_TIMESTAMP = "EXACT_TIMESTAMP"
+    DATE_ONLY = "DATE_ONLY"
+    UNKNOWN = "UNKNOWN"
+
+
+@unique
+class StatementScope(str, Enum):
+    """Scope of a financial filing statement."""
+
+    CONSOLIDATED = "CONSOLIDATED"
+    STANDALONE = "STANDALONE"
+    UNKNOWN = "UNKNOWN"
+
+
+@unique
+class PeriodNature(str, Enum):
+    """Reporting period duration classification."""
+
+    QUARTERLY = "QUARTERLY"
+    ANNUAL = "ANNUAL"
+    HALF_YEARLY = "HALF_YEARLY"
+    UNKNOWN = "UNKNOWN"
+
+
+@unique
+class CumulativeNature(str, Enum):
+    """Cumulative vs discrete period classification."""
+
+    NON_CUMULATIVE = "NON_CUMULATIVE"
+    CUMULATIVE = "CUMULATIVE"
+    UNKNOWN = "UNKNOWN"
+
+
+@unique
+class FilingAuditStatus(str, Enum):
+    """Audit / review status of financial results."""
+
+    AUDITED = "AUDITED"
+    UNAUDITED = "UNAUDITED"
+    LIMITED_REVIEW = "LIMITED_REVIEW"
+    UNKNOWN = "UNKNOWN"

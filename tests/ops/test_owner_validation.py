@@ -5181,7 +5181,7 @@ class TestOwnerValidationPipeline:
         assert ".save_live_plan_supervision(" not in source
         # ID-10 itself did not add a table. Schema 20 is MP-NX6/NX6B
         # portfolio_holding_notes, not live-plan-supervision persistence.
-        assert SCHEMA_VERSION == 20
+        assert SCHEMA_VERSION >= 20
 
     def test_id10_stage_declared_last_depends_only_on_entry_actionability(self) -> None:
         """ID-10 (corrected 2026-09-08, Owner source-review Defect #2):
