@@ -1,0 +1,372 @@
+{
+  "schema_version": "21",
+  "milestone": "SI-F2A",
+  "title": "Empirical Fact Normalization Methodology & XBRL Mapping Evidence",
+  "date": "2026-09-15",
+  "evidence_classification_definitions": {
+    "SOURCE_DERIVED_SANITIZED_FIXTURE": "Derived from captured official exchange filings with documented provenance.",
+    "CONSTRUCTED_METHODOLOGY_FIXTURE": "Purpose-built synthetic fixture to validate methodology/parser edge cases.",
+    "DOCUMENTED_EXTERNAL_METADATA": "Recorded from live exchange feed queries in SI-F0.1.",
+    "INFERRED_PLANNING_ESTIMATE": "Planning estimates for storage and capacity; not claimed as broad empirical truths.",
+    "ARCHITECTURAL_RECOMMENDATION": "Proposed design recommendations for future F2B planning.",
+    "UNKNOWN": "Explicitly unresolved questions requiring further empirical research."
+  },
+  "fixture_provenance_catalog": {
+    "infy_q3_fy25_sanitized.xml": {
+      "fixture_type": "SOURCE_DERIVED_SANITIZED_FIXTURE",
+      "issuer": "Infosys Limited",
+      "symbol": "INFY",
+      "isin": "INE009A01021",
+      "exchange": "NSE",
+      "filing_period": "Q3 FY25 (2024-10-01 to 2024-12-31)",
+      "source_seq_number": "1189811",
+      "dissemination_time": "2025-01-16 19:40:31 IST",
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_117292_1348213_16012025074012.xml",
+      "sanitization_statement": "Sanitized subset of actual official XBRL containing core income line items, equity capital, quarter (OneD) vs 9M YTD (FourD) duration contexts, and segment dimension (OneReportableSegmentRevenue01D)."
+    },
+    "paytm_q3_fy25_loss_sanitized.xml": {
+      "fixture_type": "SOURCE_DERIVED_SANITIZED_FIXTURE",
+      "issuer": "One 97 Communications Limited",
+      "symbol": "PAYTM",
+      "isin": "INE982J01020",
+      "exchange": "NSE",
+      "filing_period": "Q3 FY25 (2024-10-01 to 2024-12-31)",
+      "source_seq_number": "1190043",
+      "dissemination_time": "2025-01-20 18:37:43 IST",
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_117412_1353590_20012025063743.xml",
+      "sanitization_statement": "Sanitized subset of actual official XBRL demonstrating negative PAT (-\u20b9208.5 Cr) and negative diluted EPS (-\u20b93.27)."
+    },
+    "hdfcbank_q3_fy25_banking_sanitized.xml": {
+      "fixture_type": "SOURCE_DERIVED_SANITIZED_FIXTURE",
+      "issuer": "HDFC Bank Limited",
+      "symbol": "HDFCBANK",
+      "isin": "INE040A01034",
+      "exchange": "NSE",
+      "filing_period": "Q3 FY25 (2024-10-01 to 2024-12-31)",
+      "source_seq_number": "1190261",
+      "dissemination_time": "2025-01-23 12:27:21 IST",
+      "source_url": "https://nsearchives.nseindia.com/corporate/xbrl/BANKING_117525_1359016_23012025122721.xml",
+      "sanitization_statement": "Sanitized subset of actual official banking XBRL demonstrating presence of InterestEarned / InterestExpended and total absence of RevenueFromOperations."
+    },
+    "duplicate_and_nil_cases_sanitized.xml": {
+      "fixture_type": "CONSTRUCTED_METHODOLOGY_FIXTURE",
+      "purpose": "Purpose-built synthetic XML fixture constructed to validate parser and methodological behavior on exact duplicates, compatible duplicates, conflicting duplicates, and reported nil (xsi:nil=true).",
+      "evidence_classification": "METHODOLOGY_PARSER_BEHAVIOR_VALIDATED",
+      "sanitization_statement": "Constructed fixture. Does NOT claim these specific numbers occurred in a single official filing; validates parser handling rules."
+    }
+  },
+  "reproducible_findings": {
+    "INFY_QUARTER_VS_YTD": {
+      "evidence_status": "SOURCE_DERIVED_SANITIZED_FIXTURE",
+      "quarter_context": {
+        "context_id": "OneD",
+        "period_type": "DURATION",
+        "period_start": "2024-10-01",
+        "period_end": "2024-12-31",
+        "duration_days": 92,
+        "is_dimensioned": false,
+        "dimensions": []
+      },
+      "ytd_context": {
+        "context_id": "FourD",
+        "period_type": "DURATION",
+        "period_start": "2024-04-01",
+        "period_end": "2024-12-31",
+        "duration_days": 275,
+        "is_dimensioned": false,
+        "dimensions": []
+      },
+      "quarter_revenue": {
+        "source_occurrence_ordinal": 1,
+        "duplicate_group_ordinal": 1,
+        "raw_qname": "in-bse-fin:RevenueFromOperations",
+        "namespace_uri": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "local_name": "RevenueFromOperations",
+        "context_ref": "OneD",
+        "unit_ref": "INR",
+        "decimals": "-7",
+        "is_nil": false,
+        "raw_value": "417640000000.00",
+        "numeric_value": "417640000000.00",
+        "period_type": "DURATION",
+        "period_start": "2024-10-01",
+        "period_end": "2024-12-31",
+        "duration_days": 92,
+        "is_dimensioned": false,
+        "dimensions": []
+      },
+      "ytd_revenue": {
+        "source_occurrence_ordinal": 8,
+        "duplicate_group_ordinal": 1,
+        "raw_qname": "in-bse-fin:RevenueFromOperations",
+        "namespace_uri": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "local_name": "RevenueFromOperations",
+        "context_ref": "FourD",
+        "unit_ref": "INR",
+        "decimals": "-7",
+        "is_nil": false,
+        "raw_value": "1220640000000.00",
+        "numeric_value": "1220640000000.00",
+        "period_type": "DURATION",
+        "period_start": "2024-04-01",
+        "period_end": "2024-12-31",
+        "duration_days": 275,
+        "is_dimensioned": false,
+        "dimensions": []
+      },
+      "quarter_pat": {
+        "source_occurrence_ordinal": 3,
+        "duplicate_group_ordinal": 1,
+        "raw_qname": "in-bse-fin:ProfitLossForPeriod",
+        "namespace_uri": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "local_name": "ProfitLossForPeriod",
+        "context_ref": "OneD",
+        "unit_ref": "INR",
+        "decimals": "-7",
+        "is_nil": false,
+        "raw_value": "68220000000.00",
+        "numeric_value": "68220000000.00",
+        "period_type": "DURATION",
+        "period_start": "2024-10-01",
+        "period_end": "2024-12-31",
+        "duration_days": 92,
+        "is_dimensioned": false,
+        "dimensions": []
+      },
+      "ytd_pat": {
+        "source_occurrence_ordinal": 10,
+        "duplicate_group_ordinal": 1,
+        "raw_qname": "in-bse-fin:ProfitLossForPeriod",
+        "namespace_uri": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "local_name": "ProfitLossForPeriod",
+        "context_ref": "FourD",
+        "unit_ref": "INR",
+        "decimals": "-7",
+        "is_nil": false,
+        "raw_value": "197120000000.00",
+        "numeric_value": "197120000000.00",
+        "period_type": "DURATION",
+        "period_start": "2024-04-01",
+        "period_end": "2024-12-31",
+        "duration_days": 275,
+        "is_dimensioned": false,
+        "dimensions": []
+      },
+      "segment_revenue": {
+        "source_occurrence_ordinal": 14,
+        "duplicate_group_ordinal": 1,
+        "raw_qname": "in-bse-fin:RevenueFromOperations",
+        "namespace_uri": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "local_name": "RevenueFromOperations",
+        "context_ref": "OneReportableSegmentRevenue01D",
+        "unit_ref": "INR",
+        "decimals": "-7",
+        "is_nil": false,
+        "raw_value": "118420000000.00",
+        "numeric_value": "118420000000.00",
+        "period_type": "DURATION",
+        "period_start": "2024-10-01",
+        "period_end": "2024-12-31",
+        "duration_days": 92,
+        "is_dimensioned": true,
+        "dimensions": [
+          {
+            "dimension": "in-bse-fin:ReportableSegmentsAxis",
+            "member": "in-bse-fin:FinancialServicesMember"
+          }
+        ]
+      },
+      "conclusion": "Quarterly and cumulative YTD facts share concept QName and period_end, but are strictly distinguished by context period_start and duration_days. Contexts with explicitMember dimensions represent segment breakdowns."
+    },
+    "PAYTM_LOSS_FACTS": {
+      "evidence_status": "SOURCE_DERIVED_SANITIZED_FIXTURE",
+      "profit_loss_fact": {
+        "source_occurrence_ordinal": 2,
+        "duplicate_group_ordinal": 1,
+        "raw_qname": "in-bse-fin:ProfitLossForPeriod",
+        "namespace_uri": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "local_name": "ProfitLossForPeriod",
+        "context_ref": "OneD",
+        "unit_ref": "INR",
+        "decimals": "-6",
+        "is_nil": false,
+        "raw_value": "-2085000000.00",
+        "numeric_value": "-2085000000.00",
+        "period_type": "DURATION",
+        "period_start": "2024-10-01",
+        "period_end": "2024-12-31",
+        "duration_days": 92,
+        "is_dimensioned": false,
+        "dimensions": []
+      },
+      "diluted_eps_fact": {
+        "source_occurrence_ordinal": 5,
+        "duplicate_group_ordinal": 1,
+        "raw_qname": "in-bse-fin:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
+        "namespace_uri": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "local_name": "DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
+        "context_ref": "OneD",
+        "unit_ref": "INRPerShare",
+        "decimals": "INF",
+        "is_nil": false,
+        "raw_value": "-3.27",
+        "numeric_value": "-3.27",
+        "period_type": "DURATION",
+        "period_start": "2024-10-01",
+        "period_end": "2024-12-31",
+        "duration_days": 92,
+        "is_dimensioned": false,
+        "dimensions": []
+      },
+      "conclusion": "Negative PAT and EPS are reported with leading minus signs and parsed into signed Decimals."
+    },
+    "HDFCBANK_BANKING_NEGATIVE_CONTROL": {
+      "evidence_status": "SOURCE_DERIVED_SANITIZED_FIXTURE",
+      "observed_concepts": [
+        "InterestEarned",
+        "InterestExpended",
+        "PaidUpValueOfEquityShareCapital"
+      ],
+      "has_RevenueFromOperations": false,
+      "has_InterestEarned": true,
+      "conclusion": "Banking taxonomy lacks standard corporate revenue line items. Confirms banking exclusion from non-financial normalization."
+    },
+    "DUPLICATE_AND_NIL_CLASSIFICATION": {
+      "evidence_status": "CONSTRUCTED_METHODOLOGY_FIXTURE",
+      "exact_duplicates_count": 2,
+      "compatible_duplicates_count": 2,
+      "conflicting_duplicates_count": 2,
+      "reported_nil_count": 1,
+      "duplicate_policy_rules": {
+        "RAW_OCCURRENCE_PRESERVATION": "Physically distinct XML occurrences in the source document are preserved at the raw layer (document_id, source_occurrence_ordinal); never erased.",
+        "EXACT_DUPLICATE": "Identical economic coordinates and value; deduplicated at canonical promotion.",
+        "COMPATIBLE_VALUE_DUPLICATE": "Same economic coordinates, compatible values; preserve observations without picking highest precision as canonical truth.",
+        "CONFLICTING_DUPLICATE": "Same economic coordinates, incompatible values; preserve all, mark CONFLICT_UNRESOLVED.",
+        "REPORTED_NIL": "xsi:nil='true' preserved as is_nil=True, distinct from numeric 0.00."
+      }
+    }
+  },
+  "observed_filing_metadata": {
+    "evidence_status": "DOCUMENTED_EXTERNAL_METADATA",
+    "source": "NSE Corporate Financial Results API Feed (SI-F0.1)",
+    "symbols_sampled": [
+      "INFY",
+      "TCS",
+      "RELIANCE",
+      "PAYTM",
+      "IDEA",
+      "VBL",
+      "HDFCBANK"
+    ],
+    "statement_scope_findings": {
+      "INFY_scope_separation": "Consolidated seq 1189811 vs Standalone seq 1189815 with distinct URLs and timestamps.",
+      "TCS_scope_separation": "Consolidated seq 1189599 vs Standalone seq 1189595 on 2025-01-09."
+    },
+    "revision_metadata_findings": {
+      "SCHAEFFLER_revision": "Seq 1197098 (reInd=N) on 2025-02-27 vs Seq 1197319 (reInd=R) on 2025-03-25."
+    }
+  },
+  "canonical_concept_vocabulary": {
+    "high_confidence_canonical_promotion": [
+      {
+        "canonical_concept": "REVENUE_FROM_OPERATIONS",
+        "category": "INCOME_STATEMENT",
+        "raw_namespace": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "raw_local_name": "RevenueFromOperations",
+        "period_type": "DURATION",
+        "canonical_unit": "CURRENCY_INR",
+        "canonical_promotion_status": "HIGH_CONFIDENCE_CANONICAL_PROMOTION",
+        "rationale": "Directly reported line item representing core operational revenue."
+      },
+      {
+        "canonical_concept": "PROFIT_LOSS_BEFORE_TAX",
+        "category": "INCOME_STATEMENT",
+        "raw_namespace": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "raw_local_name": "ProfitLossBeforeTax",
+        "period_type": "DURATION",
+        "canonical_unit": "CURRENCY_INR",
+        "canonical_promotion_status": "HIGH_CONFIDENCE_CANONICAL_PROMOTION",
+        "rationale": "Standard pre-tax earnings before exceptional items/taxation."
+      },
+      {
+        "canonical_concept": "PROFIT_LOSS_FOR_PERIOD",
+        "category": "INCOME_STATEMENT",
+        "raw_namespace": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "raw_local_name": "ProfitLossForPeriod",
+        "period_type": "DURATION",
+        "canonical_unit": "CURRENCY_INR",
+        "canonical_promotion_status": "HIGH_CONFIDENCE_CANONICAL_PROMOTION",
+        "rationale": "Authoritative net profit/loss after tax. Handles negative losses."
+      },
+      {
+        "canonical_concept": "EPS_BASIC",
+        "category": "INCOME_STATEMENT",
+        "raw_namespace": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "raw_local_name": "BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
+        "period_type": "DURATION",
+        "canonical_unit": "INR_PER_SHARE",
+        "canonical_promotion_status": "HIGH_CONFIDENCE_CANONICAL_PROMOTION",
+        "rationale": "Basic EPS as legally reported on the face of the financial results."
+      },
+      {
+        "canonical_concept": "EPS_DILUTED",
+        "category": "INCOME_STATEMENT",
+        "raw_namespace": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "raw_local_name": "DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
+        "period_type": "DURATION",
+        "canonical_unit": "INR_PER_SHARE",
+        "canonical_promotion_status": "HIGH_CONFIDENCE_CANONICAL_PROMOTION",
+        "rationale": "Diluted EPS as legally reported on the face of the financial results."
+      }
+    ],
+    "raw_mapping_proven_canonical_rule_required": [
+      {
+        "canonical_concept": "PAID_UP_EQUITY_CAPITAL",
+        "category": "CAPITAL_STRUCTURE",
+        "raw_namespace": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "raw_local_name": "PaidUpValueOfEquityShareCapital",
+        "period_type": "INSTANT_OR_DURATION",
+        "canonical_unit": "CURRENCY_INR",
+        "canonical_promotion_status": "RAW_MAPPING_PROVEN_CANONICAL_RULE_REQUIRED",
+        "rationale": "Raw QName mapping is proven, but tag appears under both instant and duration contexts. Canonical promotion requires an explicitly approved context rule."
+      },
+      {
+        "canonical_concept": "FACE_VALUE_PER_SHARE",
+        "category": "CAPITAL_STRUCTURE",
+        "raw_namespace": "http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin",
+        "raw_local_name": "FaceValueOfEquityShareCapital",
+        "period_type": "INSTANT_OR_DURATION",
+        "canonical_unit": "INR_PER_SHARE",
+        "canonical_promotion_status": "RAW_MAPPING_PROVEN_CANONICAL_RULE_REQUIRED",
+        "rationale": "Raw QName mapping is proven, but tag appears under both instant and duration contexts. Canonical promotion requires an explicitly approved context rule."
+      }
+    ]
+  },
+  "identity_proposals": {
+    "evidence_status": "ARCHITECTURAL_RECOMMENDATION",
+    "raw_source_occurrence_identity": "(document_id, source_occurrence_ordinal)",
+    "raw_fact_payload_attributes": "raw_qname, context_ref, unit_ref, decimals, raw_value, numeric_value, is_nil, is_dimensioned, dimension_signature",
+    "canonical_economic_identity": "filing_id, canonical_concept, period_type, period_start, period_end, statement_scope"
+  },
+  "performance_and_storage_estimates": {
+    "evidence_status": "INFERRED_PLANNING_ESTIMATE",
+    "facts_per_filing_range": "150-500 facts per quarterly XML",
+    "xml_payload_size_range": "30-250 KB uncompressed",
+    "five_year_projection_500_issuers": "~20,000 filings, ~6M raw facts, ~800 MB-1.5 GB SQLite",
+    "note": "Capacity planning estimate only; not claimed as measured census."
+  },
+  "proposed_owner_decisions_d1_to_d12": {
+    "D1": "APPROVE two-layer architecture: Raw Source Fact Observation + Canonical Mapping.",
+    "D2": "APPROVE source occurrence identity as separate from canonical economic identity and payload.",
+    "D3": "APPROVE reported-facts-only normalization. No synthetic quarter subtraction.",
+    "D4": "APPROVE period-safe canonical duration identity: period_start + period_end required.",
+    "D5": "APPROVE raw dimensioned fact preservation; unsupported material dimensions excluded from initial enterprise promotion.",
+    "D6": "APPROVE duplicate policy: preserve raw occurrences; no highest-precision winner; conflicting duplicates unresolved.",
+    "D7": "APPROVE cross-exchange source observations remain independent in F2B; reconciliation deferred.",
+    "D8": "APPROVE versioned canonical mappings and local reprocessing from immutable source documents/raw observations.",
+    "D9": "APPROVE exact PIT inheritance from SI-F1; DATE_ONLY/UNKNOWN remain excluded from exact timestamp replay.",
+    "D10": "APPROVE initial non-financial-only boundary: banks excluded empirically; NBFC/insurance conservatively excluded pending evidence; unknown issuer classification => not canonically normalized.",
+    "D11": "APPROVE secure XML parser requirement (exact dependency added only during reviewed F2B implementation).",
+    "D12": "APPROVE initial concept scope: 5 High-Confidence Canonical Promotion concepts + 2 Raw Mapping Proven but Canonical Context Rule Required concepts."
+  }
+}

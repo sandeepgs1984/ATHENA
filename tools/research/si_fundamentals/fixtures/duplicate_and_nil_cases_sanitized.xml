@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xbrli:xbrl
+  xmlns:in-bse-fin="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217">
+
+  <xbrli:context id="OneD">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.bseindia.com">500209</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2024-10-01</xbrli:startDate>
+      <xbrli:endDate>2024-12-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+
+  <xbrli:context id="DupD">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.bseindia.com">500209</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2024-10-01</xbrli:startDate>
+      <xbrli:endDate>2024-12-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+
+  <xbrli:unit id="INR">
+    <xbrli:measure>iso4217:INR</xbrli:measure>
+  </xbrli:unit>
+
+  <!-- Case 1: EXACT_DUPLICATE (Repeated occurrence in XML) -->
+  <in-bse-fin:RevenueFromOperations contextRef="OneD" unitRef="INR" decimals="-7">417640000000.00</in-bse-fin:RevenueFromOperations>
+  <in-bse-fin:RevenueFromOperations contextRef="OneD" unitRef="INR" decimals="-7">417640000000.00</in-bse-fin:RevenueFromOperations>
+
+  <!-- Case 2: COMPATIBLE_VALUE_DUPLICATE (Same economic coordinates, compatible value, different decimals) -->
+  <in-bse-fin:ProfitLossBeforeTax contextRef="OneD" unitRef="INR" decimals="-7">91620000000.00</in-bse-fin:ProfitLossBeforeTax>
+  <in-bse-fin:ProfitLossBeforeTax contextRef="DupD" unitRef="INR" decimals="-5">91620000000.00</in-bse-fin:ProfitLossBeforeTax>
+
+  <!-- Case 3: CONFLICTING_DUPLICATE (Same economic coordinates, incompatible values) -->
+  <in-bse-fin:OtherIncome contextRef="OneD" unitRef="INR" decimals="-7">1000000000.00</in-bse-fin:OtherIncome>
+  <in-bse-fin:OtherIncome contextRef="DupD" unitRef="INR" decimals="-7">1050000000.00</in-bse-fin:OtherIncome>
+
+  <!-- Case 4: Reported Nil (xsi:nil="true") -->
+  <in-bse-fin:ExceptionalItems contextRef="OneD" unitRef="INR" xsi:nil="true"/>
+
+</xbrli:xbrl>

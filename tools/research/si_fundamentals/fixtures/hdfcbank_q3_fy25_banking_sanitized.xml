@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xbrli:xbrl
+  xmlns:in-bse-fin="http://www.bseindia.com/xbrl/fin/2020-03-31/in-bse-fin"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217">
+
+  <xbrli:context id="OneD">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.bseindia.com">500180</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2024-10-01</xbrli:startDate>
+      <xbrli:endDate>2024-12-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+
+  <xbrli:unit id="INR">
+    <xbrli:measure>iso4217:INR</xbrli:measure>
+  </xbrli:unit>
+
+  <!-- Banking Sector Specific Line Items (Lack RevenueFromOperations) -->
+  <in-bse-fin:InterestEarned contextRef="OneD" unitRef="INR" decimals="-7">850401700000.00</in-bse-fin:InterestEarned>
+  <in-bse-fin:InterestExpended contextRef="OneD" unitRef="INR" decimals="-7">469142800000.00</in-bse-fin:InterestExpended>
+  <in-bse-fin:PaidUpValueOfEquityShareCapital contextRef="OneD" unitRef="INR" decimals="-7">7648300000.00</in-bse-fin:PaidUpValueOfEquityShareCapital>
+
+</xbrli:xbrl>
