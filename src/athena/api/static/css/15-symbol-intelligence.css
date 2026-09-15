@@ -1804,6 +1804,13 @@
     line-height: 1;
 }
 
+.si-decision-title-row h2 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.24em;
+}
+
 .si-decision-direction,
 .si-decision-status,
 .si-decision-gate-summary {
@@ -1823,7 +1830,20 @@
 
 .si-decision-direction {
     color: var(--si-decision-tone);
-    background: var(--si-decision-tone-soft);
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+    font-size: 0.72em;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+}
+
+.si-decision-direction b {
+    margin-right: 0.08em;
+    color: var(--text-muted, #94a3b8);
+    font-weight: 500;
 }
 
 .si-decision-status {
@@ -1960,6 +1980,11 @@
     background: rgba(225, 91, 100, 0.08);
 }
 
+.si-decision-gate-summary.has-unavailable {
+    color: var(--text-muted, #94a3b8);
+    background: rgba(148, 163, 184, 0.08);
+}
+
 .si-decision-explanation {
     margin: 0 0 13px;
     border-left: 2px solid var(--si-decision-tone);
@@ -2009,6 +2034,7 @@
 
 .si-decision-gate.is-pass { color: var(--good, #3dba7e); }
 .si-decision-gate.is-fail { color: var(--bad, #e15b64); }
+.si-decision-gate.is-unavailable { color: var(--text-muted, #94a3b8); }
 
 .si-decision-gate-name {
     min-width: 0;
@@ -3401,8 +3427,62 @@
 }
 
 @media (max-width: 720px) {
+    #app:has(#tab-symbol-intelligence.active) .console-main {
+        min-width: 0;
+    }
+
+    #app:has(#tab-symbol-intelligence.active) .console-header {
+        align-items: stretch;
+        flex-wrap: wrap;
+        gap: 8px;
+        height: auto;
+        min-height: 70px;
+        padding: 10px 12px;
+    }
+
+    #app:has(#tab-symbol-intelligence.active) .header-left,
+    #app:has(#tab-symbol-intelligence.active) .console-header > .si-toolbar,
+    #app:has(#tab-symbol-intelligence.active) .header-right {
+        flex: 1 1 100%;
+        min-width: 0;
+        width: 100%;
+    }
+
+    #app:has(#tab-symbol-intelligence.active) .header-left {
+        justify-content: space-between;
+    }
+
+    #app:has(#tab-symbol-intelligence.active) .header-title-stack {
+        min-width: 0;
+    }
+
+    #app:has(#tab-symbol-intelligence.active) .header-right {
+        margin-left: 0;
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+
+    #app:has(#tab-symbol-intelligence.active) .header-actions {
+        min-width: max-content;
+    }
+
+    #app:has(#tab-symbol-intelligence.active) .workspace-viewport {
+        padding: 0 12px 24px;
+        overflow-x: hidden;
+    }
+
     #tab-symbol-intelligence {
-        padding: 12px 12px 24px;
+        min-width: 0;
+        padding: 0;
+    }
+
+    .si-workstation,
+    .si-bundle,
+    .si-section,
+    .si-identity,
+    .si-section-nav {
+        min-width: 0;
+        max-width: 100%;
     }
 
     .si-section-nav.is-stuck .si-sticky-context {
@@ -3410,7 +3490,70 @@
     }
 
     .si-identity {
-        grid-template-columns: 1fr;
+        min-height: 0;
+        padding: 14px 4px 13px;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 15px;
+        align-items: stretch;
+        overflow: visible;
+    }
+
+    .si-id-block,
+    .si-identity > div {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .si-id-avatar {
+        width: 3.65rem;
+        height: 3.65rem;
+        font-size: 1.35rem;
+    }
+
+    .si-id-symbol {
+        font-size: 1.45rem;
+    }
+
+    .si-id-tags {
+        row-gap: 5px;
+    }
+
+    .si-id-price-row {
+        align-items: baseline;
+        gap: 7px 10px;
+    }
+
+    .si-id-price {
+        font-size: 1.7rem;
+    }
+
+    .si-id-quote-tag {
+        white-space: normal;
+    }
+
+    .si-id-session {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: baseline;
+        max-width: none;
+        gap: 6px 14px;
+    }
+
+    .si-id-session strong {
+        text-align: right;
+    }
+
+    .si-section-nav {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px;
+        padding-inline: 0;
+    }
+
+    .si-section-nav-item,
+    .si-section-nav.is-stuck .si-section-nav-item {
+        min-width: 0;
+        width: 100%;
+        padding-inline: 8px;
     }
 
     .si-workspace-state {

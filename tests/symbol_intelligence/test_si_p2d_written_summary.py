@@ -480,6 +480,6 @@ def test_si_p2d_stale_footer_is_bounded_and_visually_distinct() -> None:
 def test_si_p2d_asset_cache_pin() -> None:
     html = HTML.read_text(encoding="utf-8")
     css = Path("src/athena/api/static/dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.275.0" in html
-    assert "dashboard.js?v=9.275.0" in html
-    assert "css/15-symbol-intelligence.css?v=9.275.0" in css
+    assert "dashboard.css?v=9.277.0" in html
+    assert "dashboard.js?v=9.277.0" in html
+    assert "css/15-symbol-intelligence.css?v=9.277.0" in css

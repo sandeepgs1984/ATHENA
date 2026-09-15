@@ -41,6 +41,14 @@
         return Number.isFinite(amount) ? amount : null;
     }
 
+    // Number(null) is zero, so optional persisted scalar fields need an
+    // explicit absence guard before numeric validation. This keeps missing
+    // evidence absent instead of presenting a fabricated zero.
+    function siNullableFiniteNumber(value) {
+        if (value === null || value === undefined || value === "") return null;
+        return siFiniteNumber(value);
+    }
+
     function siMoney(value) {
         if (value === null || value === undefined || value === "") return "—";
         const amount = siFiniteNumber(value);
@@ -121,16 +129,7 @@
     }
 
     function siDecisionDate(value) {
-        if (!value) return "—";
-        const key = String(value).slice(0, 10);
-        const date = new Date(`${key}T12:00:00+05:30`);
-        if (Number.isNaN(date.getTime())) return siEscape(key);
-        return siEscape(new Intl.DateTimeFormat("en-IN", {
-            timeZone: "Asia/Kolkata",
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-        }).format(date));
+        return siDate(value);
     }
 
     function siNormalizeLabel(value) {
@@ -199,7 +198,7 @@
 
     function siPersistedScore(decision) {
         const value = decision && decision.depth && decision.depth.score && decision.depth.score.value;
-        return siFiniteNumber(value);
+        return siNullableFiniteNumber(value);
     }
 
     function siGatePassSummary(decision) {
@@ -538,15 +537,17 @@
             return `<p class="si-decision-muted">No gate results were persisted for this Decision.</p>`;
         }
         return `<div class="si-decision-gates">${gates.map(gate => {
-            const passed = gate && gate.passed === true;
+            const outcome = gate && gate.passed;
+            const state = outcome === true ? "pass" : outcome === false ? "fail" : "unavailable";
+            const stateLabel = state === "pass" ? "Passed" : state === "fail" ? "Failed" : "Unavailable";
             const detail = gate && gate.detail
                 ? siText(gate.detail)
                 : "No persisted detail is available.";
-            return `<details class="si-decision-gate ${passed ? "is-pass" : "is-fail"}" ${passed ? "" : "open"}>
+            return `<details class="si-decision-gate is-${state}" ${state === "fail" ? "open" : ""}>
                 <summary>
                     <span class="si-decision-gate-state" aria-hidden="true"></span>
                     <span class="si-decision-gate-name">${siEscape(siDecisionGateLabel(gate && gate.gate))}</span>
-                    <strong>${passed ? "Passed" : "Failed"}</strong>
+                    <strong>${stateLabel}</strong>
                     <span class="si-decision-disclosure" aria-hidden="true">⌄</span>
                 </summary>
                 <p>${detail}</p>
@@ -583,7 +584,7 @@
                 ? siMoney(entryLow)
                 : `${siMoney(entryLow)} – ${siMoney(entryHigh)}`)
             : "";
-        const rr = siFiniteNumber(plan.risk_reward);
+        const rr = siNullableFiniteNumber(plan.risk_reward);
         return `<section class="si-decision-block si-decision-plan" aria-labelledby="si-decision-plan-title">
             <div class="si-decision-block-head">
                 <div><span class="si-decision-eyebrow">Decision-owned levels</span>
@@ -631,6 +632,7 @@
         const gates = Array.isArray(decision.gates) ? decision.gates : [];
         const passed = gates.filter(gate => gate && gate.passed === true).length;
         const failed = gates.filter(gate => gate && gate.passed === false).length;
+        const unavailable = gates.length - passed - failed;
         const gateSummary = gates.length
             ? `${passed} of ${gates.length} gates passed`
             : "Gate evidence unavailable";
@@ -646,8 +648,7 @@
                 <div class="si-decision-hero-main">
                     <span class="si-decision-eyebrow">Persisted ATHENA Decision</span>
                     <div class="si-decision-title-row">
-                        <h2>${siEscape(siEnumLabel(decision.decision_type, "Decision"))}</h2>
-                        ${direction && direction !== "NONE" ? `<span class="si-decision-direction">${siEscape(siEnumLabel(direction))}</span>` : ""}
+                        <h2><span>${siEscape(siEnumLabel(decision.decision_type, "Decision"))}</span>${direction && direction !== "NONE" ? `<span class="si-decision-direction"><b aria-hidden="true">·</b> ${siEscape(siEnumLabel(direction))}</span>` : ""}</h2>
                     </div>
                     <p class="si-decision-asof">Decision as of ${siDecisionDate(decision.ts)}</p>
                 </div>
@@ -669,8 +670,8 @@
                 <section class="si-decision-block si-decision-why" aria-labelledby="si-decision-why-title">
                     <div class="si-decision-block-head">
                         <div><span class="si-decision-eyebrow">Persisted explanation</span>
-                        <h3 id="si-decision-why-title">Why ATHENA decided this</h3></div>
-                        ${gates.length ? `<span class="si-decision-gate-summary ${failed ? "has-failures" : "all-passed"}">${failed ? `${failed} failed` : "All passed"}</span>` : ""}
+                        <h3 id="si-decision-why-title">Decision Evidence</h3></div>
+                        ${gates.length ? `<span class="si-decision-gate-summary ${failed ? "has-failures" : unavailable ? "has-unavailable" : "all-passed"}">${failed ? `${failed} failed` : unavailable ? `${unavailable} unavailable` : "All passed"}</span>` : ""}
                     </div>
                     <p class="si-decision-explanation">${siText(siDisplayExplanation(decision.explanation), "No persisted explanation is available.")}</p>
                     ${siDecisionGateRows(decision)}
@@ -746,16 +747,6 @@
     // same boundary the old stacked rows used (upper for support zones,
     // lower for trigger/target zones) -- purely a layout change, not a new
     // methodology.
-    // siFiniteNumber(null) coerces via Number(null) === 0, which IS finite --
-    // it cannot tell "genuinely absent" from "zero". A plain scalar field
-    // (unlike a zone object, already guarded by siZoneLooksEmpty) needs its
-    // own null/undefined check first, or an absent value renders as a
-    // fabricated real "₹0.00" point instead of being omitted.
-    function siNullableFiniteNumber(value) {
-        if (value === null || value === undefined) return null;
-        return siFiniteNumber(value);
-    }
-
     function siPriceLadderPoints(d1) {
         const close = siNullableFiniteNumber(d1 && d1.close);
         const points = [];
@@ -1027,7 +1018,7 @@
     function siStock360Footer() {
         return `<footer class="si-stock-360-footer">
             <em>Better information. Better decisions. A better you.</em>
-            <span>Symbol Intelligence · Asset 9.275.0 <b aria-hidden="true">|</b> Live Data · Evidence Driven</span>
+            <span>Symbol Intelligence · Asset 9.277.0 <b aria-hidden="true">|</b> Live Data · Evidence Driven</span>
         </footer>`;
     }
 

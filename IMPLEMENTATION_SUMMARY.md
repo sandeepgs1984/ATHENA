@@ -205,6 +205,85 @@ feat(review): close Stock 360 reference UX gaps
 ```
 
 ---
+
+## SI-P2E — ATHENA Decision Experience
+
+**Authorization/objective.** Owner / Chief Architect authorized SI-P2E on
+2026-09-14 after SI-P2D froze on asset `9.254.0`, with discovery required
+before implementation. Turn the existing SI ATHENA Decision tab into a premium,
+evidence-first explanation of the persisted Decision without reopening frozen
+contracts or creating a new Decision workflow.
+
+**Scope completed.** Discovery traced the immutable Decision/DecisionTrace,
+repository and run-report persistence, Decisions service, frozen SI DTO and
+composer, current SI renderer, and canonical Decision Brief. It classified
+candidate fields by authority and returned GO: the existing SI bundle already
+contains sufficient Decision identity/time, explanation, confidence, depth,
+individual gates/details, complete optional TradePlan, and separate freshness.
+The frontend now presents a decision hero, available strength facts, exact gate
+checklist with progressive stored detail, exact Decision-owned TradePlan,
+independent stale-state warnings, and first-class no-Decision/invalid states.
+Deep inspection continues through the existing Decision Brief and Evidence
+routes.
+
+**Final visual closure.** Owner review of `9.276.0` identified three bounded
+presentation issues. The causal “Why ATHENA decided this” container heading is
+now the evidence-safe “Decision Evidence” while stored explanation remains
+verbatim. A real persisted direction is coupled to the primary verdict as
+`TYPE · DIRECTION`; missing/`NONE` direction remains absent. At 720px and below,
+the SI workspace deliberately stacks symbol/status, price, and completed-D1
+context, and exposes all four section controls in a two-column navigation grid
+without shrinking desktop columns into the narrow viewport.
+
+**Files created.** SI-P2E discovery and implementation reports; focused
+`test_si_p2e_decision_experience.py`.
+**Files modified.** SI presentation JavaScript/CSS; dashboard asset pin
+`9.277.0`; impacted P2A/P2B/P2C/P2D/hosting/release pin assertions;
+`docs/MILESTONES.md`; this implementation log. No Python production, API, DTO,
+schema, repository, composer, DecisionEngine, Portfolio or DarvaX file changed.
+The initial SI-P2E renderer and styling were already present in the committed
+`dc8f26a` Stock 360 baseline; this closure validates that provenance and adds
+only bounded fail-closed numeric/date/gate-state corrections rather than
+claiming a separate uncommitted reimplementation.
+
+**Tests/coverage.** Actual renderer coverage verifies human type/date,
+confidence/score omission rules, actual gate counts and individual persisted
+details, failed/all-passed semantics without causal invention, exact one-target
+TradePlan rendering, missing/partial optional-value omission, unavailable gate
+outcomes, missing plan, no Decision, independent stale sources, invalid clearing,
+outbound navigation, responsive contracts, request isolation, and asset pins.
+Focused and impacted regression results are recorded in the implementation
+report/final handoff. No screenshot automation was run by Owner direction.
+Final validation: 9 focused SI-P2E tests passed; 101 impacted Symbol
+Intelligence/hosting/release tests passed. The latest full suite remains 4106
+passed, 0 failed and 2 skipped; it was not rerun because the final pass is
+local presentation only. JavaScript syntax, CSS brace balance, scoped Ruff,
+scoped mypy and `git diff --check` were clean. Browser geometry checks passed
+for PINE LABS TRADE/SHORT + EXPIRED TradePlan, WIPRO NO TRADE, and TI no
+Decision at 1579px and 390px; the 390px workspace/workstation measurements were
+318/318 and 294/294 (`scrollWidth/clientWidth`) with zero document overflow.
+
+**Compliance/risks/debt.** Presentation only under ATHENA-002's report/render
+boundary. Analyze still hydrates/re-reads completed D1 and never invokes the
+DecisionEngine. The surface never blends Stock 360 indicators, Portfolio
+guidance or DarvaX output into Decision evidence. No ADR is required. Technical
+gate detail remains deliberately faithful to persisted text rather than being
+rewritten into unsupported causality.
+
+**Phase outcome.** Owner / Chief Architect final visual and source review
+passed. SI-P2E is **COMPLETE AND FROZEN** on asset `9.277.0` as of 2026-09-15.
+SI-F0 and SI-N0 were not started.
+
+**Suggested consolidated commit message.**
+
+```text
+feat(report): build SI-P2E decision experience
+
+- Present the latest persisted ATHENA Decision in an evidence-first hierarchy.
+- Expose authoritative gate outcomes, stored explanations, and exact TradePlan fields.
+- Distinguish Decision, plan, and completed-D1 freshness without inventing causality.
+- Add responsive no-Decision, stale, and invalid states with canonical navigation.
+- Preserve frozen SI, Decision, Portfolio, DarvaX, API, and methodology contracts.
 ```
 
 ---
