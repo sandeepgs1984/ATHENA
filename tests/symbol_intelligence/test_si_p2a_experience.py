@@ -192,7 +192,7 @@ def test_si_p2a_partial_ready_and_no_decision_presentation() -> None:
     assert "si-coverage-banner.tone-partial" in css
     assert "si-coverage-banner.tone-ready" in css
     assert "ATHENA has not produced a Decision for this symbol." in js
-    assert "SI research remains available" in js
+    assert "Stock 360 research remains available" in js
     assert "Trend Health" not in js
     assert "Bullishness" not in js
     assert "52-week high" not in js
@@ -234,11 +234,11 @@ def test_si_p2a_dashboard_assets_and_hosted_nav() -> None:
     pane = _si_pane(html)
     assembled = assemble_dashboard_js(str(STATIC))
     css = (STATIC / "dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.274.0" in html
-    assert "dashboard.js?v=9.274.0" in html
+    assert "dashboard.css?v=9.275.0" in html
+    assert "dashboard.js?v=9.275.0" in html
     assert 'data-si-section="stock-360"' in pane
     assert "08c-symbol-intelligence.js" in DASHBOARD_JS_PARTS
     assert "function loadSymbolIntelligence(" in assembled
     assert "siLoadGeneration" in assembled
     assert "siInFlightMode" in assembled
-    assert "css/15-symbol-intelligence.css?v=9.274.0" in css
+    assert "css/15-symbol-intelligence.css?v=9.275.0" in css

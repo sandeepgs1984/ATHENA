@@ -83,7 +83,7 @@ def test_si_p2b_decision_portfolio_partial_and_capabilities() -> None:
     assert "ATHENA Decision not available for this symbol" in js
     assert "Stock 360 research remains available" in js
     assert "ATHENA has not produced a Decision for this symbol." in js
-    assert "SI research remains available" in js
+    assert "Stock 360 research remains available" in js
     assert 'tone = "partial"' in js
     assert "Not held in My Portfolio" in js
     assert "Symbol Intelligence does not issue BUY/HOLD/SELL" in js
@@ -194,7 +194,7 @@ def test_si_p2b1_reference_closure_composition_and_copy() -> None:
         encoding="utf-8"
     )
     assert "Better information. Better decisions. A better you." in js
-    assert "Symbol Intelligence · Asset 9.274.0" in js
+    assert "Symbol Intelligence · Asset 9.275.0" in js
     assert '.si-id-meta-tag + .si-id-meta-tag::before' in css
     assert 'content: "|"' in css
     assert "border-radius: 999px" not in css[css.index(".si-id-meta-tag {") : css.index(".si-id-decorative {")]
@@ -258,9 +258,9 @@ def test_si_p2b_p2a_request_lifecycle_untouched() -> None:
 def test_si_p2b_asset_cache_pin() -> None:
     html = HTML.read_text(encoding="utf-8")
     css = (STATIC / "dashboard.css").read_text(encoding="utf-8")
-    assert "dashboard.css?v=9.274.0" in html
-    assert "dashboard.js?v=9.274.0" in html
-    assert "css/15-symbol-intelligence.css?v=9.274.0" in css
+    assert "dashboard.css?v=9.275.0" in html
+    assert "dashboard.js?v=9.275.0" in html
+    assert "css/15-symbol-intelligence.css?v=9.275.0" in css
 
 
 def _finite(value: object) -> float | None:

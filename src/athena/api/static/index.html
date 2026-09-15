@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style Sheet -->
-    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.274.0">
+    <link rel="stylesheet" href="/dashboard/dashboard.css?v=9.275.0">
 </head>
 <body>
     <!-- Unlock gate (shown when ATHENA_OWNER_PASSWORD_HASH is configured) -->
@@ -1104,7 +1104,7 @@
                                 <button id="si-clear-btn" class="btn si-btn-icon-only" type="button" title="Clear this symbol" aria-label="Clear" disabled><i class="fas fa-xmark" aria-hidden="true"></i></button>
                                 <div id="si-search-hits" class="si-search-hits" hidden></div>
                             </div>
-                            <p class="metric-desc si-toolbar-note">Load reads persisted evidence. Analyze refreshes stale D1, then re-reads — without running DecisionEngine, Portfolio Sync, or a DarvaX scan.</p>
+                            <p class="metric-desc si-toolbar-note">Load reads persisted evidence. Analyze refreshes stale D1, then re-reads — without running DecisionEngine, Portfolio Sync, or a satellite scan.</p>
                         </div>
                         <div id="si-toolbar-home" hidden></div>
                         <div id="si-identity" class="si-identity"></div>
@@ -2559,7 +2559,7 @@
 
     <!-- Script Coordinator -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/dashboard/dashboard.js?v=9.274.0"></script>
+    <script src="/dashboard/dashboard.js?v=9.275.0"></script>
 
     <!-- DarvaX satellite tab (ADR-010 Amendment 1) — the ONLY DarvaX reference
          in this file, and the flag guard itself. This asset is served solely by

@@ -1,7 +1,7 @@
 # SI-P2B.1 — Stock 360 Reference-Matched Visual Revamp
 
 **Status:** Reference-gap closure implemented, presentation-only, on asset
-`9.274.0`. Owner review pending. SI-P2B's own frozen contract
+`9.275.0`. Owner review pending. SI-P2B's own frozen contract
 (`docs/research/SI-P2B-STOCK-360-IMPLEMENTATION.md`)
 is unchanged — this is a visual/UX revamp of that same Stock 360 surface,
 not a new methodology or DTO change.
@@ -315,6 +315,13 @@ or creating a second rule against the chart card. This is presentation-only;
 the frozen SI-P2C renderer, dimensions, evidence, and interaction behavior are
 unchanged.
 
+**Regression-copy correction (same day, asset `9.275.0`):** the toolbar now
+describes the untouched DarvaX operation generically as a satellite scan so
+ADR-010's source guard continues to identify exactly one DarvaX-owned HTML
+injection. The no-Decision surface uses the already-approved “Stock 360
+research remains available” wording. Meaning and behavior are unchanged; this
+only reconciles visible copy with the frozen ownership and regression checks.
+
 The owner compared a live screenshot of this implementation directly against
 the reference mock after this milestone shipped and found the page still
 reads noticeably sparser/less dense than the reference, beyond the three
@@ -403,6 +410,6 @@ structural/layout, not a data-correctness bug (those are covered above).
 
 ## Remaining work
 
-Owner/Chief Architect visual and source review of the `9.274.0` chart-frame closure.
+Owner/Chief Architect visual and source review of the `9.275.0` closure.
 SI-P2B.1 remains **IMPLEMENTED / REVIEW-READY**, not frozen. SI-P2E remains
 paused; this follow-up did not implement or start additional SI-P2E work.

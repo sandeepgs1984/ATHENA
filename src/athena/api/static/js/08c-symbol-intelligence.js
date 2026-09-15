@@ -618,7 +618,7 @@
             return `<div class="si-card si-decision-empty-state">
                 <span class="si-decision-eyebrow">ATHENA Decision</span>
                 <h2>No persisted decision</h2>
-                <p>ATHENA has not produced a Decision for this symbol. SI research remains available in Stock 360.</p>
+                <p>ATHENA has not produced a Decision for this symbol. Stock 360 research remains available.</p>
                 <div class="si-actions">
                     ${siJumpButton("stock-360", "Back to Stock 360")}
                     ${siJumpButton("audit", "View Evidence")}
@@ -1027,7 +1027,7 @@
     function siStock360Footer() {
         return `<footer class="si-stock-360-footer">
             <em>Better information. Better decisions. A better you.</em>
-            <span>Symbol Intelligence · Asset 9.274.0 <b aria-hidden="true">|</b> Live Data · Evidence Driven</span>
+            <span>Symbol Intelligence · Asset 9.275.0 <b aria-hidden="true">|</b> Live Data · Evidence Driven</span>
         </footer>`;
     }
 

@@ -59,7 +59,7 @@ width with their two peer cards beneath, then use a single-column flow at
 `src/athena/api/static/css/15-symbol-intelligence.css`;
 `src/athena/api/static/index.html`, `js/00-state-and-dom.js`,
 `js/03-app-shell.js`, and `dashboard.css` (header subtitle wiring and asset
-cache pin `9.274.0`); `tests/symbol_intelligence/test_si_p2a_experience.py`,
+cache pin `9.275.0`); `tests/symbol_intelligence/test_si_p2a_experience.py`,
 `tests/symbol_intelligence/test_si_p2b_stock_360.py`,
 `tests/symbol_intelligence/test_si_p2c_chart_intelligence.py`,
 `tests/symbol_intelligence/test_si_p2d_written_summary.py`,
@@ -163,8 +163,14 @@ transparent so no differently colored padding moat remains. A short
 borderless fade below the docked navigation separates it from moving chart
 content without reintroducing a perimeter or doubled separator.
 
+The regression-copy correction on `9.275.0` preserves the toolbar's meaning
+while calling the non-invoked DarvaX operation a generic satellite scan, so
+ADR-010's source guard continues to see exactly one DarvaX-owned injection.
+The no-Decision surface now matches its approved “Stock 360 research remains
+available” assertion. No request behavior or evidence changed.
+
 **Remaining work.** Owner/Chief Architect visual and source review. SI-P2B.1
-is **IMPLEMENTED / REVIEW-READY**, not frozen, on asset `9.274.0`. All five
+is **IMPLEMENTED / REVIEW-READY**, not frozen, on asset `9.275.0`. All five
 documented reference gaps are closed. The four intentional ATHENA deviations
 (coverage banner, Refresh/Clear and GET/Analyze affordances, the app-shell
 sidebar, and shared health/session chrome) remain preserved. SI-P2E remains
@@ -195,7 +201,7 @@ feat(review): close Stock 360 reference UX gaps
 - Fix a data-correctness bug where a null available_history_high rendered
   as a fabricated "₹0.00" point (siFiniteNumber(null) coerces to 0)
 - Update Symbol Intelligence tests for the renamed/removed functions and
-  new markup; bump the dashboard asset cache version to 9.274.0
+  new markup; bump the dashboard asset cache version to 9.275.0
 ```
 
 ---
